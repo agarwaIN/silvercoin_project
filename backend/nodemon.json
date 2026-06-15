@@ -1,0 +1,11 @@
+{
+  "exec": "node src/index.js",
+  "watch": ["src", "openapi.yaml", ".env"],
+  "ext": "js,json,yaml,yml",
+  "ignore": ["node_modules", "src/**/*.test.js"],
+  "delay": 400,
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "signal": "SIGTERM"
+}

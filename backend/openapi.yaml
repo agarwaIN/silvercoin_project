@@ -1,0 +1,1447 @@
+openapi: 3.0.3
+info:
+  title: Silvercoin Loan Management API
+  description: |
+    Backend API for the Silvercoin loan management app. Authenticated routes use `Authorization: Bearer <accessToken>`.
+    Login is email + password only (no SMS OTP).
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local (default PORT from `.env`)
+  - url: http://localhost:5000
+    description: Fallback if PORT unset
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Tools
+  - name: Superadmin
+  - name: Admin
+  - name: Employee
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with mobile and password (step 1 — sends mobile OTP)
+      operationId: authLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mobile, password]
+              properties:
+                mobile:
+                  type: string
+                  description: E.164 or 10-digit India mobile
+                password:
+                  type: string
+      responses:
+        '200':
+          description: OTP required before token is issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  otpRequired:
+                    type: boolean
+                  sessionId:
+                    type: string
+                  maskedMobile:
+                    type: string
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedMessage'
+
+  /api/auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password (required after first login)
+      operationId: authChangePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword, confirmPassword]
+              properties:
+                newPassword:
+                  type: string
+                  minLength: 6
+                confirmPassword:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: Validation or passwords do not match
+        '401':
+          $ref: '#/components/responses/UnauthorizedMessage'
+
+  /api/tools/ifsc/{code}:
+    get:
+      tags: [Tools]
+      summary: Resolve IFSC (bank and branch) via upstream lookup
+      description: Proxies Razorpay IFSC data for authenticated users. `code` must match Indian IFSC format (e.g. HDFC0001234).
+      operationId: toolsLookupIfsc
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z]{4}0[A-Z0-9]{6}$'
+            example: HDFC0001234
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ifsc, bank, branch, displayName]
+                properties:
+                  ifsc:
+                    type: string
+                  bank:
+                    type: string
+                  branch:
+                    type: string
+                  displayName:
+                    type: string
+                    description: Human-readable bank and branch (e.g. "HDFC BANK — BRANCH NAME")
+        '400':
+          description: Invalid IFSC format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '401':
+          $ref: '#/components/responses/UnauthorizedMessage'
+        '404':
+          description: IFSC not found at provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '502':
+          description: Provider error or bad response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+
+  /api/superadmin/users:
+    get:
+      tags: [Superadmin]
+      summary: List admins and employees
+      operationId: superadminListUsersGrouped
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  admins:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  employees:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedMessage'
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+
+  /api/superadmin/admins:
+    get:
+      tags: [Superadmin]
+      summary: List all admins
+      operationId: superadminListAdmins
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /api/superadmin/employees:
+    get:
+      tags: [Superadmin]
+      summary: List all employees
+      operationId: superadminListEmployees
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /api/superadmin/create-user:
+    post:
+      tags: [Superadmin]
+      summary: Create admin or employee (employee requires parentAdminId of the admin they belong to)
+      operationId: superadminCreateUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, mobile, role]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                mobile:
+                  type: string
+                  description: 10-digit India mobile or full international E.164; stored as E.164
+                role:
+                  type: string
+                  enum: [admin, employee]
+                parentAdminId:
+                  type: string
+                  format: uuid
+                  description: Required when role is employee — the admin whose organization this employee belongs to (sets createdBy)
+      responses:
+        '201':
+          description: Created; credentials emailed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  userId:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+
+  /api/superadmin/users/{userId}/deactivate:
+    patch:
+      tags: [Superadmin]
+      summary: Deactivate user
+      operationId: superadminDeactivateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+
+  /api/superadmin/loans:
+    get:
+      tags: [Superadmin]
+      summary: List all loans
+      operationId: superadminListLoans
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Loan'
+
+  /api/superadmin/loans/{loanId}:
+    get:
+      tags: [Superadmin]
+      summary: Get loan by ID
+      operationId: superadminGetLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/superadmin/loans/{loanId}/media-preview:
+    get:
+      tags: [Superadmin]
+      summary: Presigned URLs for property images, video, and registry document
+      operationId: superadminLoanMediaPreview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  propertyImageUrls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        url:
+                          type: string
+                          format: uri
+                  videoUrl:
+                    type: string
+                    format: uri
+                    nullable: true
+                  registryDocumentUrl:
+                    type: string
+                    format: uri
+                    nullable: true
+                  registryDocumentContentType:
+                    type: string
+                    nullable: true
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/superadmin/recovery:
+    get:
+      tags: [Superadmin]
+      summary: Active loans (approved/active) with EMI lists
+      operationId: superadminRecovery
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LoanWithEmis'
+
+  /api/admin/employees:
+    get:
+      tags: [Admin]
+      summary: List employees created by this admin
+      operationId: adminListEmployees
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /api/admin/create-employee:
+    post:
+      tags: [Admin]
+      summary: Create employee under this admin
+      operationId: adminCreateEmployee
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, mobile]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                mobile:
+                  type: string
+                  description: 10-digit India mobile or full international E.164; stored as E.164
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  userId:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email already registered
+
+  /api/admin/employees/{userId}/deactivate:
+    patch:
+      tags: [Admin]
+      summary: Deactivate employee
+      operationId: adminDeactivateEmployee
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+
+  /api/admin/loans:
+    get:
+      tags: [Admin]
+      summary: List loans for this admin
+      operationId: adminListLoans
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Loan'
+
+  /api/admin/loans/{loanId}:
+    get:
+      tags: [Admin]
+      summary: Get loan (must belong to admin)
+      operationId: adminGetLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/loans/{loanId}/media-preview:
+    get:
+      tags: [Admin]
+      summary: Presigned URLs for property images, video, and registry document
+      operationId: adminLoanMediaPreview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  propertyImageUrls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        url:
+                          type: string
+                          format: uri
+                  videoUrl:
+                    type: string
+                    format: uri
+                    nullable: true
+                  registryDocumentUrl:
+                    type: string
+                    format: uri
+                    nullable: true
+                  registryDocumentContentType:
+                    type: string
+                    nullable: true
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/loans/{loanId}/approve:
+    post:
+      tags: [Admin]
+      summary: Approve loan (same rules as superadmin; scoped to admin)
+      operationId: adminApproveLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: Wrong status or not ready
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/loans/{loanId}/reject:
+    post:
+      tags: [Admin]
+      summary: Reject loan
+      operationId: adminRejectLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/loans/{loanId}/send-qr:
+    post:
+      tags: [Admin]
+      summary: Generate UPI QR, store in S3; email owner (owner email required); email employee when listed
+      operationId: adminSendQr
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  ownerChannel:
+                    type: string
+                    enum: [email, sms]
+                    nullable: true
+                    description: How the owner was reached (null if only employee was notified)
+                  employeeEmailed:
+                    type: boolean
+        '400':
+          description: Loan must be approved or active, or no delivery channel available
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/recovery:
+    get:
+      tags: [Admin]
+      summary: Admin's active loans with EMI lists
+      operationId: adminRecovery
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LoanWithEmis'
+
+  /api/admin/loans/{loanId}/mark-emi-paid:
+    post:
+      tags: [Admin]
+      summary: Mark one EMI paid (completes loan if all paid)
+      operationId: adminMarkEmiPaid
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId]
+              properties:
+                paymentId:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  loanCompleted:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/admin/profile:
+    get:
+      tags: [Admin]
+      summary: Current admin profile (no password hash); includes hasOrganizationLogo and presigned organizationLogoUrl when set
+      operationId: adminProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfile'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+    patch:
+      tags: [Admin]
+      summary: Update display name only (email and mobile cannot be changed)
+      operationId: adminPatchProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/admin/profile/organization-logo:
+    post:
+      tags: [Admin]
+      summary: Upload organization logo (multipart field logo)
+      operationId: adminUploadOrganizationLogo
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfile'
+        '400':
+          description: Invalid file
+
+  /api/employee/profile:
+    get:
+      tags: [Employee]
+      summary: Current employee profile plus tenantLogoUrl and tenantName from parent admin when available
+      operationId: employeeProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+    patch:
+      tags: [Employee]
+      summary: Update display name only
+      operationId: employeePatchProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/employee/loans:
+    post:
+      tags: [Employee]
+      summary: Create draft loan
+      operationId: employeeCreateLoan
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loanId:
+                    type: string
+    get:
+      tags: [Employee]
+      summary: List my loans
+      operationId: employeeListLoans
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Loan'
+
+  /api/employee/loans/{loanId}:
+    get:
+      tags: [Employee]
+      summary: Get my loan
+      operationId: employeeGetLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+    patch:
+      tags: [Employee]
+      summary: Update draft fields (draft or submitted only)
+      operationId: employeePatchLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ownerName:
+                  type: string
+                ownerMobile:
+                  type: string
+                ownerEmail:
+                  type: string
+                  format: email
+                  description: Optional; empty clears stored value
+                area:
+                  type: string
+                marketValue:
+                  type: string
+                geoLocation:
+                  $ref: '#/components/schemas/GeoLocation'
+                loanAmount:
+                  oneOf:
+                    - type: number
+                    - type: string
+                emiPerMonth:
+                  oneOf:
+                    - type: number
+                    - type: string
+                totalMonths:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                transferCount:
+                  type: integer
+                  minimum: 0
+                  maximum: 999
+                  description: Times property was transferred to a descendant (employee-entered)
+                otherLoanOnProperty:
+                  type: boolean
+                  description: Whether another active loan exists on the same property
+      responses:
+        '200':
+          description: OK; registryTag present once eligibility is met
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  registryTag:
+                    type: string
+                    nullable: true
+        '400':
+          description: Loan not editable in current status
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/employee/loans/{loanId}/upload-photo:
+    post:
+      tags: [Employee]
+      summary: Upload property photos (repeat field `photos`, or legacy single `photo`; appended; max 15 total per loan)
+      operationId: employeeUploadPhoto
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photos:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: One or more image files (same field name repeated)
+                photo:
+                  type: string
+                  format: binary
+                  description: Legacy single-file upload (same behavior as one `photos` part)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  propertyImageKeys:
+                    type: array
+                    items:
+                      type: string
+                    description: All S3 keys for this loan after append
+                  registryTag:
+                    type: string
+                    nullable: true
+        '400':
+          description: No files or over photo limit
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/employee/loans/{loanId}/registry-document:
+    post:
+      tags: [Employee]
+      summary: Upload property registry paper (PDF or image); field name `document`
+      operationId: employeeUploadRegistryDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registryDocumentKey:
+                    type: string
+                  registryDocumentContentType:
+                    type: string
+                  registryTag:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid type or not editable
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/employee/loans/{loanId}/upload-video:
+    post:
+      tags: [Employee]
+      summary: Upload video (multipart field `video`). Mobile app records owner verification video with a 60s maximum duration (client-enforced).
+      operationId: employeeUploadVideo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video]
+              properties:
+                video:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/employee/loans/{loanId}/submit:
+    post:
+      tags: [Employee]
+      summary: Submit draft (generates PDF to S3, status → submitted)
+      operationId: employeeSubmitLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  pdfKey:
+                    type: string
+        '400':
+          description: Already submitted or missing required fields
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/employee/loans/{loanId}/agreement:
+    post:
+      tags: [Employee]
+      summary: Upload agreement images/signatures; status → agreement_submitted
+      operationId: employeeSubmitAgreement
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                agreementDoc:
+                  type: string
+                  format: binary
+                employeeSignature:
+                  type: string
+                  format: binary
+                ownerSignature:
+                  type: string
+                  format: binary
+                agreementId:
+                  type: string
+                agreementDate:
+                  type: string
+                witnessName:
+                  type: string
+                witnessMobile:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: Invalid state
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/employee/loans/{loanId}/media-preview:
+    get:
+      tags: [Employee]
+      summary: Presigned URLs for property images, video, and registry document
+      operationId: employeeLoanMediaPreview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  propertyImageUrls:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        url:
+                          type: string
+                          format: uri
+                  videoUrl:
+                    type: string
+                    format: uri
+                    nullable: true
+                  registryDocumentUrl:
+                    type: string
+                    format: uri
+                    nullable: true
+                  registryDocumentContentType:
+                    type: string
+                    nullable: true
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/employee/loans/{loanId}/pdf:
+    get:
+      tags: [Employee]
+      summary: Presigned URL for generated loan PDF
+      operationId: employeeLoanPdfUrl
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: Time-limited S3 GET URL
+        '404':
+          description: Not found or PDF not generated yet
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from `/api/auth/login`
+
+  parameters:
+    loanId:
+      name: loanId
+      in: path
+      required: true
+      schema:
+        type: string
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ValidationError:
+      description: express-validator errors
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorBody'
+    UnauthorizedMessage:
+      description: Missing/invalid Bearer token or pending token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageBody'
+    ForbiddenMessage:
+      description: Wrong role or access denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageBody'
+    NotFoundMessage:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageBody'
+
+  schemas:
+    MessageBody:
+      type: object
+      properties:
+        message:
+          type: string
+
+    ValidationErrorBody:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    AuthUser:
+      type: object
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        mobile:
+          type: string
+        role:
+          type: string
+          enum: [superadmin, admin, employee]
+        isFirstLogin:
+          type: boolean
+        hasOrganizationLogo:
+          type: boolean
+          description: Present for admin role when an organization logo is uploaded
+
+    User:
+      type: object
+      description: Stored user item without passwordHash in API responses
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        mobile:
+          type: string
+        role:
+          type: string
+          enum: [superadmin, admin, employee]
+        isFirstLogin:
+          type: boolean
+        isActive:
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        organizationLogoKey:
+          type: string
+          description: S3 key for admin organization logo (admins only)
+
+    AdminProfile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            hasOrganizationLogo:
+              type: boolean
+            organizationLogoUrl:
+              type: string
+              format: uri
+              nullable: true
+              description: Presigned GET URL; short-lived
+
+    EmployeeProfile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            tenantLogoUrl:
+              type: string
+              format: uri
+              nullable: true
+            tenantName:
+              type: string
+              nullable: true
+
+    GeoLocation:
+      type: object
+      description: Property GPS point; capturedAt is device time when the employee tapped capture (ISO 8601)
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        capturedAt:
+          type: string
+          format: date-time
+          description: When coordinates were captured (new captures only; legacy loans may omit)
+      required: [lat, lng]
+
+    Loan:
+      type: object
+      description: MongoDB loan document (fields vary by status)
+      additionalProperties: true
+      properties:
+        loanId:
+          type: string
+        employeeId:
+          type: string
+        adminId:
+          type: string
+        status:
+          type: string
+          description: draft | submitted | agreement_submitted | approved | active | rejected | completed
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        ownerName:
+          type: string
+        ownerMobile:
+          type: string
+        ownerEmail:
+          type: string
+          nullable: true
+          description: Optional; used for notifications / QR email when present
+        area:
+          type: string
+        marketValue:
+          type: string
+        geoLocation:
+          $ref: '#/components/schemas/GeoLocation'
+        loanAmount:
+          type: string
+        emiPerMonth:
+          type: string
+        totalMonths:
+          type: integer
+        transferCount:
+          type: integer
+          minimum: 0
+          maximum: 999
+          description: Times property was transferred to a descendant
+        otherLoanOnProperty:
+          type: boolean
+          description: Whether another active loan exists on the same property
+        ownerPhotoKey:
+          type: string
+          description: First property image key (legacy / mirror of propertyImageKeys[0])
+        propertyImageKeys:
+          type: array
+          items:
+            type: string
+          description: S3 keys for property images (ordered)
+        videoKey:
+          type: string
+        pdfKey:
+          type: string
+        agreementDocKey:
+          type: string
+        employeeSignatureKey:
+          type: string
+        ownerSignatureKey:
+          type: string
+        agreementId:
+          type: string
+        agreementDate:
+          type: string
+        witnessName:
+          type: string
+        witnessMobile:
+          type: string
+        approvedBy:
+          type: string
+        approvedAt:
+          type: string
+        loanStartDate:
+          type: string
+          description: Loan start date (YYYY-MM-DD). EMI schedule — first due 30 days after start, then each EMI 30 days after the previous (30, 60, 90… days from start)
+        remainingMonths:
+          type: integer
+        rejectionReason:
+          type: string
+        upiQrKey:
+          type: string
+        registryTag:
+          type: string
+          description: Yearly display tag (e.g. 2026001) set once when owner, property, and loan fields are complete
+          nullable: true
+        registryDocumentKey:
+          type: string
+          description: S3 key for uploaded property registry PDF or scan
+          nullable: true
+        registryDocumentContentType:
+          type: string
+          nullable: true
+
+    EmiPayment:
+      type: object
+      additionalProperties: true
+      properties:
+        paymentId:
+          type: string
+        loanId:
+          type: string
+        dueDate:
+          type: string
+          description: YYYY-MM-DD; spaced every 30 days from loan start (30, 60, 90…)
+        amount:
+          type: string
+        status:
+          type: string
+          enum: [pending, paid]
+        paidDate:
+          type: string
+        markedBy:
+          type: string
+
+    LoanWithEmis:
+      allOf:
+        - $ref: '#/components/schemas/Loan'
+        - type: object
+          properties:
+            emis:
+              type: array
+              items:
+                $ref: '#/components/schemas/EmiPayment'

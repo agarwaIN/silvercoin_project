@@ -1,0 +1,12 @@
+.expo/
+.expo-shared/
+dist/
+node_modules/
+.metro-health-check*
+.eas/
+eas-build-*.json
+expo-env.d.ts
+*.jsbundle
+*.bundle
+*.map
+*.orig.*

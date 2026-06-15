@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "Silvercoin",
+    "slug": "silvercoin-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/silvercoin-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F0F4F1"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.silvercoin.loanapp",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSCameraUsageDescription": "Camera is used to capture owner photos and record loan verification videos.",
+        "NSMicrophoneUsageDescription": "Microphone is used for recording loan verification videos.",
+        "NSPhotoLibraryUsageDescription": "Photo library access to upload owner and agreement photos.",
+        "NSLocationWhenInUseUsageDescription": "Location is used to record property geo-coordinates."
+      }
+    },
+    "android": {
+      "usesCleartextTraffic": true,
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#4B6B4E"
+      },
+      "package": "com.silvercoin.loanapp",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Camera is used to capture owner photos and record loan verification videos.",
+          "photosPermission": "Photo library access to upload owner and agreement photos."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Silvercoin to access your camera."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Silvercoin to use your location for property geo-tagging."
+        }
+      ],
+      "expo-video",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "be6d51c1-a082-4486-b626-27c1572d73c9"
+      }
+    },
+    "owner": "manyashukla"
+  }
+}
