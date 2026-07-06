@@ -16,7 +16,7 @@ export default function AuthNavigator() {
         <Stack.Screen name="OtpVerify" component={OtpVerifyScreen} />
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       </Stack.Navigator>
-      <AppFooter />
+      {/* <AppFooter /> */}
     </View>
   );
 }

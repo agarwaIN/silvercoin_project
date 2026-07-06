@@ -8,6 +8,7 @@ import {
   StyleSheet,
   RefreshControl,
   TextInput,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,7 +55,8 @@ export default function AdminLoanListScreen({ navigation }) {
   }, [loans, filter, search]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={styles.safe} edges={['top']}>
+       <StatusBar barStyle={'light-content'} translucent={true} backgroundColor={"green"} />
       <Header title="Loan Applications" />
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={20} color={colors.muted} style={styles.searchIcon} />
@@ -87,7 +89,7 @@ export default function AdminLoanListScreen({ navigation }) {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />}
         renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => navigation.navigate('LoanDetail', { loanId: item.loanId })}>
+          <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('LoanDetail', { loanId: item.loanId })}>
             <Card>
               <View style={styles.row}>
                 <View style={styles.left}>
@@ -115,7 +117,7 @@ export default function AdminLoanListScreen({ navigation }) {
           </View>
         }
       />
-    </SafeAreaView>
+    </View>
   );
 }
 

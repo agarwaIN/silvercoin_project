@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
@@ -33,10 +33,10 @@ export default function LoanDetailScreen({ route }) {
       </SafeAreaView>
     );
   }
-
+const navigation = useNavigation()
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <Header title={loan.loanId} />
+      <Header title={loan.loanId} onBack={() => navigation.goBack()} />
       <ScrollView
         style={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

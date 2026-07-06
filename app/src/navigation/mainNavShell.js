@@ -47,7 +47,7 @@ export function MainShell({ children, routeNames, activeRouteName, extraMenuItem
           onLogout={onLogout}
           extraMenuItems={extraMenuItems}
         />
-        <AppFooter />
+        {/* <AppFooter /> */}
       </View>
     </AppMenuProvider>
   );

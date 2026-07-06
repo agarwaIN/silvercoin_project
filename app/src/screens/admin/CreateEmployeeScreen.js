@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
@@ -46,7 +46,8 @@ export default function CreateEmployeeScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={styles.safe} edges={['top']}>
+        <StatusBar barStyle={'light-content'} translucent={true} backgroundColor={"green"} />
       <Header title="Add Employee" onBack={() => navigation.goBack()} />
       <KeyboardFormWrapper contentContainerStyle={styles.scroll}>
           <Text style={styles.info}>
@@ -57,7 +58,7 @@ export default function CreateEmployeeScreen({ navigation }) {
           <Input label="Mobile number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="9876543210" error={errors.mobile} />
           <Button title="Create Employee" onPress={handle} loading={loading} style={styles.btn} />
       </KeyboardFormWrapper>
-    </SafeAreaView>
+    </View>
   );
 }
 

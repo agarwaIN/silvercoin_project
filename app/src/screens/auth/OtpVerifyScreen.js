@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardFormWrapper from '../../components/KeyboardFormWrapper';
 import { colors } from '../../theme/colors';
@@ -30,6 +30,7 @@ export default function OtpVerifyScreen({ route, navigation }) {
   if (!sessionId) {
     return (
       <SafeAreaView style={styles.safe}>
+      
         <Header title="Verify code" onBack={() => navigation.goBack()} hideDrawerMenu />
         <View style={styles.center}>
           <Text style={styles.errorText}>Session missing. Please sign in again.</Text>
@@ -92,8 +93,17 @@ export default function OtpVerifyScreen({ route, navigation }) {
     return `We sent a 6-digit code to ${maskedMobile || 'your mobile'}.`;
   };
 
+// useEffect(() => {
+//   if (Platform.OS === 'android') {
+//     StatusBar.setBackgroundColor('#FF0000'); // bright red — confirm karne ke liye
+//     StatusBar.setTranslucent(false);
+//   }
+// }, []);
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={{flex:1}}>
+      <StatusBar barStyle={'light-content'} translucent={true} backgroundColor={"green"} />
+    {/* <SafeAreaView style={styles.safe}> */}
       <Header title="Verify code" onBack={() => navigation.goBack()} hideDrawerMenu />
       <KeyboardFormWrapper contentContainerStyle={styles.scroll}>
         <Text style={styles.heading}>{emailOtpDelivered ? 'Check your mobile & email' : 'Check your mobile'}</Text>
@@ -126,12 +136,13 @@ export default function OtpVerifyScreen({ route, navigation }) {
           </Text>
         </TouchableOpacity>
       </KeyboardFormWrapper>
-    </SafeAreaView>
+    {/* </SafeAreaView> */}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, },
   scroll: { flexGrow: 1, padding: 24 },
   center: { flex: 1, padding: 24, justifyContent: 'center' },
   heading: { fontFamily: fonts.bold, fontSize: fontSize.xl, color: colors.text, marginBottom: 8 },

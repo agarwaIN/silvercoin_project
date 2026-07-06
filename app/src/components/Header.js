@@ -36,7 +36,7 @@ export default function Header({
       compact && styles.containerCompact,
       { paddingTop: insets.top + (compact ? 2 : 8) },
     ]}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.dark} />
+      {/* <StatusBar barStyle="light-content" backgroundColor={colors.dark} /> */}
       <View style={styles.row}>
         {onBack ? (
           <TouchableOpacity onPress={onBack} style={[styles.backBtn, compact && styles.backBtnCompact]}>
