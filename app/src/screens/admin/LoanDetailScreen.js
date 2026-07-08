@@ -6,8 +6,9 @@ import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { getLoan } from '../../api/adminApi';
+import { getLoan, getLoanMediaPreview } from '../../api/adminApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
+import MediaViewer from '../../components/MediaViewer';
 
 export default function LoanDetailScreen({ route }) {
   const { loanId } = route.params;
@@ -47,7 +48,8 @@ const navigation = useNavigation()
           <StatusBadge status={loan.status} />
         </View>
         <LoanDetailsView loan={loan} />
-        <Text style={styles.note}>Implement approval, agreement review, and recovery actions here.</Text>
+        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} />
+
       </ScrollView>
     </SafeAreaView>
   );

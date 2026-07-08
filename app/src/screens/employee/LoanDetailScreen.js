@@ -7,8 +7,9 @@ import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
 import { Ionicons } from '@expo/vector-icons';
-import { getLoan } from '../../api/employeeApi';
+import { getLoan, getLoanMediaPreview } from '../../api/employeeApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
+import MediaViewer from '../../components/MediaViewer';
 
 export default function LoanDetailScreen({ route, navigation }) {
   const { loanId } = route.params;
@@ -49,6 +50,7 @@ export default function LoanDetailScreen({ route, navigation }) {
         </View>
         
         <LoanDetailsView loan={loan} />
+        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} />
 
         {!['approved', 'rejected'].includes(loan.status) && (
           <TouchableOpacity 
