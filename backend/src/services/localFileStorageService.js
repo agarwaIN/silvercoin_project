@@ -46,7 +46,9 @@ async function openDownloadStream(key) {
 async function getPresignedUrl(key, expiresIn = 3600) {
   const token = jwt.sign({ key, type: 'file_access' }, process.env.JWT_SECRET, { expiresIn });
   const port = process.env.PORT || 8000;
-  const host = process.env.PUBLIC_ORIGIN || `http://localhost:${port}`;
+  const isProd = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'prod';
+  const renderUrl = process.env.RENDER_EXTERNAL_URL || (isProd ? 'https://silvercoin-project.onrender.com' : null);
+  const host = process.env.PUBLIC_ORIGIN || renderUrl || `http://localhost:${port}`;
   return `${host.replace(/\/+$/, '')}/api/files/download?key=${encodeURIComponent(key)}&token=${token}`;
 }
 

@@ -10,7 +10,7 @@ import { getLoan, getLoanMediaPreview } from '../../api/adminApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 
-export default function LoanDetailScreen({ route }) {
+export default function LoanDetailScreen({ route, navigation }) {
   const { loanId } = route.params;
   const [loan, setLoan] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,7 +35,6 @@ export default function LoanDetailScreen({ route }) {
       </SafeAreaView>
     );
   }
-const navigation = useNavigation()
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <Header title={loan.loanId} onBack={() => navigation.goBack()} />
