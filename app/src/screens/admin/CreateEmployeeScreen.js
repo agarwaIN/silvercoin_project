@@ -34,8 +34,8 @@ export default function CreateEmployeeScreen({ navigation }) {
     setLoading(true);
     try {
       const m = normalizeMobileToE164(mobile);
-      await createEmployee({ name: name.trim(), email: email.trim().toLowerCase(), mobile: m.e164 });
-      showAlert('Employee Created', `Login credentials have been sent to ${email}.`, [
+      const resData = await createEmployee({ name: name.trim(), email: email.trim().toLowerCase(), mobile: m.e164 });
+      showAlert('Employee Created', `Login credentials sent to ${email}.\nTemporary Password: ${resData.tempPassword || 'Check email'}`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err) {

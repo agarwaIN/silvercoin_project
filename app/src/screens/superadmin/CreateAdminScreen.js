@@ -34,8 +34,8 @@ export default function CreateAdminScreen({ navigation }) {
     setLoading(true);
     try {
       const m = normalizeMobileToE164(mobile);
-      await createAdmin({ name: name.trim(), email: email.trim().toLowerCase(), mobile: m.e164 });
-      showAlert('Admin Created', `Login credentials have been sent to ${email}.`, [
+      const resData = await createAdmin({ name: name.trim(), email: email.trim().toLowerCase(), mobile: m.e164 });
+      showAlert('Admin Created', `Login credentials sent to ${email}.\nTemporary Password: ${resData.tempPassword || 'Check email'}`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err) {

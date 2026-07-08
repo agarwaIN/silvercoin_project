@@ -60,7 +60,7 @@ router.post('/create-employee', [
   await db.createUser(user);
   await sendCredentials({ name, email, password, role: 'employee' });
   console.log(`[credentials] employee ${email} temp password: ${password}`);
-  res.status(201).json({ message: 'Employee created successfully.', userId });
+  res.status(201).json({ message: 'Employee created successfully.', userId, tempPassword: password });
 });
 
 router.patch('/employees/:userId/deactivate', async (req, res) => {

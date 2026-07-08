@@ -44,13 +44,13 @@ async function verifySessionOtp(sessionId, otp) {
 }
 
 async function startLoginOtp(user) {
-  const { sessionId } = await createSession({
+  const { sessionId, otp } = await createSession({
     userId: user.userId,
     purpose: PURPOSE_LOGIN,
     mobile: user.mobile,
     email: user.email,
   });
-  return { sessionId, message: 'Enter the verification code.' };
+  return { sessionId, message: 'Enter the verification code.', devOtp: otp };
 }
 
 async function verifyLoginOtp(sessionId, otp) {
@@ -87,23 +87,23 @@ async function resendOtp(sessionId, purpose = PURPOSE_LOGIN) {
 }
 
 async function startChangePasswordOtp(user) {
-  const { sessionId } = await createSession({
+  const { sessionId, otp } = await createSession({
     userId: user.userId,
     purpose: PURPOSE_CHANGE_PASSWORD,
     mobile: user.mobile,
     email: user.email,
   });
-  return { sessionId };
+  return { sessionId, devOtp: otp };
 }
 
 async function startForgotPasswordOtp(user) {
-  const { sessionId } = await createSession({
+  const { sessionId, otp } = await createSession({
     userId: user.userId,
     purpose: PURPOSE_FORGOT_PASSWORD,
     mobile: user.mobile,
     email: user.email,
   });
-  return { sessionId };
+  return { sessionId, devOtp: otp };
 }
 
 async function verifyPasswordOtp(sessionId, otp, purpose) {
