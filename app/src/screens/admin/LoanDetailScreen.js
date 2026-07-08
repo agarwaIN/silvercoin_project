@@ -7,6 +7,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
 import { getLoan } from '../../api/adminApi';
+import LoanDetailsView from '../../components/LoanDetailsView';
 
 export default function LoanDetailScreen({ route }) {
   const { loanId } = route.params;
@@ -45,8 +46,7 @@ const navigation = useNavigation()
           <Text style={styles.label}>Status</Text>
           <StatusBadge status={loan.status} />
         </View>
-        <Text style={styles.field}>Owner: {loan.ownerName || '—'}</Text>
-        <Text style={styles.field}>Amount: {loan.loanAmount ? `₹${loan.loanAmount}` : '—'}</Text>
+        <LoanDetailsView loan={loan} />
         <Text style={styles.note}>Implement approval, agreement review, and recovery actions here.</Text>
       </ScrollView>
     </SafeAreaView>

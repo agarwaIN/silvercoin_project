@@ -57,6 +57,14 @@ export default function SADashboard({ navigation }) {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />}
       >
+        <TouchableOpacity 
+          style={styles.topCreateBtn}
+          onPress={() => navigation.navigate('CreateAdmin')}
+        >
+          <Ionicons name="add-circle" size={24} color={colors.white} />
+          <Text style={styles.topCreateBtnText}>Create Admin</Text>
+        </TouchableOpacity>
+
         <View style={[styles.statsRow, !statsFourAcross && styles.statsRowWrap]}>
           <StatBox fourAcross={statsFourAcross} icon="shield-checkmark" label="Admins" value={users.admins?.length || 0} color={colors.primary} />
           <StatBox fourAcross={statsFourAcross} icon="people" label="Employees" value={users.employees?.length || 0} color={colors.dark} />
@@ -86,16 +94,7 @@ export default function SADashboard({ navigation }) {
           </Card>
         )}
 
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Recent Users</Text>
-          <TouchableOpacity 
-            style={styles.createBtn}
-            onPress={() => navigation.navigate('CreateAdmin')}
-          >
-            <Ionicons name="add" size={16} color={colors.white} />
-            <Text style={styles.createBtnText}>Create Admin</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={[styles.section, { marginTop: 12 }]}>Recent Users</Text>
         {recentUsers.map((u) => (
           <Card key={u.userId}>
             <View style={styles.row}>
@@ -152,6 +151,8 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     width: '100%',
   },
+  topCreateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#047857', paddingVertical: 12, borderRadius: 12, gap: 8, marginBottom: 16 },
+  topCreateBtnText: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.white },
   section: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text, marginBottom: 12 },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 12 },
   sectionTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text },

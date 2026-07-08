@@ -6,9 +6,11 @@ import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
+import { Ionicons } from '@expo/vector-icons';
 import { getLoan } from '../../api/employeeApi';
+import LoanDetailsView from '../../components/LoanDetailsView';
 
-export default function LoanDetailScreen({ route }) {
+export default function LoanDetailScreen({ route, navigation }) {
   const { loanId } = route.params;
   const [loan, setLoan] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,9 +47,18 @@ export default function LoanDetailScreen({ route }) {
           <Text style={styles.label}>Status</Text>
           <StatusBadge status={loan.status} />
         </View>
-        <Text style={styles.field}>Owner: {loan.ownerName || '—'}</Text>
-        <Text style={styles.field}>Amount: {loan.loanAmount ? `₹${loan.loanAmount}` : '—'}</Text>
-        <Text style={styles.note}>Implement full loan detail, media, and recovery flows here.</Text>
+        
+        <LoanDetailsView loan={loan} />
+
+        {!['approved', 'rejected'].includes(loan.status) && (
+          <TouchableOpacity 
+            style={styles.editBtn} 
+            onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
+          >
+            <Ionicons name="create-outline" size={20} color={colors.white} />
+            <Text style={styles.editBtnText}>Edit Application</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -60,4 +71,6 @@ const styles = StyleSheet.create({
   label: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text },
   field: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.text, marginBottom: 8 },
   note: { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 16 },
+  editBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dark, paddingVertical: 14, borderRadius: 12, gap: 8, marginTop: 16, marginBottom: 24 },
+  editBtnText: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.white },
 });

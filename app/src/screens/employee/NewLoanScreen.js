@@ -682,23 +682,45 @@ const rv = StyleSheet.create({
 });
 
 // ─── MAIN SCREEN ───────────────────────────────────────────────────────────────
-export default function NewLoanScreen({ navigation }) {
+export default function NewLoanScreen({ route, navigation }) {
   const { showAlert } = usePopup();
+  const existingLoan = route.params?.existingLoan;
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [loanId, setLoanId] = useState(null);
+  const [loanId, setLoanId] = useState(existingLoan?.loanId || null);
   const scrollRef = useRef(null);
 
   const [formData, setFormData] = useState({
-    ownerName: '', ownerMobile: '', ownerEmail: '', aadhaar: '',
-    spouseName: '', familyOccupation: '', monthlyIncome: '',
-    ifsc: '', bankName: '', accountHolder: '', accountNumber: '',
-    ownerAddress: '', videoUri: null, videoUploaded: false,
-    propertyPhotos: [], propertyArea: '', marketValue: '',
-    descendantCount: '', otherLoan: 'No', otherLoanDetails: '',
-    geoLat: '', geoLng: '', geoDate: '', geoAddress: '',
-    possessionStatus: '', propertyDocs: [],
-    loanAmount: '', loanPurpose: '', repaymentMonths: '', notes: '',
+    ownerName: existingLoan?.ownerName || '', 
+    ownerMobile: existingLoan?.ownerMobile || '', 
+    ownerEmail: existingLoan?.ownerEmail || '', 
+    aadhaar: existingLoan?.aadhaar || '',
+    spouseName: existingLoan?.spouseName || '', 
+    familyOccupation: existingLoan?.familyOccupation || '', 
+    monthlyIncome: existingLoan?.monthlyIncome?.toString() || '',
+    ifsc: existingLoan?.bankDetails?.ifsc || '', 
+    bankName: existingLoan?.bankDetails?.bankName || '', 
+    accountHolder: existingLoan?.bankDetails?.accountHolder || '', 
+    accountNumber: existingLoan?.bankDetails?.accountNumber || '',
+    ownerAddress: existingLoan?.ownerAddress || '', 
+    videoUri: existingLoan?.videoUri || null, 
+    videoUploaded: !!existingLoan?.videoUri,
+    propertyPhotos: existingLoan?.propertyPhotos || [], 
+    propertyArea: existingLoan?.propertyArea?.toString() || '', 
+    marketValue: existingLoan?.marketValue?.toString() || '',
+    descendantCount: existingLoan?.descendantCount?.toString() || '', 
+    otherLoan: existingLoan?.otherLoan ? 'Yes' : 'No', 
+    otherLoanDetails: existingLoan?.otherLoanDetails || '',
+    geoLat: existingLoan?.geoLocation?.lat || '', 
+    geoLng: existingLoan?.geoLocation?.lng || '', 
+    geoDate: '', 
+    geoAddress: existingLoan?.propertyAddress || '',
+    possessionStatus: existingLoan?.possessionStatus || '', 
+    propertyDocs: existingLoan?.propertyDocs || [],
+    loanAmount: existingLoan?.loanAmount?.toString() || '', 
+    loanPurpose: existingLoan?.loanPurpose || '', 
+    repaymentMonths: existingLoan?.repaymentMonths?.toString() || '', 
+    notes: existingLoan?.notes || '',
   });
 
   const validateStep = () => {

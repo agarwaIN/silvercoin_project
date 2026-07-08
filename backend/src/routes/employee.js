@@ -64,8 +64,8 @@ router.patch('/loans/:loanId', async (req, res) => {
   if (!loan || loan.employeeId !== req.user.userId) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  if (loan.status !== 'draft') {
-    return res.status(400).json({ message: 'Only draft loans can be edited' });
+  if (['approved', 'rejected'].includes(loan.status)) {
+    return res.status(400).json({ message: 'Approved or rejected loans cannot be edited' });
   }
   const updates = { ...req.body, updatedAt: new Date().toISOString() };
   delete updates.loanId;
