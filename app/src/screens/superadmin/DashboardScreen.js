@@ -86,7 +86,16 @@ export default function SADashboard({ navigation }) {
           </Card>
         )}
 
-        <Text style={[styles.section, { marginTop: 12 }]}>Recent Users</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Recent Users</Text>
+          <TouchableOpacity 
+            style={styles.createBtn}
+            onPress={() => navigation.navigate('CreateAdmin')}
+          >
+            <Ionicons name="add" size={16} color={colors.white} />
+            <Text style={styles.createBtnText}>Create Admin</Text>
+          </TouchableOpacity>
+        </View>
         {recentUsers.map((u) => (
           <Card key={u.userId}>
             <View style={styles.row}>
@@ -144,6 +153,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   section: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text, marginBottom: 12 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 12 },
+  sectionTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text },
+  createBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4 },
+  createBtnText: { fontFamily: fonts.medium, fontSize: 12, color: colors.white },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   left: { flex: 1 },
   titleText: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: colors.dark },

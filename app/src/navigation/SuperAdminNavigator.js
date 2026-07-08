@@ -3,6 +3,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { MainShell, useMainChildRouteName } from './mainNavShell';
 import SADashboard from '../screens/superadmin/DashboardScreen';
 import LoanDetailScreen from '../screens/superadmin/LoanDetailScreen';
+import CreateAdminScreen from '../screens/superadmin/CreateAdminScreen';
 
 const RootStack = createStackNavigator();
 const MainStack = createStackNavigator();
@@ -12,6 +13,7 @@ function SuperAdminInnerStack() {
     <MainStack.Navigator screenOptions={{ headerShown: false }}>
       <MainStack.Screen name="Dashboard" component={SADashboard} />
       <MainStack.Screen name="LoanDetail" component={LoanDetailScreen} />
+      <MainStack.Screen name="CreateAdmin" component={CreateAdminScreen} />
     </MainStack.Navigator>
   );
 }

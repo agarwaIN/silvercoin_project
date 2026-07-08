@@ -12,3 +12,5 @@ export const getAllUsers = () =>
 export const getAllLoans = () => api.get('/superadmin/loans').then((r) => r.data);
 
 export const getLoan = (loanId) => api.get(`/superadmin/loans/${loanId}`).then((r) => r.data);
+
+export const createAdmin = (data) => api.post('/superadmin/create-user', { ...data, role: 'admin' }).then((r) => r.data);

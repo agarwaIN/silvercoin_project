@@ -132,7 +132,16 @@ export default function AdminDashboard({ navigation }) {
           </Card>
         )}
 
-        <Text style={[styles.section, { marginTop: 12 }]}>Recent Employees</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Recent Employees</Text>
+          <TouchableOpacity 
+            style={styles.createBtn}
+            onPress={() => navigation.navigate('Employees', { screen: 'CreateEmployee' })}
+          >
+            <Ionicons name="add" size={16} color={colors.white} />
+            <Text style={styles.createBtnText}>Create</Text>
+          </TouchableOpacity>
+        </View>
         {employees.slice(0, 3).map((emp) => (
           <Card key={emp.userId}>
             <View style={styles.loanRow}>
@@ -212,6 +221,10 @@ const styles = StyleSheet.create({
   emiBannerTitle: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: '#1E40AF' },
   emiBannerAmount: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: '#1D4ED8', marginTop: 2 },
   section: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text, marginBottom: 12 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 12 },
+  sectionTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text },
+  createBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.dark, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4 },
+  createBtnText: { fontFamily: fonts.medium, fontSize: 12, color: colors.white },
   loanRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   loanLeft: { flex: 1 },
   loanId: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: colors.dark },
