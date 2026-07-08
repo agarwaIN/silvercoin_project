@@ -142,6 +142,33 @@ export default function LoginScreen({ navigation }) {
             >
               <Text style={styles.forgotText}>Forgot password?</Text>
             </TouchableOpacity>
+
+            {__DEV__ && (
+              <View style={styles.devSection}>
+                <Text style={styles.devTitle}>🛠 Quick Dev Login</Text>
+                <View style={styles.devButtons}>
+                  <TouchableOpacity
+                    style={styles.devBtn}
+                    onPress={() => { setMobile('7078813158'); setPassword('your_secure_password'); }}
+                  >
+                    <Text style={styles.devBtnText}>SuperAdmin</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.devBtn}
+                    onPress={() => { setMobile('9999999999'); setPassword('admin_pass'); }}
+                  >
+                    <Text style={styles.devBtnText}>Admin</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.devBtn}
+                    onPress={() => { setMobile('8888888888'); setPassword('emp_pass'); }}
+                  >
+                    <Text style={styles.devBtnText}>Employee</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.devNote}>Update placeholders in code if needed, then tap Sign In.</Text>
+              </View>
+            )}
           </View>
       </KeyboardFormWrapper>
     </SafeAreaView>
@@ -166,4 +193,10 @@ const styles = StyleSheet.create({
   btn: { marginTop: 8 },
   forgot: { marginTop: 16, alignItems: 'center', paddingVertical: 8 },
   forgotText: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: colors.dark },
+  devSection: { marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
+  devTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: colors.muted, marginBottom: 12, textAlign: 'center' },
+  devButtons: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
+  devBtn: { backgroundColor: colors.bg, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+  devBtnText: { fontFamily: fonts.medium, fontSize: fontSize.xs, color: colors.dark },
+  devNote: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted, textAlign: 'center', marginTop: 8 },
 });

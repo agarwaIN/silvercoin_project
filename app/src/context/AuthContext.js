@@ -102,8 +102,8 @@ export function AuthProvider({ children }) {
           setUser(userData);
           try {
             const data = await fetchCurrentUser();
-            if (data?.user) {
-              userData = normalizeStoredUser({ ...userData, ...data.user });
+            if (data && data.userId) {
+              userData = normalizeStoredUser({ ...userData, ...data });
               await SecureStore.setItemAsync('user', JSON.stringify(userData));
               setUser(userData);
             }
@@ -154,36 +154,32 @@ export function AuthProvider({ children }) {
   };
 
   const refreshUser = useCallback(async (updates) => {
-    let updated;
     setUser((prev) => {
       const base = prev || {};
-      updated =
+      const updated =
         updates && typeof updates === 'object' && updates.userId
           ? { ...base, ...updates }
           : { ...base, ...updates };
       if ('isFirstLogin' in updated) {
         updated.isFirstLogin = updated.isFirstLogin === true;
       }
+      SecureStore.setItemAsync('user', JSON.stringify(updated)).catch(console.error);
       return updated;
     });
-    await SecureStore.setItemAsync('user', JSON.stringify(updated));
   }, []);
 
   const completeFirstLogin = useCallback(async (serverUser) => {
     setJustCompletedSetup(true);
-    let updated;
     setUser((prev) => {
-      updated = normalizeStoredUser({
+      const updated = normalizeStoredUser({
         ...(prev || {}),
         ...(serverUser && typeof serverUser === 'object' ? serverUser : {}),
         role: serverUser?.role || prev?.role,
         isFirstLogin: false,
       });
+      SecureStore.setItemAsync('user', JSON.stringify(updated)).catch(console.error);
       return updated;
     });
-    if (updated) {
-      await SecureStore.setItemAsync('user', JSON.stringify(updated));
-    }
   }, []);
 
   const clearJustCompletedSetup = useCallback(() => {

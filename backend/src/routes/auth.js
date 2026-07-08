@@ -148,6 +148,9 @@ router.post('/forgot-password/confirm', [
   body('newPassword').notEmpty(),
   body('confirmPassword').notEmpty(),
 ], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { sessionId, otp, newPassword, confirmPassword } = req.body;
   if (!validatePasswordPair(newPassword, confirmPassword, res)) return;
 
@@ -160,6 +163,9 @@ router.post('/forgot-password/confirm', [
 });
 
 router.post('/forgot-password/resend-otp', [body('sessionId').trim().notEmpty()], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const result = await resendOtp(req.body.sessionId, PURPOSE_FORGOT_PASSWORD);
   if (!result.ok) return res.status(400).json({ message: result.message });
   res.json({ message: 'Enter the verification code.', sessionId: result.sessionId });
@@ -180,23 +186,43 @@ router.post('/change-password/request-otp', verifyToken, async (req, res) => {
 });
 
 router.post('/change-password', verifyToken, [
-  body('sessionId').trim().notEmpty(),
-  body('otp').trim().notEmpty(),
+  body('sessionId').optional({ checkFalsy: true }).trim(),
+  body('otp').optional({ checkFalsy: true }).trim(),
   body('newPassword').notEmpty(),
   body('confirmPassword').notEmpty(),
 ], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { sessionId, otp, newPassword, confirmPassword } = req.body;
   if (!validatePasswordPair(newPassword, confirmPassword, res)) return;
 
+  const user = await db.getUserById(req.user.userId);
+  if (!user || !user.isActive) return res.status(404).json({ message: 'User not found' });
+
+  if (user.isFirstLogin) {
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.updateUser(user.userId, { passwordHash, isFirstLogin: false });
+    return res.json({ message: 'Password updated successfully.' });
+  }
+
+  if (!sessionId || !otp) {
+    return res.status(400).json({ message: 'Verification code is required.' });
+  }
+
   const result = await verifyPasswordOtp(sessionId, otp, PURPOSE_CHANGE_PASSWORD);
   if (!result.ok) return res.status(401).json({ message: result.message });
+  if (result.user.userId !== user.userId) return res.status(403).json({ message: 'Unauthorized' });
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  await db.updateUser(result.user.userId, { passwordHash, isFirstLogin: false });
+  await db.updateUser(user.userId, { passwordHash, isFirstLogin: false });
   res.json({ message: 'Password updated successfully.' });
 });
 
 router.post('/change-password/resend-otp', verifyToken, [body('sessionId').trim().notEmpty()], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const result = await resendOtp(req.body.sessionId, PURPOSE_CHANGE_PASSWORD);
   if (!result.ok) return res.status(400).json({ message: result.message });
   res.json({ message: 'Enter the verification code.', sessionId: result.sessionId });

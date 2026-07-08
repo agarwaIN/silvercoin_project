@@ -7,9 +7,12 @@ const dynalite = require('dynalite');
 const port = parseInt(process.env.DYNAMODB_LOCAL_PORT, 10) || 8001;
 const host = '127.0.0.1';
 
-const server = dynalite({ createTableMs: 0 }).listen(port, host, () => {
+const path = require('path');
+const dataPath = path.join(__dirname, '../../../.dynalite-data');
+
+const server = dynalite({ createTableMs: 0, path: dataPath }).listen(port, host, () => {
   console.log(`Local DynamoDB listening on http://${host}:${port} (dynalite)`);
-  console.log('In-memory — restart clears data; run npm run local:setup after start.');
+  console.log(`Persistent storage enabled: saving data to ${dataPath}`);
   console.log('.env should have: DYNAMODB_ENDPOINT=http://127.0.0.1:' + port);
 });
 

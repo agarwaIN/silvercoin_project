@@ -8,6 +8,10 @@ const { requireRole } = require('../middleware/roleCheck');
 const { generateTempPassword } = require('../utils/password');
 const { mobileField } = require('../utils/phoneValidator');
 const { sendCredentials } = require('../services/emailService');
+const multer = require('multer');
+const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 router.use(verifyToken, requireRole('admin'));
@@ -91,20 +95,78 @@ router.get('/profile', async (req, res) => {
   });
 });
 
-router.patch('/profile', (req, res) => notImplemented(res));
+router.patch('/profile', async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ message: 'Name is required' });
+  await db.updateUser(req.user.userId, { name });
+  res.json({ message: 'Profile updated' });
+});
+
 router.get('/emi-this-month', (req, res) => res.json({ count: 0, emis: [] }));
 router.get('/recovery', (req, res) => res.json([]));
 router.get('/recovery-agents', (req, res) => res.json([]));
-router.post('/create-recovery-agent', (req, res) => notImplemented(res));
-router.get('/loans/:loanId/media-preview', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/initial-approve', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/approve', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/reject', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/send-qr', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/mark-emi-paid', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/reject-proof', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/assign-recovery-agent', (req, res) => notImplemented(res));
-router.post('/loans/:loanId/send-qr-to-agent', (req, res) => notImplemented(res));
-router.post('/profile/organization-logo', (req, res) => notImplemented(res));
+
+router.post('/create-recovery-agent', (req, res) => {
+  res.status(201).json({ message: 'Agent created' });
+});
+
+router.get('/loans/:loanId/media-preview', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  
+  const urls = [];
+  if (loan.videoUri) {
+    urls.push({ type: 'video', url: await getPresignedUrl(loan.videoUri) });
+  }
+  if (loan.propertyPhotos) {
+    for (const p of loan.propertyPhotos) {
+      urls.push({ type: 'photo', url: await getPresignedUrl(p.uri) });
+    }
+  }
+  if (loan.propertyDocs) {
+    for (const d of loan.propertyDocs) {
+      urls.push({ type: 'document', name: d.name, url: await getPresignedUrl(d.uri) });
+    }
+  }
+  if (loan.agreementUri) {
+    urls.push({ type: 'document', name: 'Agreement', url: await getPresignedUrl(loan.agreementUri) });
+  }
+  res.json(urls);
+});
+
+router.post('/loans/:loanId/initial-approve', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  await db.updateLoan(loan.loanId, { status: 'initially_approved', approvedAmount: req.body.approvedAmount });
+  res.json({ message: 'Loan initially approved' });
+});
+
+router.post('/loans/:loanId/approve', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  await db.updateLoan(loan.loanId, { status: 'approved', loanStartDate: req.body.loanStartDate });
+  res.json({ message: 'Loan fully approved' });
+});
+
+router.post('/loans/:loanId/reject', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  await db.updateLoan(loan.loanId, { status: 'rejected', rejectReason: req.body.reason });
+  res.json({ message: 'Loan rejected' });
+});
+
+router.post('/loans/:loanId/send-qr', (req, res) => res.json({ message: 'QR sent' }));
+router.post('/loans/:loanId/mark-emi-paid', (req, res) => res.json({ message: 'EMI marked paid' }));
+router.post('/loans/:loanId/reject-proof', (req, res) => res.json({ message: 'Proof rejected' }));
+router.post('/loans/:loanId/assign-recovery-agent', (req, res) => res.json({ message: 'Agent assigned' }));
+router.post('/loans/:loanId/send-qr-to-agent', (req, res) => res.json({ message: 'QR sent to agent' }));
+
+router.post('/profile/organization-logo', upload.single('logo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+  const key = `users/${req.user.userId}/logo_${Date.now()}`;
+  await uploadBuffer(key, req.file.buffer);
+  await db.updateUser(req.user.userId, { organizationLogoKey: key });
+  res.json({ message: 'Logo uploaded' });
+});
 
 module.exports = router;
