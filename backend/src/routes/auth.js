@@ -77,6 +77,7 @@ function notImplemented(res) {
 router.post('/login', [
   body('mobile').trim().notEmpty(),
   body('password').notEmpty(),
+  body('role').isIn(['superadmin', 'admin', 'employee']),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -84,8 +85,19 @@ router.post('/login', [
   const normalized = normalizeMobileToE164(req.body.mobile);
   if (!normalized.ok) return res.status(400).json({ message: normalized.error });
 
+  const { role } = req.body;
   const user = await db.getUserByMobile(normalized.e164);
-  if (!user) return res.status(404).json({ message: 'No account found with this mobile number.' });
+  
+  if (!user) {
+    if (role === 'admin') return res.status(404).json({ message: 'Admin account not found. Please contact the SuperAdmin to create your credentials.' });
+    if (role === 'employee') return res.status(404).json({ message: 'Employee account not found. Please contact your Admin to create your credentials.' });
+    return res.status(404).json({ message: 'No account found with this mobile number.' });
+  }
+  
+  if (user.role !== role) {
+    return res.status(403).json({ message: 'This mobile number is registered under a different role.' });
+  }
+
   if (!user.isActive) return res.status(403).json({ message: 'This account is inactive. Contact your administrator.' });
   if (!user.passwordHash) return res.status(401).json({ message: 'Incorrect password.' });
 

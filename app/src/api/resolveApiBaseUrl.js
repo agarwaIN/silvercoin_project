@@ -53,11 +53,6 @@ export function logDevApiBaseIfChanged(base) {
 }
 
 export function resolveApiBaseUrlForApp() {
-  if (!__DEV__) {
-    const origin = PRODUCTION_API_ORIGIN.replace(/\/+$/, '');
-    return normalizeApiBaseUrl(`${origin}/api`);
-  }
-
-  const origin = resolveDevApiOrigin();
+  const origin = PRODUCTION_API_ORIGIN.replace(/\/+$/, '');
   return normalizeApiBaseUrl(`${origin}/api`);
 }

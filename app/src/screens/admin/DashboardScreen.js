@@ -131,6 +131,26 @@ export default function AdminDashboard({ navigation }) {
             <Text style={styles.emptyText}>No loan applications yet</Text>
           </Card>
         )}
+
+        <Text style={[styles.section, { marginTop: 12 }]}>Recent Employees</Text>
+        {employees.slice(0, 3).map((emp) => (
+          <Card key={emp.userId}>
+            <View style={styles.loanRow}>
+              <View style={styles.loanLeft}>
+                <Text style={styles.loanId}>{emp.name}</Text>
+                <Text style={styles.ownerName}>{emp.mobile}</Text>
+                <Text style={styles.ownerName}>{emp.email}</Text>
+              </View>
+              <View>
+                {emp.isActive ? (
+                  <Text style={[styles.activeBadge, { backgroundColor: colors.success }]}>Active</Text>
+                ) : (
+                  <Text style={[styles.activeBadge, { backgroundColor: colors.danger }]}>Inactive</Text>
+                )}
+              </View>
+            </View>
+          </Card>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -199,4 +219,5 @@ const styles = StyleSheet.create({
   amount: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: colors.success, marginTop: 2 },
   emptyCard: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.muted, marginTop: 12 },
+  activeBadge: { fontFamily: fonts.medium, fontSize: 10, color: colors.white, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
 });

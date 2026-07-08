@@ -19,6 +19,7 @@ export default function LoginScreen({ navigation }) {
   const { showAlert } = usePopup();
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('admin');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -36,7 +37,7 @@ export default function LoginScreen({ navigation }) {
     const m = normalizeMobileToE164(mobile);
     setLoading(true);
     try {
-      const data = await login(m.e164, password);
+      const data = await login(m.e164, password, role);
       if (data.otpRequired && data.sessionId) {
         navigation.navigate('OtpVerify', {
           sessionId: data.sessionId,
@@ -113,7 +114,21 @@ export default function LoginScreen({ navigation }) {
 
           <View style={styles.form}>
             <Text style={styles.heading}>Welcome Back</Text>
-            <Text style={styles.subheading}>Sign in with your mobile number</Text>
+            <Text style={styles.subheading}>Sign in to your account</Text>
+
+            <View style={styles.roleTabs}>
+              {['superadmin', 'admin', 'employee'].map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  style={[styles.roleTab, role === r && styles.roleTabActive]}
+                  onPress={() => setRole(r)}
+                >
+                  <Text style={[styles.roleTabText, role === r && styles.roleTabTextActive]}>
+                    {r === 'superadmin' ? 'SuperAdmin' : r.charAt(0).toUpperCase() + r.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Input
               label="Mobile Number"
@@ -142,33 +157,6 @@ export default function LoginScreen({ navigation }) {
             >
               <Text style={styles.forgotText}>Forgot password?</Text>
             </TouchableOpacity>
-
-            {__DEV__ && (
-              <View style={styles.devSection}>
-                <Text style={styles.devTitle}>🛠 Quick Dev Login</Text>
-                <View style={styles.devButtons}>
-                  <TouchableOpacity
-                    style={styles.devBtn}
-                    onPress={() => { setMobile('7078813158'); setPassword('your_secure_password'); }}
-                  >
-                    <Text style={styles.devBtnText}>SuperAdmin</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.devBtn}
-                    onPress={() => { setMobile('9999999999'); setPassword('admin_pass'); }}
-                  >
-                    <Text style={styles.devBtnText}>Admin</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.devBtn}
-                    onPress={() => { setMobile('8888888888'); setPassword('emp_pass'); }}
-                  >
-                    <Text style={styles.devBtnText}>Employee</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.devNote}>Update placeholders in code if needed, then tap Sign In.</Text>
-              </View>
-            )}
           </View>
       </KeyboardFormWrapper>
     </SafeAreaView>
@@ -193,10 +181,9 @@ const styles = StyleSheet.create({
   btn: { marginTop: 8 },
   forgot: { marginTop: 16, alignItems: 'center', paddingVertical: 8 },
   forgotText: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: colors.dark },
-  devSection: { marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
-  devTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: colors.muted, marginBottom: 12, textAlign: 'center' },
-  devButtons: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  devBtn: { backgroundColor: colors.bg, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
-  devBtnText: { fontFamily: fonts.medium, fontSize: fontSize.xs, color: colors.dark },
-  devNote: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted, textAlign: 'center', marginTop: 8 },
+  roleTabs: { flexDirection: 'row', backgroundColor: colors.bg, borderRadius: 8, padding: 4, marginBottom: 20 },
+  roleTab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
+  roleTabActive: { backgroundColor: colors.white, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  roleTabText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+  roleTabTextActive: { color: colors.dark, fontFamily: fonts.semiBold },
 });

@@ -1,7 +1,7 @@
 import api from './index';
 
-export const login = (mobile, password) =>
-  api.post('/auth/login', { mobile, password }).then((r) => r.data);
+export const login = (mobile, password, role) =>
+  api.post('/auth/login', { mobile, password, role }).then((r) => r.data);
 
 export const verifyOtp = (sessionId, otp) =>
   api.post('/auth/verify-otp', { sessionId, otp }).then((r) => r.data);
