@@ -18,11 +18,15 @@ async function seedSuperadminIfMissing({ verbose = true } = {}) {
   }
 
   const passwordHash = await bcrypt.hash(process.env.SUPERADMIN_PASSWORD, 12);
+  const { normalizeMobileToE164 } = require('../utils/phone');
+  const normalizedMobile = normalizeMobileToE164(process.env.SUPERADMIN_MOBILE);
+  if (!normalizedMobile.ok) throw new Error('Invalid SUPERADMIN_MOBILE in .env');
+
   const user = {
     userId: uuidv4(),
     name: process.env.SUPERADMIN_NAME,
     email,
-    mobile: process.env.SUPERADMIN_MOBILE,
+    mobile: normalizedMobile.e164,
     passwordHash,
     role: 'superadmin',
     isFirstLogin: false,
