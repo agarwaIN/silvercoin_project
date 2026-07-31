@@ -19,9 +19,9 @@ const TABLE_ENV_KEYS = {
 
 function getDocumentStoreRegion() {
   const region = process.env.CLOUD_REGION || process.env.REGION;
-  if (region) return region;
   if (process.env.DYNAMODB_ENDPOINT?.trim()) return 'local';
-  if (process.env.NODE_ENV !== 'production') return 'local';
+  if (process.env.NODE_ENV === 'development') return 'local';
+  if (region) return region;
   throw new Error('CLOUD_REGION is not set in environment');
 }
 
