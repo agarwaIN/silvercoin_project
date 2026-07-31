@@ -8,9 +8,7 @@ export default function AppFooter() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 8) + 4 }]}>
-      <Text style={styles.text}>
-        Made with <Text style={styles.heart}>♥</Text> by MANYA SHUKLA · 2026
-      </Text>
+      
     </View>
   );
 }

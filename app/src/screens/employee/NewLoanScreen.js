@@ -62,7 +62,7 @@ const sb = StyleSheet.create({
   lineDone: { backgroundColor: colors.dark },
 });
 
-// ─── Reusable Components ──────────────────────────────────────────────────────
+// ─── Reusable Components ─────────────────────────────────────────────────────
 function FieldLabel({ text, required }) {
   return (
     <Text style={fl.label}>
@@ -853,7 +853,7 @@ export default function NewLoanScreen({ route, navigation }) {
             </TouchableOpacity>
           )}
         </View>
-        {/* <Text style={ms.footer_credit}>Made with ❤️ by MANYA SHUKLA · 2026</Text> */}
+
       </View>
     </View>
   );
