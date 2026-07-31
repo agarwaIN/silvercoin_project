@@ -104,11 +104,25 @@ router.post('/login', [
   const match = await bcrypt.compare(req.body.password, user.passwordHash);
   if (!match) return res.status(401).json({ message: 'Incorrect password.' });
 
+  // TEMPORARILY BYPASS OTP
+  /*
   const otpSession = await startLoginOtp(user);
   res.json({
     otpRequired: true,
     message: 'Enter the verification code.',
     ...otpSession,
+  });
+  */
+
+  if (user.role === 'superadmin' && user.isFirstLogin) {
+    await db.updateUser(user.userId, { isFirstLogin: false });
+    user.isFirstLogin = false;
+  }
+
+  res.json({
+    otpRequired: false,
+    accessToken: issueAccessToken(user),
+    user: buildUserPayload(user),
   });
 });
 
