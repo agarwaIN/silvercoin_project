@@ -17,28 +17,20 @@ const TABLE_ENV_KEYS = {
   otpSessions: 'DYNAMODB_OTP_SESSIONS_TABLE',
 };
 
-function getDocumentStoreRegion() {
-  const region = process.env.CLOUD_REGION || process.env.REGION;
-  if (process.env.DYNAMODB_ENDPOINT?.trim()) return 'local';
-  if (process.env.NODE_ENV === 'development') return 'local';
-  if (region) return region;
-  throw new Error('CLOUD_REGION is not set in environment');
-}
+const DEFAULT_DYNAMODB_HOST = '127.0.0.1';
+const DEFAULT_DYNAMODB_PORT = process.env.DYNAMODB_LOCAL_PORT ? parseInt(process.env.DYNAMODB_LOCAL_PORT, 10) : 8001;
+const DEFAULT_DYNAMODB_ENDPOINT = `http://${DEFAULT_DYNAMODB_HOST}:${DEFAULT_DYNAMODB_PORT}`;
+const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT?.trim() || DEFAULT_DYNAMODB_ENDPOINT;
 
 function getDynamoClientOptions() {
-  const region = getDocumentStoreRegion();
-  const endpoint = process.env.DYNAMODB_ENDPOINT?.trim();
-  if (endpoint) {
-    return {
-      region,
-      endpoint,
-      credentials: {
-        accessKeyId: process.env.CLOUD_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || 'local',
-        secretAccessKey: process.env.CLOUD_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || 'local',
-      },
-    };
-  }
-  return { region };
+  return {
+    region: 'local',
+    endpoint: DYNAMODB_ENDPOINT,
+    credentials: {
+      accessKeyId: 'local',
+      secretAccessKey: 'local',
+    },
+  };
 }
 
 const client = new DynamoDBClient(getDynamoClientOptions());
@@ -53,7 +45,7 @@ function tableName(kind) {
 }
 
 function isLocalDynamo() {
-  return Boolean(process.env.DYNAMODB_ENDPOINT?.trim());
+  return true;
 }
 
 async function connectDynamo() {
