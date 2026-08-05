@@ -6,7 +6,7 @@ import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
 import Card from '../../components/Card';
 import Header from '../../components/Header';
-import { getEmployees, deactivateEmployee } from '../../api/adminApi';
+import { getEmployees, deactivateEmployee, deleteEmployee } from '../../api/adminApi';
 import { usePopup } from '../../context/PopupContext';
 
 export default function EmployeeListScreen({ navigation }) {
@@ -27,6 +27,16 @@ export default function EmployeeListScreen({ navigation }) {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Deactivate', style: 'destructive', onPress: async () => {
         await deactivateEmployee(userId);
+        load();
+      }},
+    ]);
+  };
+
+  const handleDelete = (userId, name) => {
+    showAlert('Delete', `Are you sure you want to delete ${name}? This action cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        await deleteEmployee(userId);
         load();
       }},
     ]);
@@ -66,11 +76,16 @@ export default function EmployeeListScreen({ navigation }) {
                     {item.isActive ? 'Active' : 'Inactive'}
                   </Text>
                 </View>
-                {item.isActive && (
-                  <TouchableOpacity onPress={() => handleDeactivate(item.userId, item.name)} style={styles.deactivateBtn}>
-                    <Ionicons name="person-remove-outline" size={16} color={colors.error} />
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  {item.isActive && (
+                    <TouchableOpacity onPress={() => handleDeactivate(item.userId, item.name)} style={styles.actionBtn}>
+                      <Ionicons name="person-remove-outline" size={18} color={colors.warning} />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => handleDelete(item.userId, item.name)} style={styles.actionBtn}>
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
                   </TouchableOpacity>
-                )}
+                </View>
               </View>
             </View>
           </Card>
@@ -102,7 +117,7 @@ const styles = StyleSheet.create({
   actions: { alignItems: 'flex-end', gap: 8 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   badgeText: { fontFamily: fonts.semiBold, fontSize: 10 },
-  deactivateBtn: { padding: 4 },
+  actionBtn: { padding: 4 },
   empty: { alignItems: 'center', marginTop: 80 },
   emptyText: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.muted, marginTop: 12 },
   emptySubtext: { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 4 },

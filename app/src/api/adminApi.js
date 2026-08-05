@@ -3,12 +3,13 @@ import api from './index';
 export const getEmployees = () => api.get('/admin/employees').then((r) => r.data);
 export const createEmployee = (data) => api.post('/admin/create-employee', data).then((r) => r.data);
 export const deactivateEmployee = (userId) => api.patch(`/admin/employees/${userId}/deactivate`).then((r) => r.data);
+export const deleteEmployee = (userId) => api.delete(`/admin/employees/${userId}`).then((r) => r.data);
 export const getLoans = () => api.get('/admin/loans').then((r) => r.data);
 export const getLoan = (loanId) => api.get(`/admin/loans/${loanId}`).then((r) => r.data);
 export const getLoanMediaPreview = (loanId) =>
   api.get(`/admin/loans/${loanId}/media-preview`).then((r) => r.data);
 export const initialApproveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/initial-approve`, data).then((r) => r.data);
-export const approveLoan = (loanId, loanStartDate) => api.post(`/admin/loans/${loanId}/approve`, { loanStartDate }).then((r) => r.data);
+export const approveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/approve`, data).then((r) => r.data);
 export const rejectLoan = (loanId, reason) => api.post(`/admin/loans/${loanId}/reject`, { reason }).then((r) => r.data);
 export const sendQr = (loanId) => api.post(`/admin/loans/${loanId}/send-qr`).then((r) => r.data);
 export const getRecovery = () => api.get('/admin/recovery').then((r) => r.data);

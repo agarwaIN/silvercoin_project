@@ -87,7 +87,14 @@ export default function LoginScreen({ navigation }) {
       }
 
       if (status === 403) {
-        showAlert('Account inactive', serverMsg || 'This account is not active.');
+        if (serverMsg && serverMsg.toLowerCase().includes('different role')) {
+          showAlert(
+            'Wrong Role Selected',
+            'This mobile number is registered under a different role. Please select the correct tab above (e.g., Employee) and try again.'
+          );
+        } else {
+          showAlert('Account inactive', serverMsg || 'This account is not active.');
+        }
         return;
       }
 

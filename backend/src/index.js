@@ -107,14 +107,28 @@ app.use((err, req, res, next) => {
 
 const HOST = process.env.HOST || '0.0.0.0';
 let server;
+let dynaliteInfo;
 
 function shutdown(signal) {
   console.log(`\n${signal}: shutting down…`);
+  const exitProcess = () => {
+    if (dynaliteInfo && dynaliteInfo.server) {
+      console.log('Closing local DynamoDB (Dynalite)...');
+      try {
+        dynaliteInfo.server.close(() => process.exit(0));
+      } catch (e) {
+        process.exit(0);
+      }
+    } else {
+      process.exit(0);
+    }
+  };
+
   if (!server) {
-    process.exit(0);
+    exitProcess();
     return;
   }
-  server.close(() => process.exit(0));
+  server.close(() => exitProcess());
   setTimeout(() => process.exit(1), 5000).unref();
 }
 
@@ -126,7 +140,7 @@ process.on('unhandledRejection', (err) => {
 
 async function start() {
   try {
-    await startLocalDynamo();
+    dynaliteInfo = await startLocalDynamo();
     await connectDynamo();
     const { ensureAllTables } = require('./scripts/ensure-dynamo-tables');
     const { seedSuperadminIfMissing } = require('./scripts/seed-superadmin');

@@ -64,14 +64,22 @@ router.patch('/loans/:loanId', async (req, res) => {
   if (!loan || loan.employeeId !== req.user.userId) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  if (['approved', 'rejected'].includes(loan.status)) {
-    return res.status(400).json({ message: 'Approved or rejected loans cannot be edited' });
+  if (['approved'].includes(loan.status)) {
+    return res.status(400).json({ message: 'Approved loans cannot be edited' });
   }
   const updates = { ...req.body, updatedAt: new Date().toISOString() };
   delete updates.loanId;
   delete updates.employeeId;
   delete updates.adminId;
   delete updates.status;
+
+  const existingChangedFields = loan.changedFields || [];
+  const newChangedFields = Object.keys(updates).filter(key => {
+    if (key === 'updatedAt') return false;
+    return JSON.stringify(loan[key]) !== JSON.stringify(updates[key]);
+  });
+  updates.changedFields = [...new Set([...existingChangedFields, ...newChangedFields])];
+
   await db.updateLoan(loan.loanId, updates);
   res.json({ ...(await db.getLoanById(loan.loanId)) });
 });

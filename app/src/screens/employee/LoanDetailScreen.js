@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/Header';
@@ -52,7 +52,7 @@ export default function LoanDetailScreen({ route, navigation }) {
         <LoanDetailsView loan={loan} />
         <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} />
 
-        {!['approved', 'rejected'].includes(loan.status) && (
+        {!['approved'].includes(loan.status) && (
           <TouchableOpacity 
             style={styles.editBtn} 
             onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}

@@ -26,12 +26,13 @@ function startLocalDynamo() {
       reject(err);
     });
 
-    function shutdown() {
-      server.close(() => process.exit(0));
+    if (require.main === module) {
+      const shutdown = () => {
+        server.close(() => process.exit(0));
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     }
-
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
   });
 }
 

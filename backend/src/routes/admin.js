@@ -72,6 +72,15 @@ router.patch('/employees/:userId/deactivate', async (req, res) => {
   res.json({ message: 'Employee deactivated' });
 });
 
+router.delete('/employees/:userId', async (req, res) => {
+  const user = await db.getUserById(req.params.userId);
+  if (!user || user.createdBy !== req.user.userId || user.role !== 'employee') {
+    return res.status(404).json({ message: 'Employee not found' });
+  }
+  await db.deleteUser(user.userId);
+  res.json({ message: 'Employee deleted' });
+});
+
 router.get('/loans', async (req, res) => {
   const loans = await db.listLoansByAdmin(req.user.userId);
   res.json(loans);
@@ -144,14 +153,28 @@ router.post('/loans/:loanId/initial-approve', async (req, res) => {
 router.post('/loans/:loanId/approve', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
-  await db.updateLoan(loan.loanId, { status: 'approved', loanStartDate: req.body.loanStartDate });
+  
+  const { loanStartDate, approvedAmount, interestRate, penaltyRate, tenureMonths, emiAmount, totalInterest, totalRepayable } = req.body;
+  
+  await db.updateLoan(loan.loanId, { 
+    status: 'approved', 
+    loanStartDate, 
+    approvedAmount, 
+    interestRate, 
+    penaltyRate, 
+    tenureMonths, 
+    emiAmount, 
+    totalInterest, 
+    totalRepayable,
+    changedFields: null 
+  });
   res.json({ message: 'Loan fully approved' });
 });
 
 router.post('/loans/:loanId/reject', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
-  await db.updateLoan(loan.loanId, { status: 'rejected', rejectReason: req.body.reason });
+  await db.updateLoan(loan.loanId, { status: 'rejected', rejectReason: req.body.reason, changedFields: null });
   res.json({ message: 'Loan rejected' });
 });
 
