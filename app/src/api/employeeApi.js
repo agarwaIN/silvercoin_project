@@ -38,3 +38,4 @@ export const getRecoveryAgents = () => api.get('/employee/recovery-agents').then
 export const assignRecoveryAgent = (loanId, recoveryAgentId) =>
   api.post(`/employee/loans/${loanId}/assign-recovery-agent`, { recoveryAgentId }).then((r) => r.data);
 export const sendQrToAgent = (loanId) => api.post(`/employee/loans/${loanId}/send-qr-to-agent`).then((r) => r.data);
+export const requestEmiChange = (loanId, data) => api.post(`/employee/loans/${loanId}/emi-change-request`, data).then((r) => r.data);

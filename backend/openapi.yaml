@@ -597,6 +597,52 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundMessage'
 
+  /api/admin/loans/{loanId}/approve-emi-change:
+    post:
+      tags: [Admin]
+      summary: Approve an EMI change request
+      operationId: adminApproveEmiChange
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: No pending EMI change request
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/loans/{loanId}/reject-emi-change:
+    post:
+      tags: [Admin]
+      summary: Reject an EMI change request
+      operationId: adminRejectEmiChange
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: No pending EMI change request
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
   /api/admin/loans/{loanId}/send-qr:
     post:
       tags: [Admin]
@@ -1165,6 +1211,47 @@ paths:
         '404':
           description: Not found or PDF not generated yet
 
+  /api/employee/loans/{loanId}/emi-change-request:
+    post:
+      tags: [Employee]
+      summary: Request a change to the EMI calculation
+      operationId: employeeEmiChangeRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approvedAmount:
+                  type: number
+                tenureMonths:
+                  type: integer
+                interestRate:
+                  type: number
+                penaltyRate:
+                  type: number
+                emiAmount:
+                  type: number
+                totalInterest:
+                  type: number
+                totalRepayable:
+                  type: number
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: Loan is not in a valid status to request EMI changes
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1414,6 +1501,27 @@ components:
         registryDocumentContentType:
           type: string
           nullable: true
+        emiChangeRequest:
+          type: object
+          nullable: true
+          properties:
+            approvedAmount:
+              type: number
+            tenureMonths:
+              type: integer
+            interestRate:
+              type: number
+            penaltyRate:
+              type: number
+            emiAmount:
+              type: number
+            totalInterest:
+              type: number
+            totalRepayable:
+              type: number
+            status:
+              type: string
+              enum: [pending]
 
     EmiPayment:
       type: object

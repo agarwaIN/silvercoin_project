@@ -6,7 +6,7 @@ import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan } from '../../api/adminApi';
+import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange } from '../../api/adminApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
@@ -56,6 +56,31 @@ export default function LoanDetailScreen({ route, navigation }) {
     }
   };
 
+  const handleApproveEmiChange = async () => {
+    setProcessing(true);
+    try {
+      await approveEmiChange(loanId);
+      await load();
+      showAlert('Success', 'EMI change request approved. New terms applied.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to approve EMI change.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleRejectEmiChange = async () => {
+    setProcessing(true);
+    try {
+      await rejectEmiChange(loanId);
+      await load();
+      showAlert('Success', 'EMI change request rejected.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to reject EMI change.');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   if (!loan) {
     return (
@@ -89,6 +114,41 @@ export default function LoanDetailScreen({ route, navigation }) {
               <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
               <Text style={styles.approveBtnText}>Approve Terms</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {loan.emiChangeRequest && loan.emiChangeRequest.status === 'pending' && (
+          <View style={styles.emiChangeCard}>
+            <View style={styles.emiChangeHeader}>
+              <Ionicons name="calculator" size={20} color="#0369A1" />
+              <Text style={styles.emiChangeTitle}>Pending EMI Change Request</Text>
+            </View>
+            <View style={styles.emiChangeBody}>
+              <View style={styles.emiChangeRow}>
+                <Text style={styles.emiChangeLabel}>Proposed Principal</Text>
+                <Text style={styles.emiChangeValue}>₹{Number(loan.emiChangeRequest.approvedAmount || 0).toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={styles.emiChangeRow}>
+                <Text style={styles.emiChangeLabel}>Proposed EMI</Text>
+                <Text style={styles.emiChangeValue}>₹{Number(loan.emiChangeRequest.emiAmount || 0).toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={styles.emiChangeRow}>
+                <Text style={styles.emiChangeLabel}>Proposed Tenure</Text>
+                <Text style={styles.emiChangeValue}>{loan.emiChangeRequest.tenureMonths} months</Text>
+              </View>
+            </View>
+            
+            <View style={styles.actionContainer}>
+              <TouchableOpacity style={styles.rejectBtn} onPress={handleRejectEmiChange} disabled={processing}>
+                <Ionicons name="close-circle-outline" size={20} color={colors.error} />
+                <Text style={styles.rejectBtnText}>Reject Change</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.approveBtn} onPress={handleApproveEmiChange} disabled={processing}>
+                <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
+                <Text style={styles.approveBtnText}>Approve Change</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -143,4 +203,11 @@ const styles = StyleSheet.create({
   modalCancelText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.text },
   modalSubmit: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: colors.error },
   modalSubmitText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  emiChangeCard: { backgroundColor: '#E0F2FE', borderRadius: 12, padding: 16, marginTop: 16, marginBottom: 24, borderWidth: 1, borderColor: '#BAE6FD' },
+  emiChangeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  emiChangeTitle: { fontFamily: fonts.bold, fontSize: fontSize.base, color: '#0369A1' },
+  emiChangeBody: { backgroundColor: colors.white, borderRadius: 8, padding: 12, marginBottom: 16 },
+  emiChangeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  emiChangeLabel: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: colors.text },
+  emiChangeValue: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: '#0284C7' },
 });

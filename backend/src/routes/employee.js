@@ -206,4 +206,30 @@ router.post('/loans/:loanId/send-qr-to-agent', async (req, res) => {
   res.json({ message: 'QR sent to agent' });
 });
 
+router.post('/loans/:loanId/emi-change-request', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  
+  if (!['approved', 'active'].includes(loan.status)) {
+    return res.status(400).json({ message: 'Loan is not in a valid status to request EMI changes' });
+  }
+
+  const { approvedAmount, tenureMonths, interestRate, penaltyRate, emiAmount, totalInterest, totalRepayable } = req.body;
+  
+  await db.updateLoan(loan.loanId, {
+    emiChangeRequest: {
+      approvedAmount,
+      tenureMonths,
+      interestRate,
+      penaltyRate,
+      emiAmount,
+      totalInterest,
+      totalRepayable,
+      status: 'pending'
+    }
+  });
+  
+  res.json({ message: 'EMI change request submitted for approval' });
+});
+
 module.exports = router;

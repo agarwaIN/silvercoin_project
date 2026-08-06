@@ -108,22 +108,63 @@ export default function AdminDashboard({ navigation }) {
         )}
 
         <Text style={styles.section}>Recent Loans</Text>
-        {loans.slice(0, 4).map((loan) => (
-          <TouchableOpacity key={loan.loanId} onPress={() =>
-            navigation.navigate('Loans', { screen: 'LoanDetail', params: { loanId: loan.loanId } })
-          }>
-            <Card>
-              <View style={styles.loanRow}>
-                <View style={styles.loanLeft}>
-                  <Text style={styles.loanId}>{loan.loanId}</Text>
-                  <Text style={styles.ownerName}>{loan.ownerName || '—'}</Text>
-                  {loan.loanAmount && <Text style={styles.amount}>₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>}
+        {loans.slice(0, 4).map((loan) => {
+          const hasPendingEmi = loan.emiChangeRequest && loan.emiChangeRequest.status === 'pending';
+          return (
+            <TouchableOpacity key={loan.loanId} onPress={() =>
+              navigation.navigate('Loans', { screen: 'LoanDetail', params: { loanId: loan.loanId } })
+            }>
+              <Card>
+                <View style={styles.loanRow}>
+                  <View style={styles.loanLeft}>
+                    <Text style={styles.loanId}>{loan.loanId}</Text>
+                    <Text style={styles.ownerName}>{loan.ownerName || '—'}</Text>
+                    {loan.loanAmount && <Text style={styles.amount}>Principal: ₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>}
+                  </View>
+                  <StatusBadge status={loan.status} />
                 </View>
-                <StatusBadge status={loan.status} />
-              </View>
-            </Card>
-          </TouchableOpacity>
-        ))}
+
+                {hasPendingEmi && (() => {
+                  const req = loan.emiChangeRequest;
+                  const fields = [
+                    { label: 'Principal', old: loan.approvedAmount || loan.loanAmount, new: req.approvedAmount, isCurrency: true },
+                    { label: 'Tenure', old: loan.tenureMonths, new: req.tenureMonths, suffix: 'm' },
+                    { label: 'Interest', old: loan.interestRate, new: req.interestRate, suffix: '%' },
+                    { label: 'Penalty', old: loan.penaltyRate, new: req.penaltyRate, suffix: '%' },
+                    { label: 'Tot Int', old: loan.totalInterest, new: req.totalInterest, isCurrency: true },
+                    { label: 'Tot Repay', old: loan.totalRepayable, new: req.totalRepayable, isCurrency: true },
+                  ];
+                  const changedFields = fields.filter(f => Number(f.old || 0) !== Number(f.new || 0));
+
+                  return (
+                    <View style={styles.emiChangePreview}>
+                      <View style={styles.emiChangePreviewHeader}>
+                        <Ionicons name="alert-circle" size={14} color="#D97706" />
+                        <Text style={styles.emiChangePreviewTitle}>EMI Change Requested</Text>
+                      </View>
+                      
+                      {changedFields.map((f, i) => (
+                        <View key={i} style={styles.diffRow}>
+                          <Text style={styles.diffLabel}>{f.label}:</Text>
+                          <Text style={styles.diffOld}>{f.isCurrency ? '₹' : ''}{Number(f.old || 0).toLocaleString('en-IN')}{f.suffix || ''}</Text>
+                          <Ionicons name="arrow-forward" size={12} color={colors.muted} />
+                          <Text style={styles.diffNew}>{f.isCurrency ? '₹' : ''}{Number(f.new || 0).toLocaleString('en-IN')}{f.suffix || ''}</Text>
+                        </View>
+                      ))}
+                      
+                      <View style={[styles.diffRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: '#FDE68A', paddingTop: 6 }]}>
+                        <Text style={[styles.diffLabel, { color: '#B45309', fontFamily: fonts.bold }]}>Final EMI:</Text>
+                        <Text style={styles.diffOld}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
+                        <Ionicons name="arrow-forward" size={12} color={colors.muted} />
+                        <Text style={[styles.diffNew, { color: '#059669', fontFamily: fonts.bold }]}>₹{Number(req.emiAmount || 0).toLocaleString('en-IN')}</Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+              </Card>
+            </TouchableOpacity>
+          );
+        })}
 
         {loans.length === 0 && (
           <Card style={styles.emptyCard}>
@@ -233,4 +274,11 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.muted, marginTop: 12 },
   activeBadge: { fontFamily: fonts.medium, fontSize: 10, color: colors.white, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
+  emiChangePreview: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: '#FEF3C7', padding: 8, borderRadius: 8 },
+  emiChangePreviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
+  emiChangePreviewTitle: { fontFamily: fonts.semiBold, fontSize: 12, color: '#D97706' },
+  diffRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  diffLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.text, width: 70 },
+  diffOld: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted, textDecorationLine: 'line-through' },
+  diffNew: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.success },
 });

@@ -5,21 +5,20 @@ import { Ionicons } from '@expo/vector-icons';
 import Header from '../../components/Header';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { approveLoan } from '../../api/adminApi';
+import { requestEmiChange } from '../../api/employeeApi';
 import { usePopup } from '../../context/PopupContext';
 
-export default function InitialApproveScreen({ route, navigation }) {
+export default function EmiChangeRequestScreen({ route, navigation }) {
   const { loan } = route.params;
   const { showAlert } = usePopup();
   const [loading, setLoading] = useState(false);
 
-  // States for calculation
-  const [principal, setPrincipal] = useState(loan?.loanAmount?.toString() || '');
-  const [tenure, setTenure] = useState(loan?.repaymentMonths?.toString() || '');
-  const [interestRate, setInterestRate] = useState('2.15');
-  const [penaltyRate, setPenaltyRate] = useState('0.5');
+  // Initialize with existing loan terms or defaults if missing
+  const [principal, setPrincipal] = useState(loan?.approvedAmount?.toString() || loan?.loanAmount?.toString() || '');
+  const [tenure, setTenure] = useState(loan?.tenureMonths?.toString() || loan?.repaymentMonths?.toString() || '');
+  const [interestRate, setInterestRate] = useState(loan?.interestRate?.toString() || '2.15');
+  const [penaltyRate, setPenaltyRate] = useState(loan?.penaltyRate?.toString() || '0.5');
 
-  // Calculated values
   const [totalInterest, setTotalInterest] = useState(0);
   const [totalRepayable, setTotalRepayable] = useState(0);
   const [emi, setEmi] = useState(0);
@@ -52,7 +51,7 @@ export default function InitialApproveScreen({ route, navigation }) {
     setLastEmiAdjustment(adjustment);
   };
 
-  const handleApprove = async () => {
+  const handleSubmitRequest = async () => {
     if (!principal || !tenure || !interestRate || !penaltyRate) {
       showAlert('Error', 'Please fill in all calculation fields.');
       return;
@@ -60,9 +59,7 @@ export default function InitialApproveScreen({ route, navigation }) {
     
     setLoading(true);
     try {
-      const today = new Date().toISOString();
-      await approveLoan(loan.loanId, {
-        loanStartDate: today,
+      await requestEmiChange(loan.loanId, {
         approvedAmount: parseFloat(principal),
         interestRate: parseFloat(interestRate),
         penaltyRate: parseFloat(penaltyRate),
@@ -71,10 +68,10 @@ export default function InitialApproveScreen({ route, navigation }) {
         totalInterest,
         totalRepayable,
       });
-      showAlert('Success', 'Loan approved and EMI schedule initialized successfully.');
+      showAlert('Success', 'EMI change request submitted to admin for approval.');
       navigation.getParent()?.navigate('Dashboard');
     } catch (error) {
-      showAlert('Error', error.response?.data?.message || 'Failed to approve loan.');
+      showAlert('Error', error.response?.data?.message || 'Failed to submit request.');
     } finally {
       setLoading(false);
     }
@@ -97,18 +94,17 @@ export default function InitialApproveScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <Header title="Loan Setup & Approve" onBack={() => navigation.goBack()} />
+      <Header title="Request EMI Change" onBack={() => navigation.goBack()} />
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Application: {loan?.loanId}</Text>
           <Text style={styles.infoText}>Applicant: {loan?.ownerName}</Text>
-          <Text style={styles.infoText}>Requested Amount: ₹{Number(loan?.loanAmount).toLocaleString('en-IN')}</Text>
-          <Text style={styles.infoText}>Requested Tenure: {loan?.repaymentMonths} months</Text>
+          <Text style={styles.infoText}>Current EMI: ₹{Number(loan?.emiAmount || 0).toLocaleString('en-IN')}</Text>
         </View>
 
-        <Text style={styles.sectionHeader}>EMI Calculator & Terms Setup</Text>
-        <Text style={styles.sectionDesc}>Adjust the terms below. Interest is calculated as simple monthly interest.</Text>
+        <Text style={styles.sectionHeader}>EMI Calculator</Text>
+        <Text style={styles.sectionDesc}>Adjust the terms below to propose a new EMI calculation.</Text>
 
         <View style={styles.card}>
           <Field label="Principal Amount (₹)" value={principal} onChangeText={setPrincipal} />
@@ -117,7 +113,7 @@ export default function InitialApproveScreen({ route, navigation }) {
           <Field label="Daily Penalty Rate (%)" value={penaltyRate} onChangeText={setPenaltyRate} suffix="%" />
         </View>
 
-        <Text style={styles.sectionHeader}>Calculation Summary</Text>
+        <Text style={styles.sectionHeader}>New Calculation Summary</Text>
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Total Interest</Text>
@@ -138,13 +134,13 @@ export default function InitialApproveScreen({ route, navigation }) {
           )}
         </View>
 
-        <TouchableOpacity style={styles.approveBtn} onPress={handleApprove} disabled={loading}>
+        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitRequest} disabled={loading}>
           {loading ? (
             <ActivityIndicator color={colors.white} />
           ) : (
             <>
-              <Ionicons name="checkmark-circle-outline" size={22} color={colors.white} />
-              <Text style={styles.approveBtnText}>Confirm & Approve Loan</Text>
+              <Ionicons name="send-outline" size={22} color={colors.white} />
+              <Text style={styles.submitBtnText}>Submit Request</Text>
             </>
           )}
         </TouchableOpacity>
@@ -175,6 +171,6 @@ const styles = StyleSheet.create({
   emiLabel: { fontFamily: fonts.bold, fontSize: 18, color: colors.white },
   emiValue: { fontFamily: fonts.bold, fontSize: 22, color: colors.accent },
   adjustmentText: { fontFamily: fonts.regular, fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 8, fontStyle: 'italic' },
-  approveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.success, paddingVertical: 16, borderRadius: 12, gap: 10 },
-  approveBtnText: { fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.white },
+  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, paddingVertical: 16, borderRadius: 12, gap: 10 },
+  submitBtnText: { fontFamily: fonts.bold, fontSize: fontSize.lg, color: colors.white },
 });

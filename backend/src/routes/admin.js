@@ -184,6 +184,52 @@ router.post('/loans/:loanId/reject-proof', (req, res) => res.json({ message: 'Pr
 router.post('/loans/:loanId/assign-recovery-agent', (req, res) => res.json({ message: 'Agent assigned' }));
 router.post('/loans/:loanId/send-qr-to-agent', (req, res) => res.json({ message: 'QR sent to agent' }));
 
+router.post('/loans/:loanId/approve-emi-change', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan.emiChangeRequest) return res.status(400).json({ message: 'No pending EMI change request' });
+
+  const {
+    approvedAmount,
+    tenureMonths,
+    interestRate,
+    penaltyRate,
+    emiAmount,
+    totalInterest,
+    totalRepayable
+  } = loan.emiChangeRequest;
+
+  await db.updateLoan(loan.loanId, {
+    approvedAmount,
+    tenureMonths,
+    interestRate,
+    penaltyRate,
+    emiAmount,
+    totalInterest,
+    totalRepayable,
+    emiChangeRequest: {
+      ...loan.emiChangeRequest,
+      status: 'approved'
+    }
+  });
+
+  res.json({ message: 'EMI change request approved' });
+});
+
+router.post('/loans/:loanId/reject-emi-change', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan.emiChangeRequest) return res.status(400).json({ message: 'No pending EMI change request' });
+
+  await db.updateLoan(loan.loanId, { 
+    emiChangeRequest: {
+      ...loan.emiChangeRequest,
+      status: 'rejected'
+    }
+  });
+  res.json({ message: 'EMI change request rejected' });
+});
+
 router.post('/profile/organization-logo', upload.single('logo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   const key = `users/${req.user.userId}/logo_${Date.now()}`;

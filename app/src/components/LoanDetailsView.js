@@ -86,6 +86,25 @@ export default function LoanDetailsView({ loan }) {
         <Row label="Repayment Tenure" value={loan.repaymentMonths ? `${loan.repaymentMonths} months` : ''} fieldKey="repaymentMonths" />
         <Row label="Additional Notes" value={loan.notes} fieldKey="notes" />
       </View>
+
+      {['approved', 'active', 'completed'].includes(loan.status) && (
+        <View style={[rv.card, { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' }]}>
+          <View style={[rv.headerRow, { borderBottomColor: '#D1FAE5' }]}>
+            <Ionicons name="checkmark-done-circle" size={18} color="#059669" />
+            <Text style={[rv.section, { color: '#065F46' }]}>Approved Terms</Text>
+          </View>
+          <Row label="Principal Amount" value={`₹${Number(loan.approvedAmount || 0).toLocaleString('en-IN')}`} />
+          <Row label="Tenure" value={`${loan.tenureMonths || 0} months`} />
+          <Row label="Interest Rate" value={`${loan.interestRate || 0}% per month`} />
+          <Row label="Penalty Rate" value={`${loan.penaltyRate || 0}% per day`} />
+          <Row label="Total Interest" value={`₹${Number(loan.totalInterest || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`} />
+          <Row label="Total Repayable" value={`₹${Number(loan.totalRepayable || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`} />
+          <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#D1FAE5', flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 14, color: '#065F46', fontWeight: 'bold' }}>Final EMI</Text>
+            <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

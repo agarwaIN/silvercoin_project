@@ -8,6 +8,7 @@ import LoanListScreen from '../screens/employee/LoanListScreen';
 import NewLoanScreen from '../screens/employee/NewLoanScreen';
 import AgreementScreen from '../screens/employee/AgreementScreen';
 import LoanDetailScreen from '../screens/employee/LoanDetailScreen';
+import EmiChangeRequestScreen from '../screens/employee/EmiChangeRequestScreen';
 import EmployeeAccountScreen from '../screens/employee/EmployeeAccountScreen';
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
 
@@ -21,6 +22,7 @@ function LoansStack() {
       <LoansNav.Screen name="LoanList" component={LoanListScreen} />
       <LoansNav.Screen name="NewLoan" component={NewLoanScreen} />
       <LoansNav.Screen name="LoanDetail" component={LoanDetailScreen} />
+      <LoansNav.Screen name="EmiChangeRequest" component={EmiChangeRequestScreen} />
       <LoansNav.Screen name="Agreement" component={AgreementScreen} />
     </LoansNav.Navigator>
   );

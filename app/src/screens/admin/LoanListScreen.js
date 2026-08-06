@@ -88,28 +88,69 @@ export default function AdminLoanListScreen({ navigation }) {
         keyExtractor={(item) => item.loanId}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />}
-        renderItem={({ item }) => (
-          <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('LoanDetail', { loanId: item.loanId })}>
-            <Card>
-              <View style={styles.row}>
-                <View style={styles.left}>
-                  <Text style={styles.id}>{item.loanId}</Text>
-                  <Text style={styles.owner}>{item.ownerName || '—'}</Text>
-                  {item.loanAmount ? (
-                    <Text style={styles.amount}>₹{Number(item.loanAmount).toLocaleString('en-IN')}</Text>
-                  ) : null}
-                  <Text style={styles.date}>
-                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN') : ''}
-                  </Text>
+        renderItem={({ item }) => {
+          const hasPendingEmi = item.emiChangeRequest && item.emiChangeRequest.status === 'pending';
+          return (
+            <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('LoanDetail', { loanId: item.loanId })}>
+              <Card>
+                <View style={styles.row}>
+                  <View style={styles.left}>
+                    <Text style={styles.id}>{item.loanId}</Text>
+                    <Text style={styles.owner}>{item.ownerName || '—'}</Text>
+                    {item.loanAmount ? (
+                      <Text style={styles.amount}>Principal: ₹{Number(item.loanAmount).toLocaleString('en-IN')}</Text>
+                    ) : null}
+                    <Text style={styles.date}>
+                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN') : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.right}>
+                    <StatusBadge status={item.status} />
+                    <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
+                  </View>
                 </View>
-                <View style={styles.right}>
-                  <StatusBadge status={item.status} />
-                  <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
-                </View>
-              </View>
-            </Card>
-          </TouchableOpacity>
-        )}
+
+                {hasPendingEmi && (() => {
+                  const req = item.emiChangeRequest;
+                  const fields = [
+                    { label: 'Principal', old: item.approvedAmount || item.loanAmount, new: req.approvedAmount, isCurrency: true },
+                    { label: 'Tenure', old: item.tenureMonths, new: req.tenureMonths, suffix: 'm' },
+                    { label: 'Interest', old: item.interestRate, new: req.interestRate, suffix: '%' },
+                    { label: 'Penalty', old: item.penaltyRate, new: req.penaltyRate, suffix: '%' },
+                    { label: 'Tot Int', old: item.totalInterest, new: req.totalInterest, isCurrency: true },
+                    { label: 'Tot Repay', old: item.totalRepayable, new: req.totalRepayable, isCurrency: true },
+                  ];
+                  const changedFields = fields.filter(f => Number(f.old || 0) !== Number(f.new || 0));
+
+                  return (
+                    <View style={styles.emiChangePreview}>
+                      <View style={styles.emiChangePreviewHeader}>
+                        <Ionicons name="alert-circle" size={14} color="#D97706" />
+                        <Text style={styles.emiChangePreviewTitle}>EMI Change Requested</Text>
+                      </View>
+                      
+                      {changedFields.map((f, i) => (
+                        <View key={i} style={styles.diffRow}>
+                          <Text style={styles.diffLabel}>{f.label}:</Text>
+                          <Text style={styles.diffOld}>{f.isCurrency ? '₹' : ''}{Number(f.old || 0).toLocaleString('en-IN')}{f.suffix || ''}</Text>
+                          <Ionicons name="arrow-forward" size={12} color={colors.muted} />
+                          <Text style={styles.diffNew}>{f.isCurrency ? '₹' : ''}{Number(f.new || 0).toLocaleString('en-IN')}{f.suffix || ''}</Text>
+                        </View>
+                      ))}
+                      
+                      <View style={[styles.diffRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: '#FDE68A', paddingTop: 6 }]}>
+                        <Text style={[styles.diffLabel, { color: '#B45309', fontFamily: fonts.bold }]}>Final EMI:</Text>
+                        <Text style={styles.diffOld}>₹{Number(item.emiAmount || 0).toLocaleString('en-IN')}</Text>
+                        <Ionicons name="arrow-forward" size={12} color={colors.muted} />
+                        <Text style={[styles.diffNew, { color: '#059669', fontFamily: fonts.bold }]}>₹{Number(req.emiAmount || 0).toLocaleString('en-IN')}</Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+              </Card>
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="document-outline" size={48} color={colors.border} />
@@ -156,4 +197,11 @@ const styles = StyleSheet.create({
   date: { fontFamily: fonts.regular, fontSize: fontSize.xs, color: colors.muted, marginTop: 4 },
   empty: { alignItems: 'center', marginTop: 80 },
   emptyText: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.muted, marginTop: 12 },
+  emiChangePreview: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: '#FEF3C7', padding: 8, borderRadius: 8 },
+  emiChangePreviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
+  emiChangePreviewTitle: { fontFamily: fonts.semiBold, fontSize: 12, color: '#D97706' },
+  diffRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  diffLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.text, width: 70 },
+  diffOld: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted, textDecorationLine: 'line-through' },
+  diffNew: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.success },
 });
