@@ -8,8 +8,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
-const { connectDynamo, tableName } = require('./config/dynamo');
-const { startLocalDynamo } = require('./scripts/start-dynamo-local');
+const { connectDynamo, tableName, isLocalDynamo } = require('./config/dynamo');
 const { PRODUCTION_PUBLIC_ORIGIN } = require('./config/app');
 const { patchRouter } = require('./middleware/patchAsyncRoutes');
 
@@ -140,7 +139,10 @@ process.on('unhandledRejection', (err) => {
 
 async function start() {
   try {
-    dynaliteInfo = await startLocalDynamo();
+    if (isLocalDynamo()) {
+      const { startLocalDynamo } = require('./scripts/start-dynamo-local');
+      dynaliteInfo = await startLocalDynamo();
+    }
     await connectDynamo();
     const { ensureAllTables } = require('./scripts/ensure-dynamo-tables');
     const { seedSuperadminIfMissing } = require('./scripts/seed-superadmin');
