@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "build:apk": "npx --yes eas-cli@latest build -p android --profile preview --non-interactive",
     "build:apk:prod": "npx --yes eas-cli@latest build -p android --profile production --non-interactive",
-    "build:list": "npx --yes eas-cli@latest build:list"
+    "build:list": "npx --yes eas-cli@latest build:list",
+    "postinstall": "chmod +x node_modules/react-native/sdks/hermesc/linux64-bin/hermesc || true"
   },
   "dependencies": {
     "@expo-google-fonts/poppins": "^0.2.3",
