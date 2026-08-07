@@ -205,6 +205,7 @@ android/app/release/
 local.properties
 .cxx/
 .externalNativeBuild/
+app/android/
 
 .buckd/
 .buckconfig.local
@@ -225,6 +226,7 @@ backend/tmp/
 uploads/
 backend/storage/
 backend/.cache/
+.dynalite-data/
 
 .cloud-sam/
 cdk.out/
