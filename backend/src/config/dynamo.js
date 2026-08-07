@@ -22,15 +22,36 @@ const DEFAULT_DYNAMODB_PORT = process.env.DYNAMODB_LOCAL_PORT ? parseInt(process
 const DEFAULT_DYNAMODB_ENDPOINT = `http://${DEFAULT_DYNAMODB_HOST}:${DEFAULT_DYNAMODB_PORT}`;
 const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT?.trim() || DEFAULT_DYNAMODB_ENDPOINT;
 
+function isLocalDynamo() {
+  if (process.env.NODE_ENV === 'production') {
+    return process.env.USE_LOCAL_DYNAMO === 'true';
+  }
+  return !process.env.AWS_ACCESS_KEY_ID;
+}
+
 function getDynamoClientOptions() {
-  return {
-    region: 'local',
-    endpoint: DYNAMODB_ENDPOINT,
-    credentials: {
-      accessKeyId: 'local',
-      secretAccessKey: 'local',
-    },
-  };
+  if (isLocalDynamo()) {
+    return {
+      region: 'local',
+      endpoint: DYNAMODB_ENDPOINT,
+      credentials: {
+        accessKeyId: 'local',
+        secretAccessKey: 'local',
+      },
+    };
+  }
+
+  const options = {};
+  if (process.env.AWS_REGION) {
+    options.region = process.env.AWS_REGION;
+  }
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    options.credentials = {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    };
+  }
+  return options;
 }
 
 const client = new DynamoDBClient(getDynamoClientOptions());
@@ -42,10 +63,6 @@ const docClient = DynamoDBDocumentClient.from(client, {
 function tableName(kind) {
   const envKey = TABLE_ENV_KEYS[kind];
   return process.env[envKey] || TABLE_DEFAULTS[kind];
-}
-
-function isLocalDynamo() {
-  return true;
 }
 
 async function connectDynamo() {
