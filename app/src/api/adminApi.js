@@ -31,3 +31,4 @@ export const assignRecoveryAgent = (loanId, recoveryAgentId) =>
 export const sendQrToAgent = (loanId) => api.post(`/admin/loans/${loanId}/send-qr-to-agent`).then((r) => r.data);
 export const approveEmiChange = (loanId) => api.post(`/admin/loans/${loanId}/approve-emi-change`).then((r) => r.data);
 export const rejectEmiChange = (loanId) => api.post(`/admin/loans/${loanId}/reject-emi-change`).then((r) => r.data);
+export const getAdminReports = () => api.get('/admin/reports').then((r) => r.data);

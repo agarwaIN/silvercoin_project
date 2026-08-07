@@ -56,9 +56,8 @@ export function resolveApiBaseUrlForApp() {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return normalizeApiBaseUrl(process.env.EXPO_PUBLIC_API_URL);
   }
-  if (__DEV__) {
-    return normalizeApiBaseUrl(`${resolveDevApiOrigin()}/api`);
-  }
+  // ALWAYS use the production API (Render) as requested by the user, 
+  // even in development, to ensure media and APK testing works flawlessly.
   const origin = PRODUCTION_API_ORIGIN.replace(/\/+$/, '');
   return normalizeApiBaseUrl(`${origin}/api`);
 }

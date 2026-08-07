@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import DrawerMenuButton from './DrawerMenuButton';
@@ -20,8 +21,21 @@ export default function Header({
   showLogoMark,
 }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const { headerImageSource } = useHeaderBranding();
   const resolvedLogoSource = headerLogoSource !== undefined ? headerLogoSource : headerImageSource;
+  
+  const canGoBack = navigation.canGoBack();
+  const shouldShowBack = onBack || canGoBack;
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else if (canGoBack) {
+      navigation.goBack();
+    }
+  };
+
   const rightSlot = hideDrawerMenu ? (
     rightAction ?? <View style={[styles.placeholder, compact && styles.placeholderCompact]} />
   ) : (
@@ -38,8 +52,8 @@ export default function Header({
     ]}>
       {/* <StatusBar barStyle="light-content" backgroundColor={colors.dark} /> */}
       <View style={styles.row}>
-        {onBack ? (
-          <TouchableOpacity onPress={onBack} style={[styles.backBtn, compact && styles.backBtnCompact]}>
+        {shouldShowBack ? (
+          <TouchableOpacity onPress={handleBack} style={[styles.backBtn, compact && styles.backBtnCompact]}>
             <Ionicons name="arrow-back" size={compact ? 20 : 22} color={colors.white} />
           </TouchableOpacity>
         ) : null}

@@ -115,6 +115,116 @@ router.get('/emi-this-month', (req, res) => res.json({ count: 0, emis: [] }));
 router.get('/recovery', (req, res) => res.json([]));
 router.get('/recovery-agents', (req, res) => res.json([]));
 
+router.get('/reports', async (req, res) => {
+  try {
+    const adminId = req.user.userId;
+    const [loans, employees] = await Promise.all([
+      db.listLoansByAdmin(adminId),
+      db.listUsersByCreator(adminId),
+    ]);
+
+    const emps = employees.filter(e => e.role === 'employee');
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    let dailyApplications = 0;
+    let loanApprovals = 0;
+    let totalDisbursement = 0;
+    let loanOutstanding = 0;
+    let interestEarned = 0;
+    let penaltyEarned = 0;
+    let totalCollections = 0;
+
+    let pendingRecoveryCount = 0;
+
+    const empStats = emps.reduce((acc, emp) => {
+      acc[emp.userId] = {
+        name: emp.name,
+        pendingTasks: 0,
+        productivity: 0,
+        collections: 0,
+      };
+      return acc;
+    }, {});
+
+    const activeLoanIds = loans.filter(l => ['active', 'approved'].includes(l.status)).map(l => l.loanId);
+    
+    const emiPromises = loans.map(l => db.listEmiByLoan(l.loanId));
+    const allEmisNested = await Promise.all(emiPromises);
+    
+    for (let i = 0; i < loans.length; i++) {
+      const loan = loans[i];
+      const emis = allEmisNested[i];
+      
+      const isToday = loan.createdAt && loan.createdAt.startsWith(todayStr);
+      if (isToday) dailyApplications++;
+      
+      if (['approved', 'active', 'completed'].includes(loan.status)) {
+        loanApprovals++;
+        totalDisbursement += Number(loan.approvedAmount || loan.loanAmount || 0);
+      }
+
+      if (['submitted', 'agreement_submitted'].includes(loan.status) && loan.employeeId && empStats[loan.employeeId]) {
+        empStats[loan.employeeId].pendingTasks++;
+      }
+      
+      if (['approved', 'active', 'completed'].includes(loan.status) && loan.employeeId && empStats[loan.employeeId]) {
+        empStats[loan.employeeId].productivity++;
+      }
+
+      let loanTotalCollected = 0;
+      let loanInterest = 0;
+      let loanPenalty = 0;
+      let hasPendingEmi = false;
+
+      for (const emi of emis) {
+        if (emi.status === 'paid') {
+          loanTotalCollected += Number(emi.amount || 0);
+          loanInterest += Number(emi.interestPart || (Number(emi.amount || 0) * 0.1));
+          loanPenalty += Number(emi.penaltyAmount || 0);
+        } else if (emi.status === 'pending' || emi.status === 'overdue') {
+          hasPendingEmi = true;
+        }
+      }
+      
+      totalCollections += loanTotalCollected;
+      interestEarned += loanInterest;
+      penaltyEarned += loanPenalty;
+      
+      if (loan.employeeId && empStats[loan.employeeId]) {
+        empStats[loan.employeeId].collections += loanTotalCollected;
+      }
+      
+      if (hasPendingEmi) {
+        pendingRecoveryCount++;
+      }
+      
+      if (['active', 'approved'].includes(loan.status)) {
+         loanOutstanding += Number(loan.totalRepayable || 0) - loanTotalCollected;
+      }
+    }
+
+    res.json({
+      operational: {
+        dailyApplications,
+        loanApprovals,
+        totalDisbursement,
+        activeLoans: activeLoanIds.length,
+        pendingRecovery: pendingRecoveryCount,
+      },
+      financial: {
+        loanOutstanding: Math.max(0, loanOutstanding),
+        interestEarned,
+        penalty: penaltyEarned,
+        collectionSummary: totalCollections,
+      },
+      employee: Object.values(empStats),
+    });
+  } catch (err) {
+    console.error('Reports Error:', err);
+    res.status(500).json({ message: 'Failed to generate reports' });
+  }
+});
+
 router.post('/create-recovery-agent', (req, res) => {
   res.status(201).json({ message: 'Agent created' });
 });
