@@ -324,6 +324,13 @@ async function deleteOtpSession(sessionId) {
   }));
 }
 
+async function createAuditLog(log) {
+  await docClient.send(new PutCommand({
+    TableName: tableName('auditLogs'),
+    Item: log,
+  }));
+}
+
 module.exports = {
   getUserById,
   getUserByEmail,
@@ -353,4 +360,5 @@ module.exports = {
   getOtpSession,
   updateOtpSession,
   deleteOtpSession,
+  createAuditLog,
 };

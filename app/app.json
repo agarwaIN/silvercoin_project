@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Silvercoin",
-    "slug": "silvercoin-app",
+    "name": "ShreeLoan",
+    "slug": "shreeloan-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -56,13 +56,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Silvercoin to access your camera."
+          "cameraPermission": "Allow ShreeLoan to access your camera."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Silvercoin to use your location for property geo-tagging."
+          "locationWhenInUsePermission": "Allow ShreeLoan to use your location for property geo-tagging."
         }
       ],
       "expo-video",

@@ -10,7 +10,7 @@ export default function SilvercoinLogoMark({ size = 56, style }) {
       style={[{ width: size, height: size, resizeMode: 'contain' }, style]}
       accessible
       accessibilityRole="image"
-      accessibilityLabel="Silvercoin"
+      accessibilityLabel="ShreeLoan"
     />
   );
 }

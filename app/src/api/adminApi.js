@@ -15,6 +15,8 @@ export const sendQr = (loanId) => api.post(`/admin/loans/${loanId}/send-qr`).the
 export const getRecovery = () => api.get('/admin/recovery').then((r) => r.data);
 export const markEmiPaid = (loanId, paymentId) =>
   api.post(`/admin/loans/${loanId}/mark-emi-paid`, { paymentId }).then((r) => r.data);
+export const payEmi = (loanId, paymentId, amount) =>
+  api.post(`/admin/loans/${loanId}/pay-emi`, { paymentId, amount }).then((r) => r.data);
 export const rejectEmiProof = (loanId, paymentId) =>
   api.post(`/admin/loans/${loanId}/reject-proof`, { paymentId }).then((r) => r.data);
 export const getProfile = () => api.get('/admin/profile').then((r) => r.data);
@@ -32,3 +34,7 @@ export const sendQrToAgent = (loanId) => api.post(`/admin/loans/${loanId}/send-q
 export const approveEmiChange = (loanId) => api.post(`/admin/loans/${loanId}/approve-emi-change`).then((r) => r.data);
 export const rejectEmiChange = (loanId) => api.post(`/admin/loans/${loanId}/reject-emi-change`).then((r) => r.data);
 export const getAdminReports = () => api.get('/admin/reports').then((r) => r.data);
+export const processLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/process`, data).then((r) => r.data);
+export const returnLoan = (loanId, reason) => api.post(`/admin/loans/${loanId}/return`, { reason }).then((r) => r.data);
+export const disburseLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/disburse`, data).then((r) => r.data);
+export const approveForeclosure = (loanId) => api.post(`/admin/loans/${loanId}/approve-foreclosure`).then((r) => r.data);

@@ -70,7 +70,7 @@ export default function RightMenuModal({
               <Ionicons name="leaf" size={18} color={colors.white} />
             </View>
             <View>
-              <Text style={styles.brand}>Silvercoin</Text>
+              <Text style={styles.brand}>ShreeLoan</Text>
               <Text style={styles.headerSub}>Navigate</Text>
             </View>
           </View>

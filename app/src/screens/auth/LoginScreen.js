@@ -115,7 +115,7 @@ export default function LoginScreen({ navigation }) {
             <View style={styles.logoCircle}>
               <SilvercoinLogoMark size={80} />
             </View>
-            <Text style={styles.appName}>Silvercoin</Text>
+            <Text style={styles.appName}>ShreeLoan</Text>
             <Text style={styles.tagline}>Your Assets Are In Safe Hands</Text>
           </View>
 

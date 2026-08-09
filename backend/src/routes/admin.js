@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../services/mongoService');
 const { verifyToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/roleCheck');
+const { auditLog } = require('../middleware/auditMiddleware');
 const { generateTempPassword } = require('../utils/password');
 const { mobileField } = require('../utils/phoneValidator');
 const { sendCredentials } = require('../services/emailService');
@@ -14,7 +15,7 @@ const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageS
 const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
-router.use(verifyToken, requireRole('admin'));
+router.use(verifyToken, requireRole('admin'), auditLog);
 
 function notImplemented(res) {
   return res.status(501).json({ message: 'Not implemented yet' });
@@ -91,7 +92,8 @@ router.get('/loans/:loanId', async (req, res) => {
   if (!loan || loan.adminId !== req.user.userId) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  res.json(loan);
+  const emis = await db.listEmiByLoan(loan.loanId);
+  res.json({ ...loan, emis });
 });
 
 router.get('/profile', async (req, res) => {
@@ -177,9 +179,11 @@ router.get('/reports', async (req, res) => {
       let hasPendingEmi = false;
 
       for (const emi of emis) {
-        if (emi.status === 'paid') {
-          loanTotalCollected += Number(emi.amount || 0);
-          loanInterest += Number(emi.interestPart || (Number(emi.amount || 0) * 0.1));
+        if (emi.status === 'paid' || emi.status === 'partial') {
+          const amountPaid = Number(emi.paidAmount || 0);
+          loanTotalCollected += amountPaid;
+          // Rough approximation if interestPart is not stored:
+          loanInterest += Number(emi.interestPart || (amountPaid * 0.1));
           loanPenalty += Number(emi.penaltyAmount || 0);
         } else if (emi.status === 'pending' || emi.status === 'overdue') {
           hasPendingEmi = true;
@@ -260,6 +264,58 @@ router.post('/loans/:loanId/initial-approve', async (req, res) => {
   res.json({ message: 'Loan initially approved' });
 });
 
+router.post('/loans/:loanId/process', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  
+  const { internalRemarks, riskAssessment } = req.body;
+  await db.updateLoan(loan.loanId, { 
+    internalRemarks, 
+    riskAssessment,
+    status: 'processing' 
+  });
+  res.json({ message: 'Loan processing details saved' });
+});
+
+router.post('/loans/:loanId/return', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  
+  const { reason } = req.body;
+  await db.updateLoan(loan.loanId, { 
+    status: 'returned',
+    rejectionReason: reason 
+  });
+  res.json({ message: 'Loan returned to employee' });
+});
+
+router.post('/loans/:loanId/disburse', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (loan.status !== 'approved' && loan.status !== 'active') {
+    return res.status(400).json({ message: 'Loan must be approved to disburse' });
+  }
+
+  const { date, amount, bankName, transactionNumber } = req.body;
+  if (!date || !amount || !bankName || !transactionNumber) {
+    return res.status(400).json({ message: 'Missing disbursement details' });
+  }
+
+  const disbursements = loan.disbursements || [];
+  disbursements.push({ date, amount, bankName, transactionNumber });
+
+  const updates = { disbursements, status: 'active' };
+  
+  // Generate officialLoanId on first disbursement if not exists
+  if (!loan.officialLoanId) {
+    const seq = await db.getNextLoanSeq('official-loans');
+    updates.officialLoanId = `SL-${seq.toString().padStart(5, '0')}`;
+  }
+
+  await db.updateLoan(loan.loanId, updates);
+  res.json({ message: 'Disbursement recorded', officialLoanId: updates.officialLoanId || loan.officialLoanId });
+});
+
 router.post('/loans/:loanId/approve', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
@@ -289,7 +345,59 @@ router.post('/loans/:loanId/reject', async (req, res) => {
 });
 
 router.post('/loans/:loanId/send-qr', (req, res) => res.json({ message: 'QR sent' }));
-router.post('/loans/:loanId/mark-emi-paid', (req, res) => res.json({ message: 'EMI marked paid' }));
+router.post('/loans/:loanId/pay-emi', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  
+  const { paymentId, amount } = req.body;
+  if (!paymentId || amount == null || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid payment details' });
+  }
+
+  const emis = await db.listEmiByLoan(loan.loanId);
+  const emi = emis.find(e => e.paymentId === paymentId);
+  if (!emi) return res.status(404).json({ message: 'EMI not found' });
+
+  // BR-05: EMI recovery window opens 7 days before due date
+  const dueDate = new Date(emi.dueDate);
+  const now = new Date();
+  const diffTime = dueDate - now;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays > 7) {
+    return res.status(400).json({ message: `EMI recovery window opens 7 days before due date (Due: ${emi.dueDate})` });
+  }
+
+  const totalRequired = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
+  const previouslyPaid = Number(emi.paidAmount || 0);
+  const newPaidAmount = previouslyPaid + Number(amount);
+
+  let newStatus = emi.status;
+  if (newPaidAmount >= totalRequired) {
+    newStatus = 'paid';
+  } else if (newPaidAmount > 0) {
+    newStatus = 'partial';
+  }
+
+  await db.updateEmiPayment(paymentId, {
+    paidAmount: newPaidAmount,
+    status: newStatus,
+    paidDate: new Date().toISOString(),
+    markedBy: req.user.userId
+  });
+
+  const allEmis = await db.listEmiByLoan(loan.loanId);
+  // Re-fetch to get updated state of the specific EMI
+  const updatedEmi = allEmis.find(e => e.paymentId === paymentId);
+  if (updatedEmi) updatedEmi.status = newStatus; 
+  
+  const allPaid = allEmis.every(e => e.status === 'paid');
+  if (allPaid && loan.status !== 'completed') {
+    await db.updateLoan(loan.loanId, { status: 'completed' });
+  }
+
+  res.json({ message: 'Payment recorded', status: newStatus, loanCompleted: allPaid });
+});
 router.post('/loans/:loanId/reject-proof', (req, res) => res.json({ message: 'Proof rejected' }));
 router.post('/loans/:loanId/assign-recovery-agent', (req, res) => res.json({ message: 'Agent assigned' }));
 router.post('/loans/:loanId/send-qr-to-agent', (req, res) => res.json({ message: 'QR sent to agent' }));
@@ -338,6 +446,31 @@ router.post('/loans/:loanId/reject-emi-change', async (req, res) => {
     }
   });
   res.json({ message: 'EMI change request rejected' });
+});
+
+router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  
+  if (!loan.foreclosureRequest || loan.foreclosureRequest.status !== 'pending') {
+    return res.status(400).json({ message: 'No pending foreclosure request' });
+  }
+
+  // Update loan status to completed (foreclosed)
+  await db.updateLoan(loan.loanId, {
+    status: 'completed', // Or 'foreclosed' if there was a separate status, but SRS implies Closure -> Foreclosure
+    foreclosureRequest: {
+      ...loan.foreclosureRequest,
+      status: 'approved',
+      approvedAt: new Date().toISOString()
+    }
+  });
+
+  // Mark all pending EMIs as closed/waived? 
+  // Let's just keep it simple, the loan is marked as completed.
+  // We can update EMIs to reflect this in the future if needed.
+
+  res.json({ message: 'Foreclosure approved and loan completed' });
 });
 
 router.post('/profile/organization-logo', upload.single('logo'), async (req, res) => {

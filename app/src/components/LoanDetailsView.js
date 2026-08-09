@@ -35,6 +35,17 @@ export default function LoanDetailsView({ loan }) {
       <View style={rv.card}>
         <View style={rv.headerRow}>
           <Ionicons name="person" size={18} color={colors.dark} />
+          <Text style={rv.section}>Application Details</Text>
+        </View>
+        <Row label="Application No" value={loan.applicationNumber} />
+        <Row label="Official Loan ID" value={loan.officialLoanId} />
+        {loan.internalRemarks && <Row label="Internal Remarks" value={loan.internalRemarks} />}
+        {loan.riskAssessment && <Row label="Risk Assessment" value={loan.riskAssessment} />}
+      </View>
+
+      <View style={rv.card}>
+        <View style={rv.headerRow}>
+          <Ionicons name="person" size={18} color={colors.dark} />
           <Text style={rv.section}>Owner Details</Text>
         </View>
         <Row label="Name" value={loan.ownerName} fieldKey="ownerName" />
@@ -103,6 +114,23 @@ export default function LoanDetailsView({ loan }) {
             <Text style={{ fontSize: 14, color: '#065F46', fontWeight: 'bold' }}>Final EMI</Text>
             <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
           </View>
+        </View>
+      )}
+
+      {loan.disbursements && loan.disbursements.length > 0 && (
+        <View style={rv.card}>
+          <View style={rv.headerRow}>
+            <Ionicons name="list-circle" size={18} color={colors.dark} />
+            <Text style={rv.section}>Disbursement History</Text>
+          </View>
+          {loan.disbursements.map((d, index) => (
+            <View key={index} style={{ marginBottom: index !== loan.disbursements.length - 1 ? 12 : 0, borderBottomWidth: index !== loan.disbursements.length - 1 ? 1 : 0, borderBottomColor: colors.border, paddingBottom: 8 }}>
+              <Row label="Date" value={d.date} />
+              <Row label="Amount" value={`₹${Number(d.amount).toLocaleString('en-IN')}`} />
+              <Row label="Bank" value={d.bankName} />
+              <Row label="Txn No" value={d.transactionNumber} />
+            </View>
+          ))}
         </View>
       )}
     </View>

@@ -6,11 +6,12 @@ import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange } from '../../api/adminApi';
+import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange, processLoan, returnLoan, disburseLoan, approveForeclosure } from '../../api/adminApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
 import { Ionicons } from '@expo/vector-icons';
+import { payEmi } from '../../api/adminApi';
 
 export default function LoanDetailScreen({ route, navigation }) {
   const { showAlert } = usePopup();
@@ -20,6 +21,15 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [returnModalVisible, setReturnModalVisible] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [processModalVisible, setProcessModalVisible] = useState(false);
+  const [internalRemarks, setInternalRemarks] = useState('');
+  const [riskAssessment, setRiskAssessment] = useState('');
+  const [disburseModalVisible, setDisburseModalVisible] = useState(false);
+  const [disburseData, setDisburseData] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankName: '', transactionNumber: '' });
+  const [payEmiModalVisible, setPayEmiModalVisible] = useState(false);
+  const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0 });
 
   const load = useCallback(async () => {
     const data = await getLoan(loanId);
@@ -36,6 +46,91 @@ export default function LoanDetailScreen({ route, navigation }) {
 
   const handleApprove = () => {
     navigation.navigate('InitialApprove', { loan });
+  };
+
+  const handleReturn = async () => {
+    if (!returnReason.trim()) {
+      showAlert('Error', 'Please enter a return reason.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await returnLoan(loanId, returnReason.trim());
+      setReturnModalVisible(false);
+      await load();
+      showAlert('Success', 'Loan returned to employee.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to return loan.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleProcess = async () => {
+    if (!internalRemarks.trim() || !riskAssessment.trim()) {
+      showAlert('Error', 'Please fill all processing details.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await processLoan(loanId, { internalRemarks, riskAssessment });
+      setProcessModalVisible(false);
+      await load();
+      showAlert('Success', 'Loan moved to processing state.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to process loan.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDisburse = async () => {
+    if (!disburseData.amount || !disburseData.bankName || !disburseData.transactionNumber) {
+      showAlert('Error', 'Please fill all disbursement details.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await disburseLoan(loanId, disburseData);
+      setDisburseModalVisible(false);
+      await load();
+      showAlert('Success', 'Disbursement recorded. Loan is now active.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to disburse loan.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleApproveForeclosure = async () => {
+    setProcessing(true);
+    try {
+      await approveForeclosure(loanId);
+      await load();
+      showAlert('Success', 'Foreclosure approved and loan completed.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to approve foreclosure.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handlePayEmi = async () => {
+    if (!payEmiData.amount || Number(payEmiData.amount) <= 0) {
+      showAlert('Error', 'Please enter a valid amount.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await payEmi(loanId, payEmiData.paymentId, payEmiData.amount);
+      setPayEmiModalVisible(false);
+      await load();
+      showAlert('Success', 'EMI payment recorded.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to record EMI payment.');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleReject = async () => {
@@ -105,6 +200,20 @@ export default function LoanDetailScreen({ route, navigation }) {
 
         {loan.status === 'submitted' && (
           <View style={styles.actionContainer}>
+            <TouchableOpacity style={styles.rejectBtn} onPress={() => { setReturnReason(''); setReturnModalVisible(true); }} disabled={processing}>
+              <Ionicons name="return-down-back-outline" size={20} color={colors.error} />
+              <Text style={styles.rejectBtnText}>Return</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.approveBtn} onPress={() => { setInternalRemarks(''); setRiskAssessment(''); setProcessModalVisible(true); }} disabled={processing}>
+              <Ionicons name="document-text-outline" size={20} color={colors.white} />
+              <Text style={styles.approveBtnText}>Process Application</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {loan.status === 'processing' && (
+          <View style={styles.actionContainer}>
             <TouchableOpacity style={styles.rejectBtn} onPress={() => { setRejectReason(''); setRejectModalVisible(true); }} disabled={processing}>
               <Ionicons name="close-circle-outline" size={20} color={colors.error} />
               <Text style={styles.rejectBtnText}>Reject</Text>
@@ -114,6 +223,40 @@ export default function LoanDetailScreen({ route, navigation }) {
               <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
               <Text style={styles.approveBtnText}>Approve Terms</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {loan.status === 'approved' && (
+          <View style={styles.actionContainer}>
+            <TouchableOpacity style={styles.approveBtn} onPress={() => { setDisburseData({ date: new Date().toISOString().split('T')[0], amount: loan.approvedAmount || '', bankName: '', transactionNumber: '' }); setDisburseModalVisible(true); }} disabled={processing}>
+              <Ionicons name="cash-outline" size={20} color={colors.white} />
+              <Text style={styles.approveBtnText}>Record Disbursement</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {loan.foreclosureRequest?.status === 'pending' && (
+          <View style={styles.emiChangeCard}>
+            <View style={styles.emiChangeHeader}>
+              <Ionicons name="warning-outline" size={20} color="#991B1B" />
+              <Text style={[styles.emiChangeTitle, { color: '#991B1B' }]}>Pending Foreclosure Request</Text>
+            </View>
+            <View style={styles.emiChangeBody}>
+              <View style={styles.emiChangeRow}>
+                <Text style={styles.emiChangeLabel}>Amount</Text>
+                <Text style={styles.emiChangeValue}>₹{Number(loan.foreclosureRequest.foreclosureAmount || 0).toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={styles.emiChangeRow}>
+                <Text style={styles.emiChangeLabel}>Reason</Text>
+                <Text style={[styles.emiChangeValue, { flex: 1, textAlign: 'right', marginLeft: 16 }]}>{loan.foreclosureRequest.reason}</Text>
+              </View>
+            </View>
+            <View style={styles.actionContainer}>
+              <TouchableOpacity style={styles.approveBtn} onPress={handleApproveForeclosure} disabled={processing}>
+                <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
+                <Text style={styles.approveBtnText}>Approve Foreclosure</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -152,6 +295,42 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         )}
 
+        {loan.emis && loan.emis.length > 0 && (
+          <View style={[styles.emiChangeCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', marginTop: 0 }]}>
+            <View style={styles.emiChangeHeader}>
+              <Ionicons name="calendar-outline" size={20} color="#15803D" />
+              <Text style={[styles.emiChangeTitle, { color: '#15803D' }]}>EMI Schedule</Text>
+            </View>
+            <View style={styles.emiChangeBody}>
+              {loan.emis.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).map((emi, idx) => {
+                const totalDue = Number(emi.amount) + Number(emi.penaltyAmount || 0);
+                const isPaid = emi.status === 'paid';
+                return (
+                  <View key={emi.paymentId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: idx !== loan.emis.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark }}>Due: {emi.dueDate}</Text>
+                      <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: colors.muted }}>Status: {emi.status.toUpperCase()}</Text>
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: isPaid ? colors.success : colors.error }}>₹{totalDue.toLocaleString('en-IN')}</Text>
+                      {emi.paidAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.success }}>Paid: ₹{Number(emi.paidAmount).toLocaleString('en-IN')}</Text>}
+                      {emi.penaltyAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.error }}>Penalty: ₹{Number(emi.penaltyAmount).toLocaleString('en-IN')}</Text>}
+                    </View>
+                    {!isPaid && loan.status === 'active' && (
+                      <TouchableOpacity 
+                        style={{ marginLeft: 12, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                        onPress={() => { setPayEmiData({ paymentId: emi.paymentId, amount: (totalDue - (emi.paidAmount || 0)).toString(), dueAmount: totalDue - (emi.paidAmount || 0) }); setPayEmiModalVisible(true); }}
+                      >
+                        <Text style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.white }}>Pay</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
       </ScrollView>
 
       <Modal visible={rejectModalVisible} transparent animationType="fade">
@@ -172,6 +351,124 @@ export default function LoanDetailScreen({ route, navigation }) {
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSubmit} onPress={handleReject} disabled={processing}>
                 {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Reject Loan</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={returnModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Return Application</Text>
+            <Text style={styles.modalSubtitle}>Enter the reason for returning the application to the employee.</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Needs clearer photos of property..."
+              value={returnReason}
+              onChangeText={setReturnReason}
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setReturnModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSubmit} onPress={handleReturn} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Return</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={processModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Process Application</Text>
+            <Text style={styles.modalSubtitle}>Enter internal verification and risk assessment details.</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Internal Remarks"
+              value={internalRemarks}
+              onChangeText={setInternalRemarks}
+            />
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Risk Assessment (e.g. Low, Medium, High)"
+              value={riskAssessment}
+              onChangeText={setRiskAssessment}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setProcessModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleProcess} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Process</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={disburseModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Record Disbursement</Text>
+            <Text style={styles.modalSubtitle}>Enter bank transaction details to mark this loan as Active.</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Date (YYYY-MM-DD)"
+              value={disburseData.date}
+              onChangeText={t => setDisburseData({...disburseData, date: t})}
+            />
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Amount (₹)"
+              value={disburseData.amount?.toString()}
+              onChangeText={t => setDisburseData({...disburseData, amount: t})}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Bank Name"
+              value={disburseData.bankName}
+              onChangeText={t => setDisburseData({...disburseData, bankName: t})}
+            />
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Transaction Number / UTR"
+              value={disburseData.transactionNumber}
+              onChangeText={t => setDisburseData({...disburseData, transactionNumber: t})}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setDisburseModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleDisburse} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Disburse</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={payEmiModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Receive Payment</Text>
+            <Text style={styles.modalSubtitle}>Enter the amount received from the customer. Remaining due: ₹{payEmiData.dueAmount}</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Amount (₹)"
+              value={payEmiData.amount?.toString()}
+              onChangeText={t => setPayEmiData({...payEmiData, amount: t})}
+              keyboardType="numeric"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setPayEmiModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handlePayEmi} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Confirm Payment</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -198,6 +495,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginBottom: 8 },
   modalSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 16 },
   modalInput: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, minHeight: 80, textAlignVertical: 'top', fontSize: 14, color: colors.text, marginBottom: 20 },
+  modalInputSmall: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, marginBottom: 12 },
   modalActions: { flexDirection: 'row', gap: 12 },
   modalCancel: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   modalCancelText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.text },

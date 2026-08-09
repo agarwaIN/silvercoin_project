@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Silvercoin Loan Management API
+  title: ShreeLoan Management API
   description: |
-    Backend API for the Silvercoin loan management app. Authenticated routes use `Authorization: Bearer <accessToken>`.
+    Backend API for the ShreeLoan loan management app. Authenticated routes use `Authorization: Bearer <accessToken>`.
     Login is email + password only (no SMS OTP).
   version: 1.0.0
 
@@ -568,6 +568,105 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundMessage'
 
+  /api/admin/loans/{loanId}/process:
+    post:
+      tags: [Admin]
+      summary: Save internal verification, risk assessment, and remarks
+      operationId: adminProcessLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                internalRemarks:
+                  type: string
+                riskAssessment:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/loans/{loanId}/return:
+    post:
+      tags: [Admin]
+      summary: Return loan to employee for edits
+      operationId: adminReturnLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
+  /api/admin/loans/{loanId}/disburse:
+    post:
+      tags: [Admin]
+      summary: Record manual disbursement details
+      operationId: adminDisburseLoan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, amount, bankName, transactionNumber]
+              properties:
+                date:
+                  type: string
+                  format: date-time
+                amount:
+                  type: number
+                bankName:
+                  type: string
+                transactionNumber:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: Validation error or wrong status
+        '403':
+          $ref: '#/components/responses/ForbiddenMessage'
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
   /api/admin/loans/{loanId}/reject:
     post:
       tags: [Admin]
@@ -643,6 +742,27 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundMessage'
 
+  /api/admin/loans/{loanId}/approve-foreclosure:
+    post:
+      tags: [Admin]
+      summary: Approve a foreclosure request (closes loan)
+      operationId: adminApproveForeclosure
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: Not ready for foreclosure
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
   /api/admin/loans/{loanId}/send-qr:
     post:
       tags: [Admin]
@@ -693,11 +813,11 @@ paths:
                 items:
                   $ref: '#/components/schemas/LoanWithEmis'
 
-  /api/admin/loans/{loanId}/mark-emi-paid:
+  /api/admin/loans/{loanId}/pay-emi:
     post:
       tags: [Admin]
-      summary: Mark one EMI paid (completes loan if all paid)
-      operationId: adminMarkEmiPaid
+      summary: Make a payment towards an EMI (supports partial payments)
+      operationId: adminPayEmi
       security:
         - bearerAuth: []
       parameters:
@@ -708,10 +828,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [paymentId]
+              required: [paymentId, amount]
               properties:
                 paymentId:
                   type: string
+                amount:
+                  type: number
+                  description: Amount paid by the customer
       responses:
         '200':
           description: OK
@@ -724,6 +847,9 @@ paths:
                     type: string
                   loanCompleted:
                     type: boolean
+                  status:
+                    type: string
+                    description: The new status of the EMI (partial or paid)
         '400':
           $ref: '#/components/responses/ValidationError'
 
@@ -1252,6 +1378,37 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundMessage'
 
+  /api/employee/loans/{loanId}/request-foreclosure:
+    post:
+      tags: [Employee]
+      summary: Request foreclosure of a loan
+      operationId: employeeRequestForeclosure
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/loanId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                foreclosureAmount:
+                  type: number
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBody'
+        '400':
+          description: Invalid state for foreclosure
+        '404':
+          $ref: '#/components/responses/NotFoundMessage'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1418,7 +1575,31 @@ components:
           type: string
         status:
           type: string
-          description: draft | submitted | agreement_submitted | approved | active | rejected | completed
+          description: draft | returned | submitted | processing | agreement_submitted | approved | pending_disbursement | active | rejected | completed
+        applicationNumber:
+          type: string
+          description: Generated immediately on creation
+        officialLoanId:
+          type: string
+          description: Generated after first disbursement
+        internalRemarks:
+          type: string
+        riskAssessment:
+          type: string
+        disbursements:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date-time
+              amount:
+                type: number
+              bankName:
+                type: string
+              transactionNumber:
+                type: string
         createdAt:
           type: string
         updatedAt:
@@ -1535,10 +1716,16 @@ components:
           type: string
           description: YYYY-MM-DD; spaced every 30 days from loan start (30, 60, 90…)
         amount:
-          type: string
+          type: number
+        paidAmount:
+          type: number
+          description: Total amount paid so far towards this EMI
+        penaltyAmount:
+          type: number
+          description: Accrued penalty for late payment
         status:
           type: string
-          enum: [pending, paid]
+          enum: [pending, partial, paid, overdue]
         paidDate:
           type: string
         markedBy:

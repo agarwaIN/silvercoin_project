@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../services/mongoService');
 const { verifyToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/roleCheck');
+const { auditLog } = require('../middleware/auditMiddleware');
 const { generateLoanId } = require('../services/loanIdService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
@@ -10,7 +11,7 @@ const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageS
 const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
-router.use(verifyToken, requireRole('employee'));
+router.use(verifyToken, requireRole('employee'), auditLog);
 
 function notImplemented(res) {
   return res.status(501).json({ message: 'Not implemented yet' });
@@ -41,6 +42,7 @@ router.post('/loans', async (req, res) => {
   const now = new Date().toISOString();
   const loan = {
     loanId,
+    applicationNumber: loanId,
     employeeId: user.userId,
     adminId: user.createdBy,
     status: 'draft',
@@ -56,7 +58,8 @@ router.get('/loans/:loanId', async (req, res) => {
   if (!loan || loan.employeeId !== req.user.userId) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  res.json(loan);
+  const emis = await db.listEmiByLoan(loan.loanId);
+  res.json({ ...loan, emis });
 });
 
 router.patch('/loans/:loanId', async (req, res) => {
@@ -230,6 +233,27 @@ router.post('/loans/:loanId/emi-change-request', async (req, res) => {
   });
   
   res.json({ message: 'EMI change request submitted for approval' });
+});
+
+router.post('/loans/:loanId/request-foreclosure', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  
+  if (loan.status !== 'active') {
+    return res.status(400).json({ message: 'Only active loans can be foreclosed' });
+  }
+
+  const { foreclosureAmount, reason } = req.body;
+  await db.updateLoan(loan.loanId, {
+    foreclosureRequest: {
+      foreclosureAmount,
+      reason,
+      status: 'pending',
+      requestedAt: new Date().toISOString()
+    }
+  });
+
+  res.json({ message: 'Foreclosure requested successfully' });
 });
 
 module.exports = router;

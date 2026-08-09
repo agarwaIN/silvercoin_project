@@ -7,6 +7,7 @@ const TABLE_DEFAULTS = {
   emis: 'silvercoin-emi-payments',
   counters: 'silvercoin-counters',
   otpSessions: 'silvercoin-otp-sessions',
+  auditLogs: 'silvercoin-audit-logs',
 };
 
 const TABLE_ENV_KEYS = {
@@ -15,6 +16,7 @@ const TABLE_ENV_KEYS = {
   emis: 'DYNAMODB_EMIS_TABLE',
   counters: 'DYNAMODB_COUNTERS_TABLE',
   otpSessions: 'DYNAMODB_OTP_SESSIONS_TABLE',
+  auditLogs: 'DYNAMODB_AUDIT_LOGS_TABLE',
 };
 
 const DEFAULT_DYNAMODB_HOST = '127.0.0.1';

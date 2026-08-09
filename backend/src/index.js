@@ -55,10 +55,10 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Silvercoin API</title>
+  <title>ShreeLoan API</title>
 </head>
 <body>
-  <h1>Silvercoin loan API</h1>
+  <h1>ShreeLoan loan API</h1>
   <ul>
     <li><a href="/api-docs">Swagger UI</a></li>
     <li><a href="/openapi.yaml">openapi.yaml</a></li>
@@ -77,7 +77,7 @@ app.use(
   '/api-docs',
   swaggerUi.serve,
   swaggerUi.setup(swaggerDocument, {
-    customSiteTitle: 'Silvercoin API — Swagger',
+    customSiteTitle: 'ShreeLoan API — Swagger',
     customCss: '.swagger-ui .topbar { display: none }',
   }),
 );
