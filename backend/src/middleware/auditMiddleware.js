@@ -2,13 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../services/mongoService');
 
 // Middleware to log changes
-const auditLog = async (req, res, next) => {
-  // Capture the original send method to hook into the response
-  const originalSend = res.json;
-
-  res.json = async function (body) {
-    res.json = originalSend;
-
+const auditLog = (req, res, next) => {
+  res.on('finish', async () => {
     // Only log successful modifications (POST, PATCH, PUT, DELETE)
     if (req.method !== 'GET' && res.statusCode >= 200 && res.statusCode < 300) {
       try {
@@ -26,12 +21,10 @@ const auditLog = async (req, res, next) => {
         };
         await db.createAuditLog(log);
       } catch (err) {
-        console.error('Audit Log Error:', err);
+        console.error('Audit Log Error:', err.message || err);
       }
     }
-    
-    return res.json(body);
-  };
+  });
 
   next();
 };

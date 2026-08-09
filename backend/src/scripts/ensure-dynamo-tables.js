@@ -128,6 +128,26 @@ async function ensureAllTables({ verbose = true } = {}) {
     KeySchema: [{ AttributeName: 'sessionId', KeyType: 'HASH' }],
   });
 
+  await ensure(tableName('auditLogs'), {
+    ...billing,
+    AttributeDefinitions: [
+      { AttributeName: 'logId', AttributeType: 'S' },
+      { AttributeName: 'userId', AttributeType: 'S' },
+      { AttributeName: 'timestamp', AttributeType: 'S' }
+    ],
+    KeySchema: [{ AttributeName: 'logId', KeyType: 'HASH' }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: 'userId-timestamp-index',
+        KeySchema: [
+          { AttributeName: 'userId', KeyType: 'HASH' },
+          { AttributeName: 'timestamp', KeyType: 'RANGE' },
+        ],
+        Projection: { ProjectionType: 'ALL' },
+      }
+    ],
+  });
+
   log('DynamoDB tables ready:', Object.values(TABLE_DEFAULTS).join(', '));
 }
 
