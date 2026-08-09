@@ -154,6 +154,7 @@ async function start() {
       tableName('emis'),
       tableName('counters'),
       tableName('otpSessions'),
+      tableName('auditLogs'),
     ].join(', '));
   } catch (err) {
     console.error('Startup failed:', err.message);
