@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F0F4F1"
+      "backgroundColor": "#FAFAFA"
     },
     "ios": {
       "supportsTablet": true,
@@ -29,7 +29,7 @@
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#4B6B4E"
+        "backgroundColor": "#FAFAFA"
       },
       "package": "com.silvercoin.loanapp",
       "permissions": [

@@ -1,28 +1,30 @@
-const { Jimp } = require('jimp');
+const { Jimp, rgbaToInt, intToRGBA } = require('jimp');
+const fs = require('fs');
 
 async function processLogo() {
   try {
     const inputPath = './assets/loanApp.png';
-    console.log("Reading image...");
-    
-    // Read the user-provided logo
     const image = await Jimp.read(inputPath);
-    console.log(`Original Size: ${image.bitmap.width}x${image.bitmap.height}`);
     
-    // Crop the top part to remove the text at the bottom.
-    // The original is 723x851. The emblem looks to be in the top 550 pixels.
-    // We crop (x=0, y=0, w=723, h=550)
-    image.crop({ x: 0, y: 0, w: image.bitmap.width, h: Math.floor(image.bitmap.height * 0.65) });
+    // Sample top-left pixel for background color
+    const bgColorInt = image.getPixelColor(10, 10);
+    const bgColorRgba = intToRGBA(bgColorInt);
+    console.log(`Background color: rgba(${bgColorRgba.r}, ${bgColorRgba.g}, ${bgColorRgba.b}, ${bgColorRgba.a})`);
     
-    // Create a square canvas matching the max dimension or 1024
+    // The original is 723x851. Let's crop tighter to remove all text.
+    // Let's assume the emblem takes up the top 450 pixels.
+    const cropWidth = image.bitmap.width;
+    const cropHeight = 450; 
+    image.crop({ x: 0, y: 0, w: cropWidth, h: cropHeight });
+    
+    // Create a 1024x1024 canvas with the SAME background color to make it seamless
     const canvasSize = 1024;
-    // Scale image down so it takes about 60-70% of the canvas, ensuring it fits perfectly inside adaptive icon masks
+    const background = new Jimp({ width: canvasSize, height: canvasSize, color: bgColorInt });
+    
+    // Scale the cropped emblem to about 65% of the canvas
     const targetSize = Math.floor(canvasSize * 0.65);
-    
+    // scaleToFit might leave transparent edges if aspect ratio differs, but since the background matches, it's fine!
     image.scaleToFit({ w: targetSize, h: targetSize });
-    
-    // Create new transparent canvas
-    const background = new Jimp({ width: canvasSize, height: canvasSize, color: 0x00000000 });
     
     // Composite
     const x = Math.floor((canvasSize - image.bitmap.width) / 2);
@@ -36,7 +38,7 @@ async function processLogo() {
     await background.write('./assets/splash.png');
     await background.write('./assets/favicon.png');
     
-    console.log("Images cropped (text removed), padded, and saved successfully!");
+    console.log("Images seamlessly padded and saved successfully!");
   } catch (error) {
     console.error("Error processing image:", error);
   }
