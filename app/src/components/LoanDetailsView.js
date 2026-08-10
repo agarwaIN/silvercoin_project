@@ -37,8 +37,8 @@ export default function LoanDetailsView({ loan }) {
           <Ionicons name="person" size={18} color={colors.dark} />
           <Text style={rv.section}>Application Details</Text>
         </View>
-        <Row label="Application No" value={loan.applicationNumber} />
-        <Row label="Official Loan ID" value={loan.officialLoanId} />
+        <Row label="Application No" value={loan.applicationNumber || loan.loanId} />
+        <Row label="Loan ID" value={loan.displayLoanId || loan.officialLoanId || 'Pending Disbursement'} />
         {loan.internalRemarks && <Row label="Internal Remarks" value={loan.internalRemarks} />}
         {loan.riskAssessment && <Row label="Risk Assessment" value={loan.riskAssessment} />}
       </View>

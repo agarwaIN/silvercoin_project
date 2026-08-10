@@ -95,7 +95,7 @@ export default function AdminLoanListScreen({ navigation }) {
               <Card>
                 <View style={styles.row}>
                   <View style={styles.left}>
-                    <Text style={styles.id}>{item.loanId}</Text>
+                    <Text style={styles.id}>{item.displayLoanId || item.applicationNumber || item.loanId}</Text>
                     <Text style={styles.owner}>{item.ownerName || '—'}</Text>
                     {item.loanAmount ? (
                       <Text style={styles.amount}>Principal: ₹{Number(item.loanAmount).toLocaleString('en-IN')}</Text>

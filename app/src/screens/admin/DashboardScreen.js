@@ -117,7 +117,7 @@ export default function AdminDashboard({ navigation }) {
               <Card>
                 <View style={styles.loanRow}>
                   <View style={styles.loanLeft}>
-                    <Text style={styles.loanId}>{loan.loanId}</Text>
+                    <Text style={styles.loanId}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
                     <Text style={styles.ownerName}>{loan.ownerName || '—'}</Text>
                     {loan.loanAmount && <Text style={styles.amount}>Principal: ₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>}
                   </View>

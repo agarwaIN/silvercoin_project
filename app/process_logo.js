@@ -9,6 +9,11 @@ async function processLogo() {
     const image = await Jimp.read(inputPath);
     console.log(`Original Size: ${image.bitmap.width}x${image.bitmap.height}`);
     
+    // Crop the top part to remove the text at the bottom.
+    // The original is 723x851. The emblem looks to be in the top 550 pixels.
+    // We crop (x=0, y=0, w=723, h=550)
+    image.crop({ x: 0, y: 0, w: image.bitmap.width, h: Math.floor(image.bitmap.height * 0.65) });
+    
     // Create a square canvas matching the max dimension or 1024
     const canvasSize = 1024;
     // Scale image down so it takes about 60-70% of the canvas, ensuring it fits perfectly inside adaptive icon masks
@@ -30,7 +35,8 @@ async function processLogo() {
     await background.write('./assets/adaptive-icon.png');
     await background.write('./assets/splash.png');
     await background.write('./assets/favicon.png');
-    console.log("Images padded and saved successfully!");
+    
+    console.log("Images cropped (text removed), padded, and saved successfully!");
   } catch (error) {
     console.error("Error processing image:", error);
   }

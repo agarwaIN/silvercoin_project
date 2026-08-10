@@ -77,7 +77,7 @@ export default function EmployeeDashboard({ navigation }) {
             <Card>
               <View style={styles.loanRow}>
                 <View style={styles.loanLeft}>
-                  <Text style={styles.loanId}>{loan.loanId}</Text>
+                  <Text style={styles.loanId}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
                   <Text style={styles.ownerName}>{loan.ownerName || 'No owner yet'}</Text>
                   {loan.loanAmount ? (
                     <Text style={styles.amount}>₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>

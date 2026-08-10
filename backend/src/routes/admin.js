@@ -306,14 +306,16 @@ router.post('/loans/:loanId/disburse', async (req, res) => {
 
   const updates = { disbursements, status: 'active' };
   
-  // Generate officialLoanId on first disbursement if not exists
-  if (!loan.officialLoanId) {
-    const seq = await db.getNextLoanSeq('official-loans');
-    updates.officialLoanId = `SL-${seq.toString().padStart(5, '0')}`;
+  // Generate displayLoanId on first disbursement if not exists
+  if (!loan.displayLoanId && !loan.officialLoanId) {
+    const { generateDisplayLoanId } = require('../services/loanIdService');
+    updates.displayLoanId = await generateDisplayLoanId();
+  } else if (!loan.displayLoanId && loan.officialLoanId) {
+    updates.displayLoanId = loan.officialLoanId;
   }
 
   await db.updateLoan(loan.loanId, updates);
-  res.json({ message: 'Disbursement recorded', officialLoanId: updates.officialLoanId || loan.officialLoanId });
+  res.json({ message: 'Disbursement recorded', displayLoanId: updates.displayLoanId || loan.displayLoanId });
 });
 
 router.post('/loans/:loanId/approve', async (req, res) => {

@@ -16,7 +16,7 @@ export default function CustomSplash({ onDone }) {
   return (
     <View style={styles.root}>
       <Animated.View style={{ opacity }}>
-        <Image source={require('../../assets/silvercoin-logo.png')} style={styles.logo} resizeMode="contain" />
+        <Image source={require('../../assets/loanApp.png')} style={styles.logo} resizeMode="contain" />
       </Animated.View>
     </View>
   );

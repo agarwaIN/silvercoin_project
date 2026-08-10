@@ -1,3 +1,3 @@
 
 
-export const SILVERCOIN_LOGO = require('../../assets/image.png');
+export const SILVERCOIN_LOGO = require('../../assets/loanApp.png');

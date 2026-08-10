@@ -1,8 +1,13 @@
 const { getNextLoanSeq } = require('./mongoService');
 
-async function generateLoanId() {
-  const seq = await getNextLoanSeq('placeholder');
-  return `LN-${seq}`;
+async function generateAppId() {
+  const seq = await getNextLoanSeq('app');
+  return `APP-${seq}`;
 }
 
-module.exports = { generateLoanId };
+async function generateDisplayLoanId() {
+  const seq = await getNextLoanSeq('loan');
+  return `SL-${seq}`;
+}
+
+module.exports = { generateAppId, generateDisplayLoanId };

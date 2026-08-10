@@ -4,7 +4,7 @@ const db = require('../services/mongoService');
 const { verifyToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/roleCheck');
 const { auditLog } = require('../middleware/auditMiddleware');
-const { generateLoanId } = require('../services/loanIdService');
+const { generateAppId } = require('../services/loanIdService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
 
@@ -38,11 +38,12 @@ router.get('/loans', async (req, res) => {
 
 router.post('/loans', async (req, res) => {
   const user = await db.getUserById(req.user.userId);
-  const loanId = await generateLoanId();
+  const appId = await generateAppId();
   const now = new Date().toISOString();
   const loan = {
-    loanId,
-    applicationNumber: loanId,
+    loanId: appId,
+    applicationNumber: appId,
+    displayLoanId: null,
     employeeId: user.userId,
     adminId: user.createdBy,
     status: 'draft',

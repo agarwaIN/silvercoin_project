@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image } from 'react-native';
 
-const logo = require('../../assets/silvercoin-logo.png');
+const logo = require('../../assets/loanApp.png');
 
 export default function SilvercoinLogoMark({ size = 56, style }) {
   return (
