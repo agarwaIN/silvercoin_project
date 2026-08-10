@@ -4,10 +4,10 @@
     "slug": "silvercoin-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/loanApp.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/loanApp.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#F0F4F1"
     },
@@ -28,7 +28,7 @@
       "usesCleartextTraffic": true,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/loanApp.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#4B6B4E"
       },
       "package": "com.silvercoin.loanapp",

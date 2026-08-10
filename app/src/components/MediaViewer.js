@@ -1,11 +1,28 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Linking, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Linking, StyleSheet, ScrollView, Modal, Image, SafeAreaView } from 'react-native';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { useVideoPlayer, VideoView } from 'expo-video';
+
+// Subcomponent to handle video playback cleanly with the hook
+function FullScreenVideo({ url, onClose }) {
+  const player = useVideoPlayer(url, player => {
+    player.play();
+  });
+  return (
+    <View style={styles.modalBg}>
+      <VideoView style={styles.fullMedia} player={player} allowsFullscreen allowsPictureInPicture />
+      <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+        <Ionicons name="close" size={30} color={colors.white} />
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function MediaViewer({ fetchMedia }) {
   const [media, setMedia] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -16,6 +33,14 @@ export default function MediaViewer({ fetchMedia }) {
       console.error(err);
     }
     setLoading(false);
+  };
+
+  const handlePress = (m) => {
+    if (m.type === 'document') {
+      Linking.openURL(m.url);
+    } else {
+      setSelectedMedia(m);
+    }
   };
 
   if (!media && !loading) {
@@ -36,7 +61,7 @@ export default function MediaViewer({ fetchMedia }) {
       <Text style={styles.title}>Uploaded Media & Documents</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {media.map((m, i) => (
-          <TouchableOpacity key={i} style={styles.mediaBox} onPress={() => Linking.openURL(m.url)}>
+          <TouchableOpacity key={i} style={styles.mediaBox} onPress={() => handlePress(m)}>
             <Ionicons 
               name={m.type === 'video' ? 'videocam' : m.type === 'document' ? 'document-text' : 'image'} 
               size={32} color={colors.muted} 
@@ -49,6 +74,20 @@ export default function MediaViewer({ fetchMedia }) {
         ))}
         {media.length === 0 && <Text style={{ color: colors.muted, fontSize: 13 }}>No media uploaded yet.</Text>}
       </ScrollView>
+
+      {/* Inline Fullscreen Viewer */}
+      <Modal visible={!!selectedMedia} transparent animationType="fade" onRequestClose={() => setSelectedMedia(null)}>
+        {selectedMedia?.type === 'video' ? (
+          <FullScreenVideo url={selectedMedia.url} onClose={() => setSelectedMedia(null)} />
+        ) : selectedMedia?.type === 'photo' || selectedMedia?.type === 'image' ? (
+          <View style={styles.modalBg}>
+            <Image source={{ uri: selectedMedia.url }} style={styles.fullMedia} resizeMode="contain" />
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setSelectedMedia(null)}>
+              <Ionicons name="close" size={30} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </Modal>
     </View>
   );
 }
@@ -61,5 +100,8 @@ const styles = StyleSheet.create({
   scroll: { gap: 12 },
   mediaBox: { width: 100, height: 100, backgroundColor: colors.inputBg, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, padding: 8 },
   mediaLabel: { fontSize: 11, color: colors.text, marginTop: 6, textTransform: 'capitalize', fontWeight: '500' },
-  viewText: { fontSize: 9, color: colors.primary, marginTop: 2 }
+  viewText: { fontSize: 9, color: colors.primary, marginTop: 2 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
+  fullMedia: { width: '100%', height: '100%' },
+  closeBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 25 }
 });
