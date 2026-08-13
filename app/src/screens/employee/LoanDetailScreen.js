@@ -73,7 +73,7 @@ export default function LoanDetailScreen({ route, navigation }) {
         </View>
         
         <LoanDetailsView loan={loan} />
-        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} />
+        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
 
         {loan.emiChangeRequest && loan.emiChangeRequest.status === 'pending' && (
           <View style={styles.pendingBanner}>

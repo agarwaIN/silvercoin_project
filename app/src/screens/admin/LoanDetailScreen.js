@@ -196,7 +196,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           <StatusBadge status={loan.status} />
         </View>
         <LoanDetailsView loan={loan} />
-        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} />
+        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
 
         {loan.status === 'submitted' && (
           <View style={styles.actionContainer}>

@@ -97,7 +97,106 @@ router.post('/loans/:loanId/submit', async (req, res) => {
   res.json(await db.getLoanById(loan.loanId));
 });
 
-router.get('/emi-this-month', (req, res) => res.json({ count: 0, emis: [] }));
+router.get('/emi-this-month', async (req, res) => {
+  try {
+    const loans = await db.listLoansByEmployee(req.user.userId);
+    let totalCount = 0;
+    let totalAmount = 0;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    for (const loan of loans) {
+      const emis = await db.listEmiByLoan(loan.loanId);
+      for (const emi of emis) {
+        if ((emi.status === 'paid' || emi.status === 'partial') && emi.paidDate && emi.paidDate.startsWith(currentMonth)) {
+          totalCount++;
+          totalAmount += Number(emi.paidAmount || 0);
+        }
+      }
+    }
+    res.json({ count: totalCount, totalAmount });
+  } catch (err) {
+    res.json({ count: 0, totalAmount: 0 });
+  }
+});
+
+router.get('/recovery', async (req, res) => {
+  try {
+    const loans = await db.listLoansByEmployee(req.user.userId);
+    const recoveryItems = [];
+
+    for (const loan of loans) {
+      if (!['active', 'approved'].includes(loan.status)) continue;
+      const emis = await db.listEmiByLoan(loan.loanId);
+      for (const emi of emis) {
+        if (emi.status !== 'paid') {
+          const totalDue = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
+          const remainingDue = totalDue - Number(emi.paidAmount || 0);
+          recoveryItems.push({
+            paymentId: emi.paymentId,
+            loanId: loan.loanId,
+            displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
+            borrowerName: loan.ownerName || 'Borrower',
+            borrowerMobile: loan.ownerMobile || '',
+            borrowerAddress: loan.ownerAddress || loan.propertyAddress || '',
+            dueDate: emi.dueDate,
+            amount: Number(emi.amount || 0),
+            paidAmount: Number(emi.paidAmount || 0),
+            penaltyAmount: Number(emi.penaltyAmount || 0),
+            dueAmount: Math.max(0, remainingDue),
+            status: emi.status || 'pending',
+            employeeId: loan.employeeId,
+          });
+        }
+      }
+    }
+
+    res.json(recoveryItems.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)));
+  } catch (err) {
+    console.error('Employee Recovery Fetch Error:', err);
+    res.status(500).json({ message: 'Failed to fetch recovery items' });
+  }
+});
+
+router.post('/loans/:loanId/pay-emi', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+
+  const { paymentId, amount } = req.body;
+  if (!paymentId || amount == null || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid payment details' });
+  }
+
+  const emis = await db.listEmiByLoan(loan.loanId);
+  const emi = emis.find(e => e.paymentId === paymentId);
+  if (!emi) return res.status(404).json({ message: 'EMI not found' });
+
+  const totalRequired = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
+  const previouslyPaid = Number(emi.paidAmount || 0);
+  const newPaidAmount = previouslyPaid + Number(amount);
+
+  let newStatus = emi.status;
+  if (newPaidAmount >= totalRequired) {
+    newStatus = 'paid';
+  } else if (newPaidAmount > 0) {
+    newStatus = 'partial';
+  }
+
+  await db.updateEmiPayment(paymentId, {
+    paidAmount: newPaidAmount,
+    status: newStatus,
+    paidDate: new Date().toISOString(),
+    markedBy: req.user.userId
+  });
+
+  const allEmis = await db.listEmiByLoan(loan.loanId);
+  const allPaid = allEmis.every(e => e.status === 'paid');
+  if (allPaid && loan.status !== 'completed') {
+    await db.updateLoan(loan.loanId, { status: 'completed' });
+  }
+
+  res.json({ message: 'Payment recorded', status: newStatus, loanCompleted: allPaid });
+});
+
 router.get('/recovery-agents', (req, res) => res.json([]));
 router.get('/loans/:loanId/media-preview', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
@@ -114,7 +213,7 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
   }
   if (loan.propertyDocs) {
     for (const d of loan.propertyDocs) {
-      urls.push({ type: 'document', name: d.name, url: await getPresignedUrl(d.uri) });
+      urls.push({ type: 'document', name: d.name, docType: d.docType, date: d.date, url: await getPresignedUrl(d.uri) });
     }
   }
   res.json(urls);
@@ -132,17 +231,23 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   const key = `loans/${loan.loanId}/registry_${Date.now()}`;
   await uploadBuffer(key, req.file.buffer);
   
+  const docType = req.body.docType || 'Custom Document';
+  const name = req.body.name || req.file.originalname;
+  const docDate = req.body.date || new Date().toISOString().split('T')[0];
+
   const docs = loan.propertyDocs || [];
   docs.push({
     id: Date.now().toString(),
     uri: key,
-    name: req.file.originalname,
+    docType,
+    name,
+    date: docDate,
     uploaded: true,
     mimeType: req.file.mimetype
   });
   
   await db.updateLoan(loan.loanId, { propertyDocs: docs });
-  res.json({ message: 'Document uploaded', key });
+  res.json({ message: 'Document uploaded', key, doc: docs[docs.length - 1] });
 });
 
 router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {

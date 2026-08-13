@@ -11,6 +11,7 @@ import LoanDetailScreen from '../screens/admin/LoanDetailScreen';
 import InitialApproveScreen from '../screens/admin/InitialApproveScreen';
 import OrganizationSettingsScreen from '../screens/admin/OrganizationSettingsScreen';
 import ReportsScreen from '../screens/admin/ReportsScreen';
+import RecoveryScreen from '../screens/admin/RecoveryScreen';
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
 import { useAuth } from '../context/AuthContext';
 import { usePopup } from '../context/PopupContext';
@@ -45,6 +46,7 @@ function AdminInnerStack() {
       <MainStack.Screen name="Dashboard" component={AdminDashboard} />
       <MainStack.Screen name="Employees" component={EmployeeStack} />
       <MainStack.Screen name="Loans" component={LoansStack} />
+      <MainStack.Screen name="Recovery" component={RecoveryScreen} />
       <MainStack.Screen name="Reports" component={ReportsScreen} />
     </MainStack.Navigator>
   );
@@ -73,7 +75,7 @@ function AdminMainLayout() {
 
   return (
     <MainShell
-      routeNames={['Dashboard', 'Employees', 'Loans', 'Reports']}
+      routeNames={['Dashboard', 'Employees', 'Loans', 'Recovery', 'Reports']}
       activeRouteName={activeRouteName}
       extraMenuItems={extraMenuItems}
     >

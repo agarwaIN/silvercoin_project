@@ -10,6 +10,7 @@ import AgreementScreen from '../screens/employee/AgreementScreen';
 import LoanDetailScreen from '../screens/employee/LoanDetailScreen';
 import EmiChangeRequestScreen from '../screens/employee/EmiChangeRequestScreen';
 import EmployeeAccountScreen from '../screens/employee/EmployeeAccountScreen';
+import RecoveryScreen from '../screens/admin/RecoveryScreen';
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
 
 const RootStack = createStackNavigator();
@@ -33,6 +34,7 @@ function EmployeeInnerStack() {
     <MainStack.Navigator screenOptions={{ headerShown: false }}>
       <MainStack.Screen name="Dashboard" component={EmployeeDashboard} />
       <MainStack.Screen name="Loans" component={LoansStack} />
+      <MainStack.Screen name="Recovery" component={RecoveryScreen} />
     </MainStack.Navigator>
   );
 }
@@ -54,7 +56,7 @@ function EmployeeMainLayout() {
 
   return (
     <MainShell
-      routeNames={['Dashboard', 'Loans']}
+      routeNames={['Dashboard', 'Loans', 'Recovery']}
       activeRouteName={activeRouteName}
       extraMenuItems={extraMenuItems}
     >

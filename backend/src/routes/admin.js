@@ -34,7 +34,7 @@ router.post('/create-employee', [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  const { name, email, mobile } = req.body;
+  const { name, email, mobile, accessRights } = req.body;
   const [existingEmail, existingMobile] = await Promise.all([
     db.getUserByEmail(email),
     db.getUserByMobile(mobile),
@@ -46,6 +46,7 @@ router.post('/create-employee', [
   const passwordHash = await bcrypt.hash(password, 12);
   const userId = uuidv4();
   const now = new Date().toISOString();
+  const defaultRights = ['loan_creation', 'doc_verification', 'emi_collection'];
   const user = {
     userId,
     name,
@@ -53,6 +54,7 @@ router.post('/create-employee', [
     mobile,
     passwordHash,
     role: 'employee',
+    accessRights: Array.isArray(accessRights) && accessRights.length > 0 ? accessRights : defaultRights,
     isFirstLogin: true,
     isActive: true,
     createdBy: req.user.userId,
@@ -61,7 +63,20 @@ router.post('/create-employee', [
   await db.createUser(user);
   await sendCredentials({ name, email, password, role: 'employee' });
   console.log(`[credentials] employee ${email} temp password: ${password}`);
-  res.status(201).json({ message: 'Employee created successfully.', userId, tempPassword: password });
+  res.status(201).json({ message: 'Employee created successfully.', userId, tempPassword: password, accessRights: user.accessRights });
+});
+
+router.patch('/employees/:userId/access-rights', async (req, res) => {
+  const user = await db.getUserById(req.params.userId);
+  if (!user || user.createdBy !== req.user.userId || user.role !== 'employee') {
+    return res.status(404).json({ message: 'Employee not found' });
+  }
+  const { accessRights } = req.body;
+  if (!Array.isArray(accessRights)) {
+    return res.status(400).json({ message: 'accessRights must be an array' });
+  }
+  await db.updateUser(user.userId, { accessRights });
+  res.json({ message: 'Employee access rights updated', accessRights });
 });
 
 router.patch('/employees/:userId/deactivate', async (req, res) => {
@@ -113,9 +128,72 @@ router.patch('/profile', async (req, res) => {
   res.json({ message: 'Profile updated' });
 });
 
-router.get('/emi-this-month', (req, res) => res.json({ count: 0, emis: [] }));
-router.get('/recovery', (req, res) => res.json([]));
-router.get('/recovery-agents', (req, res) => res.json([]));
+router.get('/emi-this-month', async (req, res) => {
+  try {
+    const loans = await db.listLoansByAdmin(req.user.userId);
+    let totalCount = 0;
+    let totalAmount = 0;
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+
+    for (const loan of loans) {
+      const emis = await db.listEmiByLoan(loan.loanId);
+      for (const emi of emis) {
+        if ((emi.status === 'paid' || emi.status === 'partial') && emi.paidDate && emi.paidDate.startsWith(currentMonth)) {
+          totalCount++;
+          totalAmount += Number(emi.paidAmount || 0);
+        }
+      }
+    }
+    res.json({ count: totalCount, totalAmount });
+  } catch (err) {
+    res.json({ count: 0, totalAmount: 0 });
+  }
+});
+
+router.get('/recovery', async (req, res) => {
+  try {
+    const loans = await db.listLoansByAdmin(req.user.userId);
+    const recoveryItems = [];
+
+    for (const loan of loans) {
+      if (!['active', 'approved'].includes(loan.status)) continue;
+      const emis = await db.listEmiByLoan(loan.loanId);
+      for (const emi of emis) {
+        if (emi.status !== 'paid') {
+          const totalDue = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
+          const remainingDue = totalDue - Number(emi.paidAmount || 0);
+          recoveryItems.push({
+            paymentId: emi.paymentId,
+            loanId: loan.loanId,
+            displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
+            borrowerName: loan.ownerName || 'Borrower',
+            borrowerMobile: loan.ownerMobile || '',
+            borrowerAddress: loan.ownerAddress || loan.propertyAddress || '',
+            dueDate: emi.dueDate,
+            amount: Number(emi.amount || 0),
+            paidAmount: Number(emi.paidAmount || 0),
+            penaltyAmount: Number(emi.penaltyAmount || 0),
+            dueAmount: Math.max(0, remainingDue),
+            status: emi.status || 'pending',
+            employeeId: loan.employeeId,
+          });
+        }
+      }
+    }
+
+    res.json(recoveryItems.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)));
+  } catch (err) {
+    console.error('Recovery Fetch Error:', err);
+    res.status(500).json({ message: 'Failed to fetch recovery items' });
+  }
+});
+
+router.get('/recovery-agents', async (req, res) => {
+  const users = await db.listUsersByCreator(req.user.userId);
+  const recoveryEmps = users.filter(u => u.role === 'employee' && (u.accessRights?.includes('emi_collection') || !u.accessRights));
+  res.json(recoveryEmps);
+});
 
 router.get('/reports', async (req, res) => {
   try {
@@ -473,6 +551,33 @@ router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
   // We can update EMIs to reflect this in the future if needed.
 
   res.json({ message: 'Foreclosure approved and loan completed' });
+});
+
+router.post('/loans/:loanId/registry-document', upload.single('document'), async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+  const key = `loans/${loan.loanId}/registry_${Date.now()}`;
+  await uploadBuffer(key, req.file.buffer);
+  
+  const docType = req.body.docType || 'Custom Document';
+  const name = req.body.name || req.file.originalname;
+  const docDate = req.body.date || new Date().toISOString().split('T')[0];
+
+  const docs = loan.propertyDocs || [];
+  docs.push({
+    id: Date.now().toString(),
+    uri: key,
+    docType,
+    name,
+    date: docDate,
+    uploaded: true,
+    mimeType: req.file.mimetype
+  });
+  
+  await db.updateLoan(loan.loanId, { propertyDocs: docs });
+  res.json({ message: 'Document uploaded', key, doc: docs[docs.length - 1] });
 });
 
 router.post('/profile/organization-logo', upload.single('logo'), async (req, res) => {
