@@ -98,9 +98,10 @@ export default function LoginScreen({ navigation }) {
         return;
       }
 
+      const targetUrl = err.config ? `${err.config.baseURL || ''}${err.config.url || ''}` : '';
       const msg =
         serverMsg
-        || (err.message && !err.response ? err.message : null)
+        || (err.message && !err.response ? `${err.message}${targetUrl ? `\nTarget: ${targetUrl}` : ''}` : null)
         || 'Something went wrong. Check your network and API URL.';
       showAlert('Login Failed', msg);
     } finally {
