@@ -25,10 +25,7 @@ const DEFAULT_DYNAMODB_ENDPOINT = `http://${DEFAULT_DYNAMODB_HOST}:${DEFAULT_DYN
 const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT?.trim() || DEFAULT_DYNAMODB_ENDPOINT;
 
 function isLocalDynamo() {
-  if (process.env.NODE_ENV === 'production') {
-    return process.env.USE_LOCAL_DYNAMO === 'true';
-  }
-  return !process.env.AWS_ACCESS_KEY_ID;
+  return process.env.USE_LOCAL_DYNAMO === 'true';
 }
 
 function getDynamoClientOptions() {
