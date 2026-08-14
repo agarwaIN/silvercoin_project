@@ -68,7 +68,8 @@
       "expo-video",
       "expo-font",
       "expo-splash-screen",
-      "expo-status-bar"
+      "expo-status-bar",
+      "./plugins/withNetworkSecurity.js"
     ],
     "extra": {
       "eas": {
