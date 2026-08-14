@@ -42,13 +42,17 @@ function getDynamoClientOptions() {
 
   const options = {};
   if (process.env.AWS_REGION) {
-    options.region = process.env.AWS_REGION;
+    options.region = process.env.AWS_REGION.trim();
   }
   if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-    options.credentials = {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    const credentials = {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID.trim(),
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY.trim(),
     };
+    if (process.env.AWS_SESSION_TOKEN) {
+      credentials.sessionToken = process.env.AWS_SESSION_TOKEN.trim();
+    }
+    options.credentials = credentials;
   }
   return options;
 }
