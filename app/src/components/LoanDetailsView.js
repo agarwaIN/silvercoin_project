@@ -82,8 +82,8 @@ export default function LoanDetailsView({ loan }) {
         {loan.otherLoan && <Row label="Loan Details" value={loan.otherLoanDetails} fieldKey="otherLoanDetails" /> }
         <Row label="Possession" value={loan.possessionStatus} fieldKey="possessionStatus" />
         <Row label="Geo Location" value={loan.geoLocation?.lat ? `${loan.geoLocation.lat}, ${loan.geoLocation.lng}` : ''} fieldKey="geoLocation" />
-        <Row label="Property Address" value={loan.propertyAddress} fieldKey="propertyAddress" />
-        <Row label="Photos Uploaded" value={loan.propertyPhotos?.length ? `${loan.propertyPhotos.length} photo(s)` : ''} fieldKey="propertyPhotos" />
+        <Row label="House Video" value={loan.houseVideoUri ? '✓ Recorded' : (loan.propertyPhotos?.some(p => p.type === 'video') ? '✓ Recorded' : 'Not recorded')} fieldKey="houseVideoUri" />
+        <Row label="Photos Uploaded" value={loan.propertyPhotos?.length ? `${loan.propertyPhotos.length} item(s)` : ''} fieldKey="propertyPhotos" />
         <Row label="Docs Uploaded" value={loan.propertyDocs?.length ? `${loan.propertyDocs.length} doc(s)` : ''} fieldKey="propertyDocs" />
       </View>
 

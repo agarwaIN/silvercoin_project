@@ -12,7 +12,10 @@ const { sendCredentials } = require('../services/emailService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 150 * 1024 * 1024 },
+});
 
 const router = express.Router();
 router.use(verifyToken, requireRole('admin'), auditLog);
@@ -316,21 +319,46 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
   if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   
   const urls = [];
+  const seenKeys = new Set();
+
   if (loan.videoUri) {
-    urls.push({ type: 'video', url: await getPresignedUrl(loan.videoUri) });
+    urls.push({ type: 'video', name: 'Owner Verification Video', url: await getPresignedUrl(loan.videoUri) });
+    seenKeys.add(loan.videoUri);
+  }
+  if (loan.houseVideoUri && !seenKeys.has(loan.houseVideoUri)) {
+    urls.push({ type: 'video', name: 'House Video', url: await getPresignedUrl(loan.houseVideoUri) });
+    seenKeys.add(loan.houseVideoUri);
+  }
+  if (Array.isArray(loan.videos)) {
+    for (const v of loan.videos) {
+      if (v.uri && !seenKeys.has(v.uri)) {
+        urls.push({ type: 'video', name: v.name || 'Property / Verification Video', url: await getPresignedUrl(v.uri) });
+        seenKeys.add(v.uri);
+      }
+    }
   }
   if (loan.propertyPhotos) {
     for (const p of loan.propertyPhotos) {
-      urls.push({ type: 'photo', url: await getPresignedUrl(p.uri) });
+      if (p.uri && !seenKeys.has(p.uri)) {
+        const isVid = p.type === 'video' || (typeof p.uri === 'string' && p.uri.toLowerCase().endsWith('.mp4'));
+        urls.push({
+          type: isVid ? 'video' : 'photo',
+          name: isVid ? 'House / Property Video' : 'Property Photo',
+          url: await getPresignedUrl(p.uri),
+        });
+        seenKeys.add(p.uri);
+      }
     }
   }
   if (loan.propertyDocs) {
     for (const d of loan.propertyDocs) {
-      urls.push({ type: 'document', name: d.name, url: await getPresignedUrl(d.uri) });
+      if (d.uri) {
+        urls.push({ type: 'document', name: d.name || 'Property Document', docType: d.docType, date: d.date, url: await getPresignedUrl(d.uri) });
+      }
     }
   }
   if (loan.agreementUri) {
-    urls.push({ type: 'document', name: 'Agreement', url: await getPresignedUrl(loan.agreementUri) });
+    urls.push({ type: 'document', name: 'Loan Agreement', url: await getPresignedUrl(loan.agreementUri) });
   }
   res.json(urls);
 });

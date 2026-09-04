@@ -11,9 +11,7 @@ export const getLoan = (loanId) => api.get(`/admin/loans/${loanId}`).then((r) =>
 export const getLoanMediaPreview = (loanId) =>
   api.get(`/admin/loans/${loanId}/media-preview`).then((r) => r.data);
 export const uploadRegistryDocument = (loanId, formData) =>
-  api.post(`/admin/loans/${loanId}/registry-document`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  api.post(`/admin/loans/${loanId}/registry-document`, formData).then((r) => r.data);
 export const initialApproveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/initial-approve`, data).then((r) => r.data);
 export const approveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/approve`, data).then((r) => r.data);
 export const rejectLoan = (loanId, reason) => api.post(`/admin/loans/${loanId}/reject`, { reason }).then((r) => r.data);
@@ -28,9 +26,7 @@ export const rejectEmiProof = (loanId, paymentId) =>
 export const getProfile = () => api.get('/admin/profile').then((r) => r.data);
 export const patchProfile = (body) => api.patch('/admin/profile', body).then((r) => r.data);
 export const uploadOrganizationLogo = (formData) =>
-  api.post('/admin/profile/organization-logo', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  api.post('/admin/profile/organization-logo', formData).then((r) => r.data);
 export const getEmiThisMonth = () => api.get('/admin/emi-this-month').then((r) => r.data);
 export const getRecoveryAgents = () => api.get('/admin/recovery-agents').then((r) => r.data);
 export const createRecoveryAgent = (data) => api.post('/admin/create-recovery-agent', data).then((r) => r.data);

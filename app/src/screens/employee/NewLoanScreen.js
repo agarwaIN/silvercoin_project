@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Linking,
+  TextInput, Alert, ActivityIndicator, Linking, BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as DocumentPicker from 'expo-document-picker';
@@ -105,11 +105,101 @@ function SectionTitle({ title }) {
   return <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 8, marginBottom: 4 }}>{title}</Text>;
 }
 
+// ─── Video Section Card Component ───────────────────────────────────────────────
+function VideoSectionCard({
+  title,
+  required,
+  description,
+  videoUri,
+  videoUploaded,
+  player,
+  onRecordOrPick,
+  onRemove,
+  uploading,
+  uploadLabel,
+}) {
+  return (
+    <View style={vid.card}>
+      <View style={vid.cardHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={vid.title}>
+            {title} {required && <Text style={{ color: colors.error }}>*</Text>}
+          </Text>
+          <Text style={vid.sub}>{description}</Text>
+        </View>
+        {videoUploaded && (
+          <View style={vid.badgeUploaded}>
+            <Ionicons name="checkmark-circle" size={15} color={colors.success} />
+            <Text style={vid.badgeUploadedText}>Uploaded</Text>
+          </View>
+        )}
+      </View>
+
+      {videoUri ? (
+        <View style={vid.playerWrapper}>
+          <Text style={vid.previewHint}>Preview — play to verify recorded video:</Text>
+          <VideoView
+            player={player}
+            style={vid.player}
+            allowsFullscreen
+            allowsPictureInPicture
+          />
+          <View style={vid.previewActions}>
+            <TouchableOpacity
+              style={vid.replaceBtn}
+              onPress={onRecordOrPick}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={colors.dark} />
+              ) : (
+                <Ionicons name="videocam-outline" size={16} color={colors.dark} />
+              )}
+              <Text style={vid.replaceBtnText}>
+                {uploading ? 'Uploading...' : 'Re-record / Replace'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={vid.removeBtn}
+              onPress={onRemove}
+              disabled={uploading}
+            >
+              <Ionicons name="trash-outline" size={16} color={colors.error} />
+              <Text style={vid.removeBtnText}>Remove</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={vid.btn}
+          onPress={onRecordOrPick}
+          disabled={uploading}
+          activeOpacity={0.7}
+        >
+          <View style={vid.inner}>
+            {uploading ? (
+              <ActivityIndicator color={colors.dark} />
+            ) : (
+              <Ionicons name="videocam" size={28} color={colors.dark} />
+            )}
+            <Text style={vid.text}>
+              {uploading ? 'Uploading video...' : uploadLabel}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 // ─── STEP 1: Owner & Verification ─────────────────────────────────────────────
 function Step1({ data, setData, loanId }) {
   const [ifscLoading, setIfscLoading] = useState(false);
-  const [videoUploading, setVideoUploading] = useState(false);
-  const player = useVideoPlayer(data.videoUri || null, p => { p.loop = false; });
+  const [ownerUploading, setOwnerUploading] = useState(false);
+  const [houseUploading, setHouseUploading] = useState(false);
+
+  const ownerPlayer = useVideoPlayer(data.videoUri || null, p => { p.loop = false; });
+  const housePlayer = useVideoPlayer(data.houseVideoUri || null, p => { p.loop = false; });
 
   const fetchBankFromIFSC = async (ifsc) => {
     if (ifsc.length !== 11) { setData(d => ({ ...d, bankName: '' })); return; }
@@ -125,27 +215,87 @@ function Step1({ data, setData, loanId }) {
     } catch { } finally { setIfscLoading(false); }
   };
 
-  const pickAndUploadVideo = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission needed', 'Allow camera access to record video.'); return; }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      videoMaxDuration: 60,
-      quality: 0.7,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const uri = result.assets[0].uri;
-    setData(d => ({ ...d, videoUri: uri, videoUploaded: false }));
+  const pickVideo = (videoType = 'owner') => {
+    const isHouse = videoType === 'house';
+    Alert.alert(
+      isHouse ? 'House / Property Video' : 'Owner Verification Video',
+      'Choose how to capture the video:',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Record Video (Camera)',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Allow camera access to record video.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+              videoMaxDuration: 60,
+            });
+            if (result.canceled || !result.assets?.[0]) return;
+            handleVideoCaptured(result.assets[0].uri, videoType);
+          },
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Allow gallery access to select video.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+            });
+            if (result.canceled || !result.assets?.[0]) return;
+            handleVideoCaptured(result.assets[0].uri, videoType);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleVideoCaptured = async (uri, videoType) => {
+    const isHouse = videoType === 'house';
+    if (isHouse) {
+      setData(d => ({ ...d, houseVideoUri: uri, houseVideoUploaded: false }));
+    } else {
+      setData(d => ({ ...d, videoUri: uri, videoUploaded: false }));
+    }
+
     if (!loanId) return;
-    setVideoUploading(true);
+
+    const setUploading = isHouse ? setHouseUploading : setOwnerUploading;
+    setUploading(true);
     try {
       const fd = new FormData();
-      fd.append('video', { uri, name: 'owner_video.mp4', type: 'video/mp4' });
+      fd.append('video', {
+        uri,
+        name: isHouse ? 'house_video.mp4' : 'owner_video.mp4',
+        type: 'video/mp4',
+      });
+      fd.append('videoType', videoType);
       await uploadVideo(loanId, fd);
-      setData(d => ({ ...d, videoUploaded: true }));
+      if (isHouse) {
+        setData(d => ({ ...d, houseVideoUploaded: true }));
+      } else {
+        setData(d => ({ ...d, videoUploaded: true }));
+      }
     } catch {
-      Alert.alert('Upload failed', 'Video saved locally. Will retry on submit.');
-    } finally { setVideoUploading(false); }
+      Alert.alert('Upload notice', 'Video saved locally. Will retry on next step or submit.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeVideo = (videoType) => {
+    if (videoType === 'house') {
+      setData(d => ({ ...d, houseVideoUri: null, houseVideoUploaded: false }));
+    } else {
+      setData(d => ({ ...d, videoUri: null, videoUploaded: false }));
+    }
   };
 
   return (
@@ -205,46 +355,54 @@ function Step1({ data, setData, loanId }) {
       <FieldLabel text="Owner Address" required />
       <StyledInput value={data.ownerAddress} onChangeText={v => setData(d => ({ ...d, ownerAddress: v }))} placeholder="Full residential address" multiline />
 
-      {/* Owner Verification Video */}
-      <View style={{ marginTop: 20, marginBottom: 8 }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
-          Owner Verification Video <Text style={{ color: colors.error }}>*</Text>
-        </Text>
-        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4, marginBottom:4 }}>
-          Record the owner stating their name, property details, and loan purpose. Max 60 seconds.
-        </Text>
-        {data.videoUri ? (
-          <>
-            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6, marginBottom: 8 }}>
-              Preview — play to verify. Tap Re-record to replace.
-            </Text>
-            <VideoView
-              player={player}
-              style={{ width: '100%', height: 220, borderRadius: 10, backgroundColor: '#000', marginBottom: 12 }}
-              allowsFullscreen
-              allowsPictureInPicture
-            />
-            {data.videoUploaded && <Text style={{ fontSize: 12, color: colors.success, marginBottom: 8 }}>✓ Video uploaded successfully</Text>}
-          </>
-        ) : null}
-        <TouchableOpacity style={vid.btn} onPress={pickAndUploadVideo} disabled={videoUploading}>
-          <View style={vid.inner}>
-            {videoUploading
-              ? <ActivityIndicator color={colors.dark} />
-              : <Ionicons name="videocam" size={28} color={colors.dark} />}
-            <Text style={vid.text}>
-              {videoUploading ? 'Uploading video...' : data.videoUri ? 'Re-record / replace video' : 'Record verification video'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+      {/* Video 1: Owner Verification Video */}
+      <VideoSectionCard
+        title="Owner Verification Video"
+        required
+        description="Record the owner stating their name, property details, and loan purpose. Max 60 seconds."
+        videoUri={data.videoUri}
+        videoUploaded={data.videoUploaded}
+        player={ownerPlayer}
+        onRecordOrPick={() => pickVideo('owner')}
+        onRemove={() => removeVideo('owner')}
+        uploading={ownerUploading}
+        uploadLabel={data.videoUri ? 'Re-record / replace owner video' : 'Record owner verification video'}
+      />
+
+      {/* Video 2: House / Property Video */}
+      <VideoSectionCard
+        title="House / Property Video"
+        required
+        description="Record or upload a video walkthrough of the house / property (exterior & interior). Max 60 seconds."
+        videoUri={data.houseVideoUri}
+        videoUploaded={data.houseVideoUploaded}
+        player={housePlayer}
+        onRecordOrPick={() => pickVideo('house')}
+        onRemove={() => removeVideo('house')}
+        uploading={houseUploading}
+        uploadLabel={data.houseVideoUri ? 'Re-record / replace house video' : 'Record house walkthrough video'}
+      />
     </View>
   );
 }
 const vid = StyleSheet.create({
-  btn: { borderWidth: 1.5, borderColor: colors.dark, borderStyle: 'dashed', borderRadius: 12, padding: 20, alignItems: 'center', marginBottom: 8 },
+  card: { marginTop: 18, marginBottom: 8, backgroundColor: colors.white, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 8 },
+  title: { fontSize: 15, fontWeight: '700', color: colors.text },
+  sub: { fontSize: 12, color: colors.muted, marginTop: 3, lineHeight: 16 },
+  badgeUploaded: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  badgeUploadedText: { fontSize: 11, fontWeight: '600', color: colors.success },
+  playerWrapper: { marginTop: 6, marginBottom: 4 },
+  previewHint: { fontSize: 12, color: colors.muted, marginBottom: 6 },
+  player: { width: '100%', height: 210, borderRadius: 10, backgroundColor: '#000', marginBottom: 10 },
+  previewActions: { flexDirection: 'row', gap: 10 },
+  replaceBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg },
+  replaceBtnText: { fontSize: 12, fontWeight: '600', color: colors.dark },
+  removeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FEE2E2', backgroundColor: '#FEF2F2' },
+  removeBtnText: { fontSize: 12, fontWeight: '600', color: colors.error },
+  btn: { borderWidth: 1.5, borderColor: colors.dark, borderStyle: 'dashed', borderRadius: 12, paddingVertical: 20, paddingHorizontal: 16, alignItems: 'center', backgroundColor: colors.inputBg, marginTop: 4 },
   inner: { alignItems: 'center', gap: 8 },
-  text: { fontSize: 13, color: colors.dark, fontWeight: '600' },
+  text: { fontSize: 13, color: colors.dark, fontWeight: '600', textAlign: 'center' },
 });
 
 // ─── STEP 2: Property Details ──────────────────────────────────────────────────
@@ -641,7 +799,8 @@ function Step4({ data }) {
         <Row label="Occupation" value={data.familyOccupation} />
         <Row label="Monthly Income" value={data.monthlyIncome ? `₹${data.monthlyIncome}` : ''} />
         <Row label="Address" value={data.ownerAddress} />
-        <Row label="Video" value={data.videoUri ? '✓ Recorded' : 'Not recorded'} />
+        <Row label="Owner Video" value={data.videoUri ? '✓ Recorded' : 'Not recorded'} />
+        <Row label="House Video" value={data.houseVideoUri ? '✓ Recorded' : 'Not recorded'} />
       </View>
       <View style={rv.card}>
         <Text style={rv.section}>Bank Details</Text>
@@ -681,8 +840,45 @@ const rv = StyleSheet.create({
   value: { fontSize: 13, color: colors.text, fontWeight: '500', flex: 1.5, textAlign: 'right' },
 });
 
+// ─── INITIAL FORM DATA ────────────────────────────────────────────────────────
+const initialFormData = {
+  ownerName: '',
+  ownerMobile: '',
+  ownerEmail: '',
+  aadhaar: '',
+  spouseName: '',
+  familyOccupation: '',
+  monthlyIncome: '',
+  ifsc: '',
+  bankName: '',
+  accountHolder: '',
+  accountNumber: '',
+  ownerAddress: '',
+  videoUri: null,
+  videoUploaded: false,
+  houseVideoUri: null,
+  houseVideoUploaded: false,
+  propertyPhotos: [],
+  propertyArea: '',
+  marketValue: '',
+  descendantCount: '',
+  otherLoan: 'No',
+  otherLoanDetails: '',
+  geoLat: '',
+  geoLng: '',
+  geoDate: '',
+  geoAddress: '',
+  possessionStatus: '',
+  propertyDocs: [],
+  loanAmount: '',
+  loanPurpose: '',
+  repaymentMonths: '',
+  notes: '',
+};
+
 // ─── MAIN SCREEN ───────────────────────────────────────────────────────────────
 export default function NewLoanScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
   const { showAlert } = usePopup();
   const existingLoan = route.params?.existingLoan;
   const [step, setStep] = useState(0);
@@ -691,6 +887,7 @@ export default function NewLoanScreen({ route, navigation }) {
   const scrollRef = useRef(null);
 
   const [formData, setFormData] = useState({
+    ...initialFormData,
     ownerName: existingLoan?.ownerName || '', 
     ownerMobile: existingLoan?.ownerMobile || '', 
     ownerEmail: existingLoan?.ownerEmail || '', 
@@ -705,6 +902,8 @@ export default function NewLoanScreen({ route, navigation }) {
     ownerAddress: existingLoan?.ownerAddress || '', 
     videoUri: existingLoan?.videoUri || null, 
     videoUploaded: !!existingLoan?.videoUri,
+    houseVideoUri: existingLoan?.houseVideoUri || null,
+    houseVideoUploaded: !!existingLoan?.houseVideoUri,
     propertyPhotos: existingLoan?.propertyPhotos || [], 
     propertyArea: existingLoan?.propertyArea?.toString() || '', 
     marketValue: existingLoan?.marketValue?.toString() || '',
@@ -723,27 +922,75 @@ export default function NewLoanScreen({ route, navigation }) {
     notes: existingLoan?.notes || '',
   });
 
-  const validateStep = () => {
-    if (step === 0) {
-      if (!formData.ownerName.trim()) { showAlert('Missing', 'Enter owner name.'); return false; }
-      if (!formData.ownerMobile.trim()) { showAlert('Missing', 'Enter owner mobile.'); return false; }
-      if (!formData.aadhaar.trim()) { showAlert('Missing', 'Enter Aadhaar number.'); return false; }
-      if (!formData.videoUri) { showAlert('Missing', 'Record owner verification video.'); return false; }
-    }
-    if (step === 1) {
-      if (!formData.propertyPhotos.length) { showAlert('Missing', 'Add at least one property photo.'); return false; }
-      if (!formData.propertyArea.trim()) { showAlert('Missing', 'Enter property area.'); return false; }
-      if (!formData.geoLat) { showAlert('Missing', 'Capture geo location.'); return false; }
-    }
-    if (step === 2) {
-      if (!formData.loanAmount.trim()) { showAlert('Missing', 'Enter loan amount.'); return false; }
-      if (!formData.loanPurpose.trim()) { showAlert('Missing', 'Enter loan purpose.'); return false; }
-    }
-    return true;
+  const hasFilledData = () => {
+    return (
+      !!formData.ownerName?.trim() ||
+      !!formData.ownerMobile?.trim() ||
+      !!formData.aadhaar?.trim() ||
+      !!formData.videoUri ||
+      !!formData.houseVideoUri ||
+      (formData.propertyPhotos && formData.propertyPhotos.length > 0) ||
+      !!formData.propertyArea?.trim() ||
+      !!formData.loanAmount?.trim()
+    );
   };
 
+  const handleRefreshConfirm = () => {
+    if (!hasFilledData()) {
+      showAlert('Form is Empty', 'No data has been entered yet to reset.');
+      return;
+    }
+    showAlert(
+      'Reset Form?',
+      'Are you sure you want to clear all filled data? All unsaved information will be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Clear Data',
+          style: 'destructive',
+          onPress: () => {
+            setFormData(initialFormData);
+            setStep(0);
+            setLoanId(null);
+            showAlert('Cleared', 'Form data has been cleared.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBackConfirm = () => {
+    if (step > 0) {
+      setStep(s => s - 1);
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    } else if (hasFilledData()) {
+      showAlert(
+        'Discard Application?',
+        'You have unsaved form data. Are you sure you want to go back and discard it?',
+        [
+          { text: 'Keep Editing', style: 'cancel' },
+          {
+            text: 'Discard & Exit',
+            style: 'destructive',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  useEffect(() => {
+    const onHardwareBack = () => {
+      handleBackConfirm();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+    return () => sub.remove();
+  }, [step, formData]);
+
   const handleNext = async () => {
-    // if (!validateStep()) return;
     setLoading(true);
     try {
       let currentLoanId = loanId;
@@ -761,11 +1008,33 @@ export default function NewLoanScreen({ route, navigation }) {
           bankDetails: { ifsc: formData.ifsc, bankName: formData.bankName, accountHolder: formData.accountHolder, accountNumber: formData.accountNumber },
           ownerAddress: formData.ownerAddress,
         });
+
+        // Upload Owner Video if pending
         if (formData.videoUri && !formData.videoUploaded) {
-          const fd = new FormData();
-          fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
-          await uploadVideo(currentLoanId, fd);
-          setFormData(d => ({ ...d, videoUploaded: true }));
+          try {
+            const fd = new FormData();
+            fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
+            fd.append('videoType', 'owner');
+            await uploadVideo(currentLoanId, fd);
+            setFormData(d => ({ ...d, videoUploaded: true }));
+          } catch (vErr) {
+            console.warn('Owner video upload error:', vErr);
+            showAlert('Notice', 'Owner video saved locally. It will upload upon application submit.');
+          }
+        }
+
+        // Upload House Video if pending
+        if (formData.houseVideoUri && !formData.houseVideoUploaded) {
+          try {
+            const fdHouse = new FormData();
+            fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
+            fdHouse.append('videoType', 'house');
+            await uploadVideo(currentLoanId, fdHouse);
+            setFormData(d => ({ ...d, houseVideoUploaded: true }));
+          } catch (hErr) {
+            console.warn('House video upload error:', hErr);
+            showAlert('Notice', 'House video saved locally. It will upload upon application submit.');
+          }
         }
       }
       if (step === 1) {
@@ -791,17 +1060,31 @@ export default function NewLoanScreen({ route, navigation }) {
   };
 
   const handleBack = () => {
-    if (step > 0) {
-      setStep(s => s - 1);
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-    } else {
-      navigation.goBack();
-    }
+    handleBackConfirm();
   };
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      // Ensure pending videos are uploaded before final submit
+      if (formData.videoUri && !formData.videoUploaded && loanId) {
+        try {
+          const fd = new FormData();
+          fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
+          fd.append('videoType', 'owner');
+          await uploadVideo(loanId, fd);
+          setFormData(d => ({ ...d, videoUploaded: true }));
+        } catch {}
+      }
+      if (formData.houseVideoUri && !formData.houseVideoUploaded && loanId) {
+        try {
+          const fdHouse = new FormData();
+          fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
+          fdHouse.append('videoType', 'house');
+          await uploadVideo(loanId, fdHouse);
+          setFormData(d => ({ ...d, houseVideoUploaded: true }));
+        } catch {}
+      }
       await submitLoan(loanId);
       showAlert('Submitted!', 'Loan application submitted successfully.');
       navigation.goBack();
@@ -811,32 +1094,38 @@ export default function NewLoanScreen({ route, navigation }) {
   };
 
   return (
-    <View style={ms.safe} edges={['bottom', 'left', 'right']}>
-      {/* <View style={ms.header}>
-        <TouchableOpacity onPress={handleBack} style={ms.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={colors.white} />
-        </TouchableOpacity>
-        <View style={ms.logoBox}>
-          <Text style={ms.logoText}>S</Text>
-        </View>
-        <Text style={ms.headerTitle}>New Loan Application</Text>
-        <TouchableOpacity style={ms.menuBtn}>
-          <Ionicons name="menu" size={24} color={colors.white} />
-        </TouchableOpacity>
-      </View> */}
-  <Header title={"New Loan Application"} onBack={()=>navigation.goBack()} />
+    <View style={ms.safe}>
+      <Header
+        title="New Loan Application"
+        onBack={handleBackConfirm}
+        rightAction={
+          <TouchableOpacity
+            onPress={handleRefreshConfirm}
+            style={ms.headerActionBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Refresh and reset form"
+          >
+            <Ionicons name="refresh" size={20} color={colors.white} />
+          </TouchableOpacity>
+        }
+      />
 
       <StepBar current={step} />
 
-      <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 40 }}
+      >
         {step === 0 && <Step1 data={formData} setData={setFormData} loanId={loanId} />}
         {step === 1 && <Step2 data={formData} setData={setFormData} loanId={loanId} />}
         {step === 2 && <Step3 data={formData} setData={setFormData} />}
         {step === 3 && <Step4 data={formData} />}
       </ScrollView>
 
-      {/* Footer — Back + Next/Submit side by side */}
-      <View style={ms.footer}>
+      {/* Footer — Back + Next/Submit side by side with Android navigation safe area */}
+      <View style={[ms.footer, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         <View style={ms.footerRow}>
           {step > 0 && (
             <TouchableOpacity style={ms.backBtnFooter} onPress={handleBack} disabled={loading}>
@@ -853,7 +1142,6 @@ export default function NewLoanScreen({ route, navigation }) {
             </TouchableOpacity>
           )}
         </View>
-
       </View>
     </View>
   );
@@ -862,12 +1150,13 @@ export default function NewLoanScreen({ route, navigation }) {
 const ms = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { backgroundColor: colors.dark, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 14, gap: 10 },
+  headerActionBtn: { padding: 4, marginRight: 6 },
   backBtn: { padding: 2 },
   logoBox: { width: 32, height: 32, borderRadius: 6, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   logoText: { color: '#D4AF37', fontWeight: '900', fontSize: 16 },
   headerTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: colors.white },
   menuBtn: { padding: 2 },
-  footer: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
+  footer: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
   footerRow: { flexDirection: 'row', gap: 10 },
   backBtnFooter: { flex: 1, borderWidth: 1, borderColor: colors.dark, borderRadius: 12, paddingVertical: 12, alignItems: 'center', backgroundColor: colors.white },
   backTxtFooter: { fontSize: 16, fontWeight: '700', color: colors.dark },

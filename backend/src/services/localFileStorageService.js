@@ -44,13 +44,14 @@ async function openDownloadStream(key) {
 }
 
 async function getPresignedUrl(key, expiresIn = 3600) {
+  const secret = process.env.JWT_SECRET || 'silvercoin_secret_key_default';
   const token = jwt.sign(
     { key, type: 'file_access' },
-    process.env.JWT_SECRET,
+    secret,
     { expiresIn }
   );
 
-  const host = process.env.PUBLIC_ORIGIN;
+  const host = process.env.PUBLIC_ORIGIN || process.env.APP_PUBLIC_ORIGIN || 'http://13.200.237.51';
 
   return `${host.replace(/\/+$/, '')}/api/files/download?key=${encodeURIComponent(key)}&token=${token}`;
 }

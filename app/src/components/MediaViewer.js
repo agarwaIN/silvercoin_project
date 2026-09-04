@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -73,6 +73,12 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (loanId) {
+      load();
+    }
+  }, [loanId]);
 
   const handlePress = (m) => {
     if (m.type === 'document') {

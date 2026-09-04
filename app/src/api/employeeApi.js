@@ -7,9 +7,7 @@ export const getLoan = (loanId) => api.get(`/employee/loans/${loanId}`).then((r)
 export const createLoan = () => api.post('/employee/loans').then((r) => r.data);
 export const updateLoan = (loanId, data) => api.patch(`/employee/loans/${loanId}`, data).then((r) => r.data);
 export const uploadRegistryDocument = (loanId, formData) =>
-  api.post(`/employee/loans/${loanId}/registry-document`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  api.post(`/employee/loans/${loanId}/registry-document`, formData).then((r) => r.data);
 export const submitLoan = (loanId) => api.post(`/employee/loans/${loanId}/submit`).then((r) => r.data);
 export const getLoanPdf = (loanId) => api.get(`/employee/loans/${loanId}/pdf`).then((r) => r.data);
 
@@ -17,19 +15,13 @@ export const getLoanMediaPreview = (loanId) =>
   api.get(`/employee/loans/${loanId}/media-preview`).then((r) => r.data);
 
 export const uploadPropertyPhotos = (loanId, formData) =>
-  api.post(`/employee/loans/${loanId}/upload-photo`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  api.post(`/employee/loans/${loanId}/upload-photo`, formData).then((r) => r.data);
 
 export const uploadVideo = (loanId, formData) =>
-  api.post(`/employee/loans/${loanId}/upload-video`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  api.post(`/employee/loans/${loanId}/upload-video`, formData).then((r) => r.data);
 
 export const submitAgreement = (loanId, formData) =>
-  api.post(`/employee/loans/${loanId}/agreement`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  api.post(`/employee/loans/${loanId}/agreement`, formData).then((r) => r.data);
 
 export const markOwnerNotInterested = (loanId) =>
   api.post(`/employee/loans/${loanId}/owner-not-interested`).then((r) => r.data);
