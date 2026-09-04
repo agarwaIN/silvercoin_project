@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Linking, BackHandler,
+  TextInput, Alert, ActivityIndicator, Linking, BackHandler, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Sharing from 'expo-sharing';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
@@ -405,11 +406,27 @@ const vid = StyleSheet.create({
   text: { fontSize: 13, color: colors.dark, fontWeight: '600', textAlign: 'center' },
 });
 
+// ─── STANDARD PROPERTY DOCS LIST ─────────────────────────────────────────────
+const STANDARD_PROPERTY_DOCS = [
+  { id: 'registry_1', type: 'Property Registery - 1', title: 'Property Registery - 1', subtitle: 'Primary Property Registry' },
+  { id: 'registry_2', type: 'Registery - 2', title: 'Registery - 2', subtitle: 'Secondary Property Registry' },
+  { id: 'registry_3', type: 'Registery - 3', title: 'Registery - 3', subtitle: 'Tertiary Property Registry' },
+  { id: 'gift_deed', type: 'Gift Deed', title: 'Gift Deed', subtitle: 'Property Transfer / Gift Deed' },
+  { id: 'khasara', type: 'Khasara / Khatoni', title: 'Khasara / Khatoni', subtitle: 'Land Record Document' },
+  { id: 'farat', type: 'Farat', title: 'Farat', subtitle: 'Land Rights Document' },
+];
+
 // ─── STEP 2: Property Details ──────────────────────────────────────────────────
 function Step2({ data, setData, loanId }) {
   const [locLoading, setLocLoading] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
+
+  // Document upload modal state
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedDocType, setSelectedDocType] = useState('Property Registery - 1');
+  const [docNameInput, setDocNameInput] = useState('');
+  const [pickedAsset, setPickedAsset] = useState(null);
 
   // Remove photo/video
   const removePhoto = (uri) =>
@@ -488,26 +505,90 @@ function Step2({ data, setData, loanId }) {
     finally { setLocLoading(false); }
   };
 
-  const pickAndUploadDoc = async () => {
+  // Open Document handler with local file sharing support
+  const openDoc = async (uri) => {
+    if (!uri) return;
+    try {
+      if (uri.startsWith('http://') || uri.startsWith('https://')) {
+        await Linking.openURL(uri);
+      } else {
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (isAvailable) {
+          await Sharing.shareAsync(uri);
+        } else {
+          await Linking.openURL(uri);
+        }
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Could not open document preview.');
+    }
+  };
+
+  const openUploadModal = (docType) => {
+    setSelectedDocType(docType || 'Custom Document');
+    setDocNameInput(docType || '');
+    setPickedAsset(null);
+    setModalVisible(true);
+  };
+
+  const chooseFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
     if (result.canceled || !result.assets?.[0]) return;
-    const doc = result.assets[0];
-    const newDoc = { uri: doc.uri, name: doc.name, id: Date.now().toString(), uploaded: false, mimeType: doc.mimeType };
-    setData(d => ({ ...d, propertyDocs: [...(d.propertyDocs || []), newDoc] }));
+    const asset = result.assets[0];
+    setPickedAsset(asset);
+    if (!docNameInput.trim()) {
+      setDocNameInput(asset.name || selectedDocType);
+    }
+  };
+
+  const handleModalUpload = async () => {
+    if (!pickedAsset) {
+      Alert.alert('Required', 'Please pick a file to upload.');
+      return;
+    }
+    const finalName = docNameInput.trim() || pickedAsset.name || selectedDocType;
+    const newDoc = {
+      id: Date.now().toString(),
+      uri: pickedAsset.uri,
+      name: finalName,
+      docType: selectedDocType,
+      date: new Date().toISOString().split('T')[0],
+      uploaded: false,
+      mimeType: pickedAsset.mimeType || 'application/pdf',
+    };
+
+    // Filter existing matching standard doc or append new doc
+    setData(d => {
+      const existingDocs = d.propertyDocs || [];
+      const updated = selectedDocType === 'Custom Document'
+        ? [...existingDocs, newDoc]
+        : [...existingDocs.filter(doc => doc.docType !== selectedDocType && doc.name !== selectedDocType), newDoc];
+      return { ...d, propertyDocs: updated };
+    });
+
+    setModalVisible(false);
+
     if (!loanId) return;
     setDocUploading(true);
     try {
       const fd = new FormData();
-      fd.append('document', { uri: doc.uri, name: doc.name, type: doc.mimeType || 'application/pdf' });
+      fd.append('document', { uri: pickedAsset.uri, name: pickedAsset.name || 'document', type: pickedAsset.mimeType || 'application/pdf' });
+      fd.append('docType', selectedDocType);
+      fd.append('name', finalName);
+      fd.append('date', newDoc.date);
       await uploadRegistryDocument(loanId, fd);
-      setData(d => ({ ...d, propertyDocs: d.propertyDocs.map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true } : d2) }));
+      setData(d => ({
+        ...d,
+        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true } : d2)
+      }));
     } catch {
       Alert.alert('Upload notice', 'Document saved locally. Will retry on submit.');
-    } finally { setDocUploading(false); }
+    } finally {
+      setDocUploading(false);
+    }
   };
 
-  const removeDoc = (id) => setData(d => ({ ...d, propertyDocs: d.propertyDocs.filter(doc => doc.id !== id) }));
-  const openDoc = (uri) => Linking.openURL(uri).catch(() => Alert.alert('Error', 'Could not open document.'));
+  const removeDoc = (id) => setData(d => ({ ...d, propertyDocs: (d.propertyDocs || []).filter(doc => doc.id !== id) }));
 
   return (
     <View style={{ paddingHorizontal: 16 }}>
@@ -561,6 +642,91 @@ function Step2({ data, setData, loanId }) {
         </View>
       )}
       {photoUploading && <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>Uploading...</Text>}
+
+      {/* ── Standard Property Documents (Non-essential/Optional) ── */}
+      <FieldLabel text="Standard Property Documents — optional" />
+      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
+        Upload any available property documents. All items below are non-essential.
+      </Text>
+
+      <View style={stdS.container}>
+        {STANDARD_PROPERTY_DOCS.map((std) => {
+          const uploadedDoc = (data.propertyDocs || []).find(
+            (d) => d.docType === std.type || d.name?.toLowerCase() === std.title.toLowerCase()
+          );
+          return (
+            <View key={std.id} style={stdS.card}>
+              <View style={stdS.info}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons
+                    name={uploadedDoc ? "checkmark-circle" : "document-text-outline"}
+                    size={20}
+                    color={uploadedDoc ? colors.success : colors.dark}
+                  />
+                  <Text style={stdS.title}>{std.title}</Text>
+                </View>
+                <Text style={stdS.subtitle}>{std.subtitle}</Text>
+                {uploadedDoc && (
+                  <Text style={stdS.fileName} numberOfLines={1}>
+                    Named: {uploadedDoc.name} {uploadedDoc.uploaded ? '✓' : '(local)'}
+                  </Text>
+                )}
+              </View>
+              <View style={stdS.actions}>
+                {uploadedDoc ? (
+                  <>
+                    <TouchableOpacity style={stdS.viewBtn} onPress={() => openDoc(uploadedDoc.uri)}>
+                      <Ionicons name="eye-outline" size={15} color={colors.primary} />
+                      <Text style={stdS.viewTxt}>View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={stdS.removeBtn} onPress={() => removeDoc(uploadedDoc.id)}>
+                      <Ionicons name="trash-outline" size={15} color={colors.error} />
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity style={stdS.uploadBtn} onPress={() => openUploadModal(std.type)} disabled={docUploading}>
+                    <Ionicons name="cloud-upload-outline" size={15} color={colors.white} />
+                    <Text style={stdS.uploadTxt}>Upload</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* ── Custom / Additional Property Documents ── */}
+      <FieldLabel text="Additional Documents — optional" />
+      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}>
+        Upload electricity bill, tax receipts, or custom papers.
+      </Text>
+
+      <TouchableOpacity style={docS.uploadBtn} onPress={() => openUploadModal('Custom Document')} disabled={docUploading}>
+        {docUploading
+          ? <ActivityIndicator color={colors.white} size="small" />
+          : <Ionicons name="add-circle-outline" size={20} color={colors.white} />}
+        <Text style={docS.uploadTxt}>
+          {docUploading ? 'Uploading...' : '+ Add Other Document'}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Render Custom Documents List */}
+      {(data.propertyDocs || []).filter(d => !STANDARD_PROPERTY_DOCS.some(std => std.type === d.docType || std.title.toLowerCase() === d.name?.toLowerCase())).map(doc => (
+        <View key={doc.id} style={docS.row}>
+          <Ionicons name="document-text-outline" size={20} color={colors.dark} />
+          <View style={{ flex: 1 }}>
+            <Text style={docS.name} numberOfLines={1}>{doc.name}</Text>
+            <Text style={{ fontSize: 11, color: colors.muted }}>{doc.docType || 'Custom Document'}</Text>
+          </View>
+          {doc.uploaded && <Ionicons name="checkmark-circle" size={16} color={colors.success} />}
+          <TouchableOpacity onPress={() => openDoc(doc.uri)} style={{ paddingHorizontal: 6 }}>
+            <Ionicons name="eye-outline" size={18} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => removeDoc(doc.id)} style={{ paddingHorizontal: 6 }}>
+            <Ionicons name="trash-outline" size={18} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+      ))}
 
       {/* ── Property Area ── */}
       <FieldLabel text="Property Area (sq. m)" required />
@@ -626,44 +792,50 @@ function Step2({ data, setData, loanId }) {
         </TouchableOpacity>
       )}
 
-      {/* ── Property Registry ── */}
-      <FieldLabel text="Property registry (optional)" />
-      <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 10 }}>
-        Upload the property registry paper as PDF or a clear photo. You can preview after upload.
-      </Text>
+      {/* ── Document Upload Modal with Naming Field ── */}
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <View style={stdS.modalOverlay}>
+          <View style={stdS.modalContent}>
+            <View style={stdS.modalHeader}>
+              <Text style={stdS.modalTitle}>Upload Document</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
 
-      <TouchableOpacity style={docS.uploadBtn} onPress={pickAndUploadDoc} disabled={docUploading}>
-        {docUploading
-          ? <ActivityIndicator color={colors.white} size="small" />
-          : <Ionicons name="document-attach-outline" size={20} color={colors.white} />}
-        <Text style={docS.uploadTxt}>
-          {docUploading ? 'Uploading...' : (data.propertyDocs || []).length > 0 ? 'Replace registry document' : 'Upload registry document'}
-        </Text>
-      </TouchableOpacity>
+            <Text style={stdS.modalLabel}>Document Category:</Text>
+            <View style={stdS.categoryBadge}>
+              <Text style={stdS.categoryBadgeTxt}>{selectedDocType}</Text>
+            </View>
 
-      {(data.propertyDocs || []).map(doc => (
-        <View key={doc.id}>
-          <View style={docS.row}>
-            <Ionicons name="document-text-outline" size={20} color={colors.dark} />
-            <Text style={docS.name} numberOfLines={1}>{doc.name}</Text>
-            {doc.uploaded && <Ionicons name="checkmark-circle" size={16} color={colors.success} />}
-            <TouchableOpacity onPress={() => removeDoc(doc.id)}>
-              <Ionicons name="trash-outline" size={18} color={colors.error} />
+            <Text style={stdS.modalLabel}>Document Name / Title:</Text>
+            <TextInput
+              style={stdS.modalInput}
+              value={docNameInput}
+              onChangeText={setDocNameInput}
+              placeholder="e.g. Property Registry 1"
+              placeholderTextColor={colors.muted}
+            />
+
+            <Text style={stdS.modalLabel}>Select File (PDF or Image):</Text>
+            <TouchableOpacity style={stdS.filePickerBtn} onPress={chooseFile}>
+              <Ionicons name="attach" size={20} color={colors.dark} />
+              <Text style={stdS.filePickerTxt} numberOfLines={1}>
+                {pickedAsset ? pickedAsset.name : 'Tap to choose file from device'}
+              </Text>
             </TouchableOpacity>
-          </View>
-          <TouchableOpacity style={docS.previewBox} onPress={() => openDoc(doc.uri)}>
-            <Ionicons name="document-outline" size={36} color={colors.muted} />
-            <Text style={docS.previewTxt}>Tap to open PDF</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
 
-      {(data.propertyDocs || []).length === 0 && (
-        <View style={docS.previewBox}>
-          <Ionicons name="document-outline" size={36} color={colors.muted} />
-          <Text style={docS.previewTxt}>Tap to open PDF</Text>
+            <View style={stdS.modalActions}>
+              <TouchableOpacity style={stdS.modalCancelBtn} onPress={() => setModalVisible(false)}>
+                <Text style={stdS.modalCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={stdS.modalSubmitBtn} onPress={handleModalUpload}>
+                <Text style={stdS.modalSubmitTxt}>Save Document</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
@@ -702,6 +874,36 @@ const docS = StyleSheet.create({
   name: { flex: 1, fontSize: 13, color: colors.text },
   previewBox: { borderWidth: 1.5, borderColor: colors.border, borderRadius: 10, paddingVertical: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, marginBottom: 10, gap: 8 },
   previewTxt: { fontSize: 13, color: colors.muted },
+});
+
+const stdS = StyleSheet.create({
+  container: { marginBottom: 16 },
+  card: { backgroundColor: colors.white, borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  info: { flex: 1, paddingRight: 8 },
+  title: { fontSize: 13, fontWeight: '700', color: colors.dark },
+  subtitle: { fontSize: 11, color: colors.muted, marginTop: 2 },
+  fileName: { fontSize: 11, color: colors.primary, marginTop: 4, fontWeight: '500' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  uploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.dark, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  uploadTxt: { fontSize: 12, color: colors.white, fontWeight: '600' },
+  viewBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#BFDBFE' },
+  viewTxt: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  removeBtn: { padding: 8, borderRadius: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FEE2E2' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: colors.white, borderRadius: 16, padding: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.dark },
+  modalLabel: { fontSize: 12, fontWeight: '600', color: colors.text, marginTop: 10, marginBottom: 4 },
+  categoryBadge: { backgroundColor: colors.inputBg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+  categoryBadgeTxt: { fontSize: 13, fontWeight: '600', color: colors.dark },
+  modalInput: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: colors.text },
+  filePickerBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.inputBg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.dark, borderRadius: 8, padding: 12 },
+  filePickerTxt: { fontSize: 12, color: colors.dark, flex: 1 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  modalCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  modalCancelTxt: { fontSize: 13, fontWeight: '600', color: colors.text },
+  modalSubmitBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: colors.dark, alignItems: 'center' },
+  modalSubmitTxt: { fontSize: 13, fontWeight: '600', color: colors.white },
 });
 // const ph = StyleSheet.create({
 //   addBox: { width: 150, height: 100, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.dark, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 4 },
