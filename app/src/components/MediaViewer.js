@@ -21,6 +21,7 @@ import { usePopup } from '../context/PopupContext';
 import { useAuth } from '../context/AuthContext';
 import { uploadRegistryDocument as uploadAdminDoc } from '../api/adminApi';
 import { uploadRegistryDocument as uploadEmpDoc } from '../api/employeeApi';
+import { WebView } from 'react-native-webview';
 
 const STANDARD_DOC_TYPES = [
   'Property Registery - 1',
@@ -80,12 +81,16 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
     }
   }, [loanId]);
 
+  const isPdf = (mediaItem) => {
+    if (!mediaItem || !mediaItem.url) return false;
+    const url = mediaItem.url.toLowerCase();
+    const mime = (mediaItem.mimeType || '').toLowerCase();
+    return url.endsWith('.pdf') || mime.includes('pdf');
+  };
+
   const handlePress = (m) => {
-    if (m.type === 'document') {
-      if (m.url) Linking.openURL(m.url);
-    } else {
-      setSelectedMedia(m);
-    }
+    if (!m) return;
+    setSelectedMedia(m);
   };
 
   const openUploadModal = (defaultType) => {
@@ -310,16 +315,48 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
         <Text style={styles.emptyCategoryTxt}>No custom documents attached yet</Text>
       )}
 
-      {/* Inline Fullscreen Viewer for Images/Videos */}
+      {/* Inline Fullscreen Viewer for Images, Videos & Documents */}
       <Modal visible={!!selectedMedia} transparent animationType="fade" onRequestClose={() => setSelectedMedia(null)}>
         {selectedMedia?.type === 'video' ? (
           <FullScreenVideo url={selectedMedia.url} onClose={() => setSelectedMedia(null)} />
-        ) : selectedMedia?.type === 'photo' || selectedMedia?.type === 'image' ? (
+        ) : selectedMedia ? (
           <View style={styles.modalBg}>
-            <Image source={{ uri: selectedMedia.url }} style={styles.fullMedia} resizeMode="contain" />
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setSelectedMedia(null)}>
-              <Ionicons name="close" size={30} color={colors.white} />
-            </TouchableOpacity>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalMediaTitle} numberOfLines={1}>
+                {selectedMedia.name || selectedMedia.docType || 'Document Preview'}
+              </Text>
+              <TouchableOpacity style={styles.closeBtnHeader} onPress={() => setSelectedMedia(null)}>
+                <Ionicons name="close" size={26} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.previewContainer}>
+              {isPdf(selectedMedia) ? (
+                <WebView
+                  source={{
+                    uri: selectedMedia.url?.startsWith('http')
+                      ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(selectedMedia.url)}`
+                      : selectedMedia.url
+                  }}
+                  style={{ flex: 1, backgroundColor: colors.white }}
+                  startInLoadingState
+                  renderLoading={() => <ActivityIndicator color={colors.primary} size="large" style={StyleSheet.absoluteFill} />}
+                />
+              ) : (
+                <Image
+                  source={{ uri: selectedMedia.url }}
+                  style={styles.fullMedia}
+                  resizeMode="contain"
+                />
+              )}
+            </View>
+
+            <View style={styles.modalFooterRow}>
+              <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(selectedMedia.url).catch(() => {})}>
+                <Ionicons name="open-outline" size={16} color={colors.white} />
+                <Text style={styles.externalBtnTxt}>Open Externally</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
       </Modal>
@@ -424,9 +461,16 @@ const styles = StyleSheet.create({
   uploadDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.dark },
   uploadDocTxt: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.white },
   missingTxt: { fontFamily: fonts.medium, fontSize: 11, color: '#D97706' },
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' },
   fullMedia: { width: '100%', height: '100%' },
   closeBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 25 },
+  modalHeaderRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 44 : 20, paddingBottom: 12, backgroundColor: 'rgba(0,0,0,0.9)' },
+  modalMediaTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.white, flex: 1, marginRight: 12 },
+  closeBtnHeader: { padding: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 },
+  previewContainer: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
+  modalFooterRow: { width: '100%', flexDirection: 'row', justifyContent: 'center', paddingVertical: 12, backgroundColor: 'rgba(0,0,0,0.9)' },
+  externalBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  externalBtnTxt: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.white },
   uploadModalCard: { width: '100%', backgroundColor: colors.white, borderRadius: 16, padding: 20 },
   uploadModalTitle: { fontFamily: fonts.bold, fontSize: 16, color: colors.dark, marginBottom: 14 },
   inputLabel: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.text, marginBottom: 6 },
