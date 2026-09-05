@@ -32,3 +32,6 @@ export const assignRecoveryAgent = (loanId, recoveryAgentId) =>
 export const sendQrToAgent = (loanId) => api.post(`/employee/loans/${loanId}/send-qr-to-agent`).then((r) => r.data);
 export const requestEmiChange = (loanId, data) => api.post(`/employee/loans/${loanId}/emi-change-request`, data).then((r) => r.data);
 export const requestForeclosure = (loanId, data) => api.post(`/employee/loans/${loanId}/request-foreclosure`, data).then((r) => r.data);
+export const getRecovery = () => api.get('/employee/recovery').then((r) => r.data);
+export const payEmi = (loanId, paymentId, amount) =>
+  api.post(`/employee/loans/${loanId}/pay-emi`, { paymentId, amount }).then((r) => r.data);

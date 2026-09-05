@@ -161,9 +161,206 @@ async function closeEmisForForeclosure(loanId) {
   }
 }
 
+/**
+ * Builds loan-level recovery items (one clean card per loan).
+ * @param {Array} loans 
+ * @returns {Promise<Array>}
+ */
+async function buildLoanRecoveryItems(loans) {
+  const recoveryItems = [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  for (const loan of loans) {
+    if (!['active', 'approved'].includes(loan.status)) continue;
+    const emis = await ensureEmiSchedule(loan);
+    if (!emis || emis.length === 0) continue;
+
+    const unpaidEmis = emis.filter(e => e.status !== 'paid');
+    if (unpaidEmis.length === 0) {
+      if (loan.status !== 'completed') {
+        await db.updateLoan(loan.loanId, { status: 'completed' });
+      }
+      continue;
+    }
+
+    // Sort unpaid EMIs by dueDate ascending
+    unpaidEmis.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
+    // Overdue EMIs (due before today)
+    const overdueEmis = unpaidEmis.filter(e => e.dueDate < todayStr);
+    const todayEmis = unpaidEmis.filter(e => e.dueDate === todayStr);
+
+    // Oldest unpaid EMI is the current target installment
+    const currentEmi = unpaidEmis[0];
+    // Calculate overdue days for current EMI
+    let daysOverdue = 0;
+    if (currentEmi.dueDate < todayStr) {
+      const diffMs = new Date(todayStr) - new Date(currentEmi.dueDate);
+      daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    }
+
+    // Apply penalty calculation if overdue beyond 3-day grace period
+    if (daysOverdue > 3) {
+      const penaltyRate = Number(loan.penaltyRate) || 0.1; // 0.1% per day default
+      const calcPenalty = Math.round(Number(currentEmi.amount || 0) * (penaltyRate / 100) * daysOverdue);
+      if (calcPenalty > Number(currentEmi.penaltyAmount || 0)) {
+        currentEmi.penaltyAmount = calcPenalty;
+        db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: calcPenalty, status: 'overdue' }).catch(() => {});
+      }
+    }
+
+    // Recompute currentDue with any updated penalty
+    const finalCurrentDue = (Number(currentEmi.amount || 0) + Number(currentEmi.penaltyAmount || 0)) - Number(currentEmi.paidAmount || 0);
+
+    // Total overdue amount across all overdue installments
+    const totalOverdue = overdueEmis.reduce((sum, e) => {
+      const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
+      return sum + Math.max(0, d);
+    }, 0);
+
+    // Total remaining balance to be recovered on the loan
+    const totalRemainingDue = unpaidEmis.reduce((sum, e) => {
+      const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
+      return sum + Math.max(0, d);
+    }, 0);
+
+    const paidCount = emis.filter(e => e.status === 'paid').length;
+    const totalCount = emis.length;
+
+    let recoveryStatus = 'upcoming';
+    if (overdueEmis.length > 0) {
+      recoveryStatus = 'overdue';
+    } else if (todayEmis.length > 0 || currentEmi.dueDate === todayStr) {
+      recoveryStatus = 'today';
+    }
+
+    recoveryItems.push({
+      loanId: loan.loanId,
+      displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
+      borrowerName: loan.ownerName || 'Borrower',
+      borrowerMobile: loan.ownerMobile || '',
+      borrowerAddress: loan.ownerAddress || loan.propertyAddress || '',
+      employeeId: loan.employeeId,
+
+      // Target EMI for payment collection
+      paymentId: currentEmi.paymentId,
+      dueDate: currentEmi.dueDate,
+      amount: Number(currentEmi.amount || 0),
+      penaltyAmount: Number(currentEmi.penaltyAmount || 0),
+      dueAmount: Math.max(0, finalCurrentDue),
+      currentEmiStatus: currentEmi.status || 'pending',
+      daysOverdue,
+
+      // Loan-level recovery metrics
+      totalOverdue,
+      totalRemainingDue,
+      overdueCount: overdueEmis.length,
+      paidCount,
+      totalCount,
+      recoveryStatus,
+    });
+  }
+
+  // Sort priority: overdue first, then today, then upcoming
+  recoveryItems.sort((a, b) => {
+    const priority = { overdue: 1, today: 2, upcoming: 3 };
+    if (priority[a.recoveryStatus] !== priority[b.recoveryStatus]) {
+      return priority[a.recoveryStatus] - priority[b.recoveryStatus];
+    }
+    return new Date(a.dueDate) - new Date(b.dueDate);
+  });
+
+  return recoveryItems;
+}
+
+/**
+ * Records an EMI payment with smart cascading across unpaid installments.
+ * Supports partial payment, full payment, and advance multi-installment payments.
+ * @param {string} loanId 
+ * @param {string} initialPaymentId 
+ * @param {number} amount 
+ * @param {string} userId 
+ */
+async function recordLoanPayment(loanId, initialPaymentId, amount, userId) {
+  let remainingAmount = Number(amount);
+  if (isNaN(remainingAmount) || remainingAmount <= 0) {
+    throw new Error('Invalid payment amount');
+  }
+
+  const emis = await db.listEmiByLoan(loanId);
+  if (!emis || emis.length === 0) {
+    throw new Error('No EMI schedule found for this loan');
+  }
+
+  const unpaidEmis = emis
+    .filter(e => e.status !== 'paid')
+    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
+  if (unpaidEmis.length === 0) {
+    throw new Error('All EMIs are already fully paid');
+  }
+
+  let startIndex = 0;
+  if (initialPaymentId) {
+    const idx = unpaidEmis.findIndex(e => e.paymentId === initialPaymentId);
+    if (idx !== -1) startIndex = idx;
+  }
+
+  const updatedPayments = [];
+
+  for (let i = startIndex; i < unpaidEmis.length && remainingAmount > 0; i++) {
+    const emi = unpaidEmis[i];
+    const totalRequired = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
+    const currentPaid = Number(emi.paidAmount || 0);
+    const needed = Math.max(0, totalRequired - currentPaid);
+
+    const payForThisEmi = Math.min(remainingAmount, needed);
+    const newPaidAmount = currentPaid + payForThisEmi;
+    remainingAmount -= payForThisEmi;
+
+    const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partial';
+
+    await db.updateEmiPayment(emi.paymentId, {
+      paidAmount: newPaidAmount,
+      status: newStatus,
+      paidDate: new Date().toISOString(),
+      markedBy: userId
+    });
+
+    updatedPayments.push({
+      paymentId: emi.paymentId,
+      paidAmount: newPaidAmount,
+      status: newStatus
+    });
+  }
+
+  // If excess payment remains after all subsequent EMIs
+  if (remainingAmount > 0 && unpaidEmis.length > 0) {
+    const lastEmi = unpaidEmis[unpaidEmis.length - 1];
+    const newPaid = Number(lastEmi.paidAmount || 0) + remainingAmount;
+    await db.updateEmiPayment(lastEmi.paymentId, {
+      paidAmount: newPaid,
+      status: 'paid',
+      paidDate: new Date().toISOString(),
+      markedBy: userId
+    });
+  }
+
+  // Check if loan is fully paid
+  const refreshedEmis = await db.listEmiByLoan(loanId);
+  const allPaid = refreshedEmis.every(e => e.status === 'paid');
+  if (allPaid) {
+    await db.updateLoan(loanId, { status: 'completed' });
+  }
+
+  return { success: true, updatedPayments };
+}
+
 module.exports = {
   addMonths,
   ensureEmiSchedule,
   rescheduleEmis,
   closeEmisForForeclosure,
+  buildLoanRecoveryItems,
+  recordLoanPayment,
 };

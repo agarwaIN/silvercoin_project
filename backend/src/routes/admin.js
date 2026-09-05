@@ -11,7 +11,7 @@ const { mobileField } = require('../utils/phoneValidator');
 const { sendCredentials } = require('../services/emailService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
-const { ensureEmiSchedule, rescheduleEmis, closeEmisForForeclosure } = require('../services/emiService');
+const { ensureEmiSchedule, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment } = require('../services/emiService');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -158,38 +158,25 @@ router.get('/emi-this-month', async (req, res) => {
 router.get('/recovery', async (req, res) => {
   try {
     const loans = await db.listLoansByAdmin(req.user.userId);
-    const recoveryItems = [];
-
-    for (const loan of loans) {
-      if (!['active', 'approved'].includes(loan.status)) continue;
-      const emis = await ensureEmiSchedule(loan);
-      for (const emi of emis) {
-        if (emi.status !== 'paid') {
-          const totalDue = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
-          const remainingDue = totalDue - Number(emi.paidAmount || 0);
-          recoveryItems.push({
-            paymentId: emi.paymentId,
-            loanId: loan.loanId,
-            displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
-            borrowerName: loan.ownerName || 'Borrower',
-            borrowerMobile: loan.ownerMobile || '',
-            borrowerAddress: loan.ownerAddress || loan.propertyAddress || '',
-            dueDate: emi.dueDate,
-            amount: Number(emi.amount || 0),
-            paidAmount: Number(emi.paidAmount || 0),
-            penaltyAmount: Number(emi.penaltyAmount || 0),
-            dueAmount: Math.max(0, remainingDue),
-            status: emi.status || 'pending',
-            employeeId: loan.employeeId,
-          });
-        }
-      }
-    }
-
-    res.json(recoveryItems.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)));
+    const recoveryItems = await buildLoanRecoveryItems(loans);
+    res.json(recoveryItems);
   } catch (err) {
     console.error('Recovery Fetch Error:', err);
     res.status(500).json({ message: 'Failed to fetch recovery items' });
+  }
+});
+
+router.post('/loans/:loanId/pay-emi', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+
+    const { paymentId, amount } = req.body;
+    const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId);
+    res.json({ message: 'Payment recorded successfully', ...result });
+  } catch (err) {
+    console.error('Pay EMI Error:', err);
+    res.status(400).json({ message: err.message || 'Failed to record payment' });
   }
 });
 
