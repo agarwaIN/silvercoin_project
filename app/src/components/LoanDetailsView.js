@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { formatDate } from '../utils/date';
 
 export default function LoanDetailsView({ loan }) {
   if (!loan) return null;
@@ -125,7 +126,7 @@ export default function LoanDetailsView({ loan }) {
           </View>
           {loan.disbursements.map((d, index) => (
             <View key={index} style={{ marginBottom: index !== loan.disbursements.length - 1 ? 12 : 0, borderBottomWidth: index !== loan.disbursements.length - 1 ? 1 : 0, borderBottomColor: colors.border, paddingBottom: 8 }}>
-              <Row label="Date" value={d.date} />
+              <Row label="Date" value={formatDate(d.date)} />
               <Row label="Amount" value={`₹${Number(d.amount).toLocaleString('en-IN')}`} />
               <Row label="Bank" value={d.bankName} />
               <Row label="Txn No" value={d.transactionNumber} />

@@ -37,7 +37,7 @@ export default function LoanDetailScreen({ route }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <Header title={loan.loanId} onBack={() => navigation.goBack()} />
+      <Header title={loan.displayLoanId || loan.applicationNumber || loan.loanId} onBack={() => navigation.goBack()} />
       <ScrollView
         style={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -47,7 +47,10 @@ export default function LoanDetailScreen({ route }) {
           <StatusBadge status={loan.status} />
         </View>
         <Text style={styles.field}>Owner: {loan.ownerName || '—'}</Text>
-        <Text style={styles.field}>Amount: {loan.loanAmount ? `₹${loan.loanAmount}` : '—'}</Text>
+        <Text style={styles.field}>Principal Amount: {loan.approvedAmount || loan.loanAmount ? `₹${Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}` : '—'}</Text>
+        {!!(loan.loanAmount && loan.approvedAmount && Number(loan.loanAmount) !== Number(loan.approvedAmount)) && (
+          <Text style={styles.field}>Requested Amount: ₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>
+        )}
         <Text style={styles.field}>Admin ID: {loan.adminId || '—'}</Text>
         <Text style={styles.field}>Employee ID: {loan.employeeId || '—'}</Text>
         <Text style={styles.note}>SuperAdmin read-only view of the loan details.</Text>

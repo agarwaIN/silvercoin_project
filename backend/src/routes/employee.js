@@ -7,6 +7,7 @@ const { auditLog } = require('../middleware/auditMiddleware');
 const { generateAppId } = require('../services/loanIdService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
+const { ensureEmiSchedule } = require('../services/emiService');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -62,7 +63,7 @@ router.get('/loans/:loanId', async (req, res) => {
   if (!loan || loan.employeeId !== req.user.userId) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  const emis = await db.listEmiByLoan(loan.loanId);
+  const emis = await ensureEmiSchedule(loan);
   res.json({ ...loan, emis });
 });
 
@@ -129,7 +130,7 @@ router.get('/recovery', async (req, res) => {
 
     for (const loan of loans) {
       if (!['active', 'approved'].includes(loan.status)) continue;
-      const emis = await db.listEmiByLoan(loan.loanId);
+      const emis = await ensureEmiSchedule(loan);
       for (const emi of emis) {
         if (emi.status !== 'paid') {
           const totalDue = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);

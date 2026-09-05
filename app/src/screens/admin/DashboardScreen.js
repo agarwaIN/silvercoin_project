@@ -119,7 +119,9 @@ export default function AdminDashboard({ navigation }) {
                   <View style={styles.loanLeft}>
                     <Text style={styles.loanId}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
                     <Text style={styles.ownerName}>{loan.ownerName || '—'}</Text>
-                    {loan.loanAmount && <Text style={styles.amount}>Principal: ₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>}
+                    {(loan.approvedAmount || loan.loanAmount) ? (
+                      <Text style={styles.amount}>Principal: ₹{Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}</Text>
+                    ) : null}
                   </View>
                   <StatusBadge status={loan.status} />
                 </View>

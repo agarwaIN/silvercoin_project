@@ -17,6 +17,7 @@ import Card from '../../components/Card';
 import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { getLoans } from '../../api/employeeApi';
+import { formatDate } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
 const FILTERS = ['All', 'In Progress', 'Pending', 'Approved', 'Rejected'];
@@ -104,11 +105,11 @@ export default function LoanListScreen({ navigation }) {
                 <View style={styles.left}>
                   <Text style={styles.id}>{item.displayLoanId || item.applicationNumber || item.loanId}</Text>
                   <Text style={styles.owner}>{item.ownerName || '—'}</Text>
-                  {item.loanAmount ? (
-                    <Text style={styles.amount}>₹{Number(item.loanAmount).toLocaleString('en-IN')}</Text>
+                  {(item.approvedAmount || item.loanAmount) ? (
+                    <Text style={styles.amount}>₹{Number(item.approvedAmount || item.loanAmount).toLocaleString('en-IN')}</Text>
                   ) : null}
                   <Text style={styles.date}>
-                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN') : ''}
+                    {item.createdAt ? formatDate(item.createdAt) : ''}
                   </Text>
                 </View>
                 <View style={styles.right}>

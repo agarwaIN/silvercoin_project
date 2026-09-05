@@ -18,6 +18,7 @@ import Card from '../../components/Card';
 import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { getLoans } from '../../api/adminApi';
+import { formatDate } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
 const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Rejected'];
@@ -97,11 +98,11 @@ export default function AdminLoanListScreen({ navigation }) {
                   <View style={styles.left}>
                     <Text style={styles.id}>{item.displayLoanId || item.applicationNumber || item.loanId}</Text>
                     <Text style={styles.owner}>{item.ownerName || '—'}</Text>
-                    {item.loanAmount ? (
-                      <Text style={styles.amount}>Principal: ₹{Number(item.loanAmount).toLocaleString('en-IN')}</Text>
+                    {(item.approvedAmount || item.loanAmount) ? (
+                      <Text style={styles.amount}>Principal: ₹{Number(item.approvedAmount || item.loanAmount).toLocaleString('en-IN')}</Text>
                     ) : null}
                     <Text style={styles.date}>
-                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN') : ''}
+                      {item.createdAt ? formatDate(item.createdAt) : ''}
                     </Text>
                   </View>
                   <View style={styles.right}>

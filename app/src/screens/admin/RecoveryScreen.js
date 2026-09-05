@@ -22,6 +22,7 @@ import Button from '../../components/Button';
 import { getRecovery, payEmi } from '../../api/adminApi';
 import { usePopup } from '../../context/PopupContext';
 import { useAuth } from '../../context/AuthContext';
+import { formatDate } from '../../utils/date';
 
 export default function RecoveryScreen({ navigation }) {
   const { user } = useAuth();
@@ -101,7 +102,7 @@ export default function RecoveryScreen({ navigation }) {
       return;
     }
     const cleanMobile = mobile.replace(/[^0-9]/g, '').slice(-10);
-    const msg = `Dear ${item.borrowerName}, your EMI payment of ₹${item.dueAmount} for Loan ID ${item.displayLoanId} is due on ${item.dueDate}. Please make payment to avoid penalties. Thank you, ShreeLoan.`;
+    const msg = `Dear ${item.borrowerName}, your EMI payment of ₹${item.dueAmount} for Loan ID ${item.displayLoanId} is due on ${formatDate(item.dueDate)}. Please make payment to avoid penalties. Thank you, ShreeLoan.`;
     Linking.openURL(`https://wa.me/91${cleanMobile}?text=${encodeURIComponent(msg)}`).catch(() =>
       showAlert('Error', 'Unable to open WhatsApp'),
     );
@@ -266,7 +267,7 @@ export default function RecoveryScreen({ navigation }) {
                 <View style={styles.detailRow}>
                   <View style={styles.detailCol}>
                     <Text style={styles.detailLabel}>Due Date</Text>
-                    <Text style={styles.detailVal}>{item.dueDate}</Text>
+                    <Text style={styles.detailVal}>{formatDate(item.dueDate)}</Text>
                   </View>
                   <View style={styles.detailCol}>
                     <Text style={styles.detailLabel}>EMI Amount</Text>

@@ -11,6 +11,7 @@ const { mobileField } = require('../utils/phoneValidator');
 const { sendCredentials } = require('../services/emailService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
+const { ensureEmiSchedule, rescheduleEmis, closeEmisForForeclosure } = require('../services/emiService');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -110,7 +111,7 @@ router.get('/loans/:loanId', async (req, res) => {
   if (!loan || loan.adminId !== req.user.userId) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  const emis = await db.listEmiByLoan(loan.loanId);
+  const emis = await ensureEmiSchedule(loan);
   res.json({ ...loan, emis });
 });
 
@@ -161,7 +162,7 @@ router.get('/recovery', async (req, res) => {
 
     for (const loan of loans) {
       if (!['active', 'approved'].includes(loan.status)) continue;
-      const emis = await db.listEmiByLoan(loan.loanId);
+      const emis = await ensureEmiSchedule(loan);
       for (const emi of emis) {
         if (emi.status !== 'paid') {
           const totalDue = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
@@ -421,6 +422,8 @@ router.post('/loans/:loanId/disburse', async (req, res) => {
   }
 
   await db.updateLoan(loan.loanId, updates);
+  const updatedLoan = await db.getLoanById(loan.loanId);
+  await ensureEmiSchedule(updatedLoan);
   res.json({ message: 'Disbursement recorded', displayLoanId: updates.displayLoanId || loan.displayLoanId });
 });
 
@@ -442,6 +445,8 @@ router.post('/loans/:loanId/approve', async (req, res) => {
     totalRepayable,
     changedFields: null 
   });
+  const updatedLoan = await db.getLoanById(loan.loanId);
+  await ensureEmiSchedule(updatedLoan);
   res.json({ message: 'Loan fully approved' });
 });
 
@@ -466,16 +471,7 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
   const emi = emis.find(e => e.paymentId === paymentId);
   if (!emi) return res.status(404).json({ message: 'EMI not found' });
 
-  // BR-05: EMI recovery window opens 7 days before due date
-  const dueDate = new Date(emi.dueDate);
-  const now = new Date();
-  const diffTime = dueDate - now;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays > 7) {
-    return res.status(400).json({ message: `EMI recovery window opens 7 days before due date (Due: ${emi.dueDate})` });
-  }
-
+  // Advance payment allowed - calculate required payment
   const totalRequired = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
   const previouslyPaid = Number(emi.paidAmount || 0);
   const newPaidAmount = previouslyPaid + Number(amount);
@@ -539,6 +535,8 @@ router.post('/loans/:loanId/approve-emi-change', async (req, res) => {
     }
   });
 
+  await rescheduleEmis(loan, loan.emiChangeRequest);
+
   res.json({ message: 'EMI change request approved' });
 });
 
@@ -566,7 +564,7 @@ router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
 
   // Update loan status to completed (foreclosed)
   await db.updateLoan(loan.loanId, {
-    status: 'completed', // Or 'foreclosed' if there was a separate status, but SRS implies Closure -> Foreclosure
+    status: 'completed',
     foreclosureRequest: {
       ...loan.foreclosureRequest,
       status: 'approved',
@@ -574,9 +572,7 @@ router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
     }
   });
 
-  // Mark all pending EMIs as closed/waived? 
-  // Let's just keep it simple, the loan is marked as completed.
-  // We can update EMIs to reflect this in the future if needed.
+  await closeEmisForForeclosure(loan.loanId);
 
   res.json({ message: 'Foreclosure approved and loan completed' });
 });

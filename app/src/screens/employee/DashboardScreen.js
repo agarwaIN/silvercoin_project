@@ -79,8 +79,8 @@ export default function EmployeeDashboard({ navigation }) {
                 <View style={styles.loanLeft}>
                   <Text style={styles.loanId}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
                   <Text style={styles.ownerName}>{loan.ownerName || 'No owner yet'}</Text>
-                  {loan.loanAmount ? (
-                    <Text style={styles.amount}>₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>
+                  {(loan.approvedAmount || loan.loanAmount) ? (
+                    <Text style={styles.amount}>₹{Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}</Text>
                   ) : null}
                 </View>
                 <StatusBadge status={loan.status} />

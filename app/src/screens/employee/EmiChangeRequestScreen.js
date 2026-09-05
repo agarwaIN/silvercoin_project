@@ -77,25 +77,15 @@ export default function EmiChangeRequestScreen({ route, navigation }) {
     }
   };
 
-  const Field = ({ label, value, onChangeText, keyboardType = 'numeric', suffix }) => (
-    <View style={styles.fieldContainer}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.inputWrapper}>
-        <TextInput
-          style={styles.input}
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
-        />
-        {suffix && <Text style={styles.suffix}>{suffix}</Text>}
-      </View>
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <Header title="Request EMI Change" onBack={() => navigation.goBack()} />
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView 
+        style={styles.scroll} 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
         
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Application: {loan?.loanId}</Text>
@@ -107,10 +97,10 @@ export default function EmiChangeRequestScreen({ route, navigation }) {
         <Text style={styles.sectionDesc}>Adjust the terms below to propose a new EMI calculation.</Text>
 
         <View style={styles.card}>
-          <Field label="Principal Amount (₹)" value={principal} onChangeText={setPrincipal} />
-          <Field label="Loan Tenure (Months)" value={tenure} onChangeText={setTenure} />
-          <Field label="Monthly Interest Rate (%)" value={interestRate} onChangeText={setInterestRate} suffix="%" />
-          <Field label="Daily Penalty Rate (%)" value={penaltyRate} onChangeText={setPenaltyRate} suffix="%" />
+          <Field label="Principal Amount (₹)" value={principal} onChangeText={setPrincipal} keyboardType="numeric" />
+          <Field label="Loan Tenure (Months)" value={tenure} onChangeText={setTenure} keyboardType="numeric" />
+          <Field label="Monthly Interest Rate (%)" value={interestRate} onChangeText={setInterestRate} suffix="%" keyboardType="decimal-pad" />
+          <Field label="Daily Penalty Rate (%)" value={penaltyRate} onChangeText={setPenaltyRate} suffix="%" keyboardType="decimal-pad" />
         </View>
 
         <Text style={styles.sectionHeader}>New Calculation Summary</Text>
@@ -147,6 +137,23 @@ export default function EmiChangeRequestScreen({ route, navigation }) {
 
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function Field({ label, value, onChangeText, keyboardType = 'numeric', suffix }) {
+  return (
+    <View style={styles.fieldContainer}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.inputWrapper}>
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          keyboardType={keyboardType}
+        />
+        {suffix && <Text style={styles.suffix}>{suffix}</Text>}
+      </View>
+    </View>
   );
 }
 

@@ -78,9 +78,9 @@ export default function SADashboard({ navigation }) {
             <Card>
               <View style={styles.row}>
                 <View style={styles.left}>
-                  <Text style={styles.titleText}>{loan.loanId}</Text>
+                  <Text style={styles.titleText}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
                   <Text style={styles.subText}>{loan.ownerName || '—'}</Text>
-                  {loan.loanAmount && <Text style={styles.amount}>₹{Number(loan.loanAmount).toLocaleString('en-IN')}</Text>}
+                  {(loan.approvedAmount || loan.loanAmount) ? <Text style={styles.amount}>₹{Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}</Text> : null}
                 </View>
                 <StatusBadge status={loan.status} />
               </View>

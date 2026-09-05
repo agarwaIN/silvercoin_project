@@ -17,6 +17,7 @@ import {
 } from '../../api/employeeApi';
 import { usePopup } from '../../context/PopupContext';
 import Header from '../../components/Header';
+import { formatDate } from '../../utils/date';
 
 // ─── Step Progress Bar ────────────────────────────────────────────────────────
 const STEPS = [
@@ -492,7 +493,7 @@ function Step2({ data, setData, loanId }) {
       const [geo] = await Location.reverseGeocodeAsync({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
       const address = [geo.name, geo.street, geo.district, geo.city, geo.postalCode].filter(Boolean).join(', ');
       const now = new Date();
-      const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const dateStr = formatDate(now);
       const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
       setData(d => ({
         ...d,
@@ -552,7 +553,7 @@ function Step2({ data, setData, loanId }) {
       uri: pickedAsset.uri,
       name: finalName,
       docType: selectedDocType,
-      date: new Date().toISOString().split('T')[0],
+      date: formatDate(new Date()),
       uploaded: false,
       mimeType: pickedAsset.mimeType || 'application/pdf',
     };

@@ -22,6 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import { uploadRegistryDocument as uploadAdminDoc } from '../api/adminApi';
 import { uploadRegistryDocument as uploadEmpDoc } from '../api/employeeApi';
 import { WebView } from 'react-native-webview';
+import { formatDate } from '../utils/date';
 
 const STANDARD_DOC_TYPES = [
   'Property Registery - 1',
@@ -60,7 +61,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [selectedDocType, setSelectedDocType] = useState('Property Registery - 1');
   const [customDocName, setCustomDocName] = useState('');
-  const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
+  const [docDate, setDocDate] = useState(formatDate(new Date()));
   const [pickedFile, setPickedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
@@ -96,7 +97,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const openUploadModal = (defaultType) => {
     setSelectedDocType(defaultType || 'Property Registery - 1');
     setCustomDocName('');
-    setDocDate(new Date().toISOString().split('T')[0]);
+    setDocDate(formatDate(new Date()));
     setPickedFile(null);
     setUploadModalVisible(true);
   };
@@ -268,7 +269,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                 <Text style={styles.checkTitle}>{stdItem.title}</Text>
                 <Text style={styles.checkSub}>
                   {isUploaded
-                    ? `Uploaded ${docItem.date ? `• ${docItem.date}` : ''}`
+                    ? `Uploaded ${docItem.date ? `• ${formatDate(docItem.date)}` : ''}`
                     : stdItem.subtitle}
                 </Text>
               </View>
@@ -302,7 +303,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
               <Ionicons name="document-text" size={20} color={colors.dark} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.checkTitle}>{cDoc.name || cDoc.docType || 'Custom Document'}</Text>
-                <Text style={styles.checkSub}>{cDoc.date ? `Uploaded on ${cDoc.date}` : 'Custom file'}</Text>
+                <Text style={styles.checkSub}>{cDoc.date ? `Uploaded on ${formatDate(cDoc.date)}` : 'Custom file'}</Text>
               </View>
               <TouchableOpacity style={styles.viewDocBtn} onPress={() => handlePress(cDoc)}>
                 <Ionicons name="open-outline" size={14} color={colors.primary} />
@@ -398,7 +399,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
             <Text style={styles.inputLabel}>Document Date</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="YYYY-MM-DD"
+              placeholder="DD/MM/YYYY"
               placeholderTextColor={colors.muted}
               value={docDate}
               onChangeText={setDocDate}

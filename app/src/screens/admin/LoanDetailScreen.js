@@ -12,6 +12,7 @@ import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
 import { Ionicons } from '@expo/vector-icons';
 import { payEmi } from '../../api/adminApi';
+import { formatDate } from '../../utils/date';
 
 export default function LoanDetailScreen({ route, navigation }) {
   const { showAlert } = usePopup();
@@ -27,7 +28,7 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [internalRemarks, setInternalRemarks] = useState('');
   const [riskAssessment, setRiskAssessment] = useState('');
   const [disburseModalVisible, setDisburseModalVisible] = useState(false);
-  const [disburseData, setDisburseData] = useState({ date: new Date().toISOString().split('T')[0], amount: '', bankName: '', transactionNumber: '' });
+  const [disburseData, setDisburseData] = useState({ date: formatDate(new Date()), amount: '', bankName: '', transactionNumber: '' });
   const [payEmiModalVisible, setPayEmiModalVisible] = useState(false);
   const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0 });
 
@@ -186,7 +187,7 @@ export default function LoanDetailScreen({ route, navigation }) {
   }
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <Header title={loan.loanId} onBack={() => navigation.goBack()} />
+      <Header title={loan.displayLoanId || loan.applicationNumber || loan.loanId} onBack={() => navigation.goBack()} />
       <ScrollView
         style={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -228,7 +229,7 @@ export default function LoanDetailScreen({ route, navigation }) {
 
         {loan.status === 'approved' && (
           <View style={styles.actionContainer}>
-            <TouchableOpacity style={styles.approveBtn} onPress={() => { setDisburseData({ date: new Date().toISOString().split('T')[0], amount: loan.approvedAmount || '', bankName: '', transactionNumber: '' }); setDisburseModalVisible(true); }} disabled={processing}>
+            <TouchableOpacity style={styles.approveBtn} onPress={() => { setDisburseData({ date: formatDate(new Date()), amount: loan.approvedAmount || '', bankName: '', transactionNumber: '' }); setDisburseModalVisible(true); }} disabled={processing}>
               <Ionicons name="cash-outline" size={20} color={colors.white} />
               <Text style={styles.approveBtnText}>Record Disbursement</Text>
             </TouchableOpacity>
@@ -308,7 +309,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                 return (
                   <View key={emi.paymentId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: idx !== loan.emis.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark }}>Due: {emi.dueDate}</Text>
+                      <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark }}>Due: {formatDate(emi.dueDate)}</Text>
                       <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: colors.muted }}>Status: {emi.status.toUpperCase()}</Text>
                     </View>
                     <View style={{ flex: 1, alignItems: 'flex-end' }}>
@@ -416,7 +417,7 @@ export default function LoanDetailScreen({ route, navigation }) {
             <Text style={styles.modalSubtitle}>Enter bank transaction details to mark this loan as Active.</Text>
             <TextInput
               style={styles.modalInputSmall}
-              placeholder="Date (YYYY-MM-DD)"
+              placeholder="Date (DD/MM/YYYY)"
               value={disburseData.date}
               onChangeText={t => setDisburseData({...disburseData, date: t})}
             />
