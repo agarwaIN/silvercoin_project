@@ -227,12 +227,26 @@ async function buildLoanRecoveryItems(loans) {
     const paidCount = emis.filter(e => e.status === 'paid').length;
     const totalCount = emis.length;
 
-    let recoveryStatus = 'upcoming';
-    if (overdueEmis.length > 0) {
-      recoveryStatus = 'overdue';
-    } else if (todayEmis.length > 0 || currentEmi.dueDate === todayStr) {
-      recoveryStatus = 'today';
-    }
+    let recoveryStatus = overdueEmis.length > 0 ? 'overdue' : 'upcoming';
+
+    // Sort all EMIs to find opening date and monthly cycle
+    const allEmisSorted = [...emis].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    const firstEmi = allEmisSorted[0];
+    const emiOpeningDate = firstEmi ? firstEmi.dueDate : null;
+
+    // Disbursement date
+    const disbursementDate = (loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date)
+      ? loan.disbursements[0].date
+      : loan.loanStartDate || (firstEmi ? firstEmi.dueDate : null);
+
+    // Monthly recurring EMI due day (e.g. 4 for 4th of month)
+    const targetDateForDay = currentEmi.dueDate || (firstEmi ? firstEmi.dueDate : '');
+    const dueDayNumber = targetDateForDay ? parseInt(targetDateForDay.slice(8, 10), 10) : null;
+
+    // Last paid installment info
+    const paidEmis = emis.filter(e => e.status === 'paid').sort((a, b) => new Date(b.paidDate || b.dueDate) - new Date(a.paidDate || a.dueDate));
+    const lastPaidDate = paidEmis.length > 0 ? (paidEmis[0].paidDate ? paidEmis[0].paidDate.slice(0, 10) : paidEmis[0].dueDate) : null;
+    const lastPaidAmount = paidEmis.length > 0 ? Number(paidEmis[0].paidAmount || paidEmis[0].amount || 0) : 0;
 
     recoveryItems.push({
       loanId: loan.loanId,
@@ -251,6 +265,13 @@ async function buildLoanRecoveryItems(loans) {
       currentEmiStatus: currentEmi.status || 'pending',
       daysOverdue,
 
+      // Disbursement, EMI opening date, and monthly payment cycle
+      disbursementDate,
+      emiOpeningDate,
+      dueDayNumber,
+      lastPaidDate,
+      lastPaidAmount,
+
       // Loan-level recovery metrics
       totalOverdue,
       totalRemainingDue,
@@ -261,9 +282,9 @@ async function buildLoanRecoveryItems(loans) {
     });
   }
 
-  // Sort priority: overdue first, then today, then upcoming
+  // Sort priority: overdue first, then upcoming by dueDate
   recoveryItems.sort((a, b) => {
-    const priority = { overdue: 1, today: 2, upcoming: 3 };
+    const priority = { overdue: 1, upcoming: 2, today: 2 };
     if (priority[a.recoveryStatus] !== priority[b.recoveryStatus]) {
       return priority[a.recoveryStatus] - priority[b.recoveryStatus];
     }

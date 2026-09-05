@@ -24,6 +24,15 @@ import { usePopup } from '../../context/PopupContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatDate } from '../../utils/date';
 
+const getOrdinalDay = (dayNum) => {
+  if (!dayNum) return '';
+  const n = parseInt(dayNum, 10);
+  if (isNaN(n)) return '';
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
 export default function RecoveryScreen({ navigation }) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
@@ -31,7 +40,7 @@ export default function RecoveryScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'overdue', 'today', 'upcoming'
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'overdue', 'upcoming'
 
   // Payment Modal State
   const [selectedItem, setSelectedItem] = useState(null);
@@ -72,18 +81,18 @@ export default function RecoveryScreen({ navigation }) {
   const overdueItems = items.filter(
     (i) => i.recoveryStatus === 'overdue' || (i.dueDate && i.dueDate < todayStr),
   );
-  const todayItems = items.filter(
-    (i) => i.recoveryStatus === 'today' || i.dueDate === todayStr,
-  );
   const upcomingItems = items.filter(
-    (i) => i.recoveryStatus === 'upcoming' || (i.dueDate && i.dueDate > todayStr),
+    (i) => i.recoveryStatus !== 'overdue' && (!i.dueDate || i.dueDate >= todayStr),
   );
 
   const totalOverdueAmount = overdueItems.reduce(
     (sum, i) => sum + (i.totalOverdue != null ? i.totalOverdue : (i.dueAmount || 0)),
     0,
   );
-  const todayAmount = todayItems.reduce((sum, i) => sum + (i.dueAmount || 0), 0);
+  const upcomingAmount = upcomingItems.reduce(
+    (sum, i) => sum + (i.dueAmount || i.amount || 0),
+    0,
+  );
   const totalRemainingBalance = items.reduce(
     (sum, i) => sum + (i.totalRemainingDue != null ? i.totalRemainingDue : (i.dueAmount || 0)),
     0,
@@ -99,16 +108,20 @@ export default function RecoveryScreen({ navigation }) {
     }
 
     if (activeTab === 'overdue') {
-      return item.recoveryStatus === 'overdue' || item.dueDate < todayStr;
-    }
-    if (activeTab === 'today') {
-      return item.recoveryStatus === 'today' || item.dueDate === todayStr;
+      return item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
     }
     if (activeTab === 'upcoming') {
-      return item.recoveryStatus === 'upcoming' || item.dueDate > todayStr;
+      return item.recoveryStatus !== 'overdue' && (!item.dueDate || item.dueDate >= todayStr);
     }
     return true;
   });
+
+  const handleCardPress = (item) => {
+    navigation.navigate('Loans', {
+      screen: 'LoanDetail',
+      params: { loanId: item.loanId },
+    });
+  };
 
   const handleCall = (mobile) => {
     if (!mobile) {
@@ -174,7 +187,7 @@ export default function RecoveryScreen({ navigation }) {
       <Header title="EMI Recovery & Collection" onBack={() => navigation.goBack()} />
 
       <View style={styles.container}>
-        {/* Metrics Banner */}
+        {/* Metrics Banner (Overdue, Upcoming, Total Balance) */}
         <View style={styles.metricsRow}>
           <View style={[styles.metricCard, { borderLeftColor: colors.error }]}>
             <View style={styles.metricHeaderRow}>
@@ -190,12 +203,12 @@ export default function RecoveryScreen({ navigation }) {
           <View style={[styles.metricCard, { borderLeftColor: '#D97706' }]}>
             <View style={styles.metricHeaderRow}>
               <Ionicons name="calendar-outline" size={16} color="#D97706" />
-              <Text style={styles.metricLabel}>Due Today</Text>
+              <Text style={styles.metricLabel}>Upcoming Due</Text>
             </View>
             <Text style={[styles.metricValue, { color: '#D97706' }]}>
-              ₹{todayAmount.toLocaleString('en-IN')}
+              ₹{upcomingAmount.toLocaleString('en-IN')}
             </Text>
-            <Text style={styles.metricSub}>{todayItems.length} Loans</Text>
+            <Text style={styles.metricSub}>{upcomingItems.length} Loans</Text>
           </View>
 
           <View style={[styles.metricCard, { borderLeftColor: colors.primary }]}>
@@ -227,7 +240,7 @@ export default function RecoveryScreen({ navigation }) {
           ) : null}
         </View>
 
-        {/* Tabs */}
+        {/* Filter Tabs (All, Overdue, Upcoming) */}
         <View style={styles.tabsRow}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'all' && styles.tabActive]}
@@ -243,14 +256,6 @@ export default function RecoveryScreen({ navigation }) {
           >
             <Text style={[styles.tabTxt, activeTab === 'overdue' && styles.tabTxtActive]}>
               Overdue ({overdueItems.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'today' && styles.tabActive]}
-            onPress={() => setActiveTab('today')}
-          >
-            <Text style={[styles.tabTxt, activeTab === 'today' && styles.tabTxtActive]}>
-              Today ({todayItems.length})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -272,132 +277,180 @@ export default function RecoveryScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />
           }
           renderItem={({ item }) => {
-            const isOverdue = item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
-            const isToday = item.recoveryStatus === 'today' || item.dueDate === todayStr;
+            const isOverdue =
+              item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
 
             const progressPct =
               item.totalCount && item.totalCount > 0
                 ? Math.min(100, Math.round(((item.paidCount || 0) / item.totalCount) * 100))
                 : 0;
 
+            const monthlyEmiDayStr = item.dueDayNumber
+              ? `${getOrdinalDay(item.dueDayNumber)} of every month`
+              : item.dueDate
+              ? `${getOrdinalDay(parseInt(item.dueDate.slice(8, 10), 10))} of every month`
+              : 'Monthly';
+
             return (
               <Card style={styles.card}>
-                {/* Header: Borrower & Status */}
-                <View style={styles.cardHeader}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.borrowerName}>{item.borrowerName}</Text>
-                    <View style={styles.loanIdBadge}>
-                      <Ionicons name="document-text-outline" size={12} color={colors.muted} />
-                      <Text style={styles.loanIdTxt}>{item.displayLoanId || item.loanId}</Text>
+                {/* Tappable Header & Body -> Navigates to Loan Details */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => handleCardPress(item)}
+                  style={styles.cardClickableArea}
+                >
+                  {/* Header: Borrower, Loan ID, and Status Badge */}
+                  <View style={styles.cardHeader}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.borrowerName}>{item.borrowerName}</Text>
+                      <View style={styles.idAndDetailRow}>
+                        <View style={styles.loanIdBadge}>
+                          <Ionicons name="document-text-outline" size={12} color={colors.muted} />
+                          <Text style={styles.loanIdTxt}>{item.displayLoanId || item.loanId}</Text>
+                        </View>
+                        <View style={styles.viewDetailsHint}>
+                          <Text style={styles.viewDetailsHintTxt}>Details</Text>
+                          <Ionicons name="chevron-forward" size={11} color={colors.primary} />
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusTag,
-                      {
-                        backgroundColor: isOverdue
-                          ? '#FEE2E2'
-                          : isToday
-                          ? '#FEF3C7'
-                          : '#E0F2FE',
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={isOverdue ? 'alert-circle' : isToday ? 'time-outline' : 'checkmark-circle-outline'}
-                      size={12}
-                      color={isOverdue ? colors.error : isToday ? '#D97706' : '#0284C7'}
-                      style={{ marginRight: 3 }}
-                    />
-                    <Text
+                    <View
                       style={[
-                        styles.statusTxt,
+                        styles.statusTag,
                         {
-                          color: isOverdue ? colors.error : isToday ? '#D97706' : '#0284C7',
+                          backgroundColor: isOverdue ? '#FEE2E2' : '#E0F2FE',
                         },
                       ]}
                     >
-                      {isOverdue
-                        ? item.overdueCount > 1
-                          ? `${item.overdueCount} EMIs Overdue`
-                          : item.daysOverdue > 0
-                          ? `Overdue (${item.daysOverdue}d)`
-                          : 'Overdue'
-                        : isToday
-                        ? 'Due Today'
-                        : 'Upcoming'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Progress Bar (Paid Count / Total Tenure) */}
-                {item.totalCount ? (
-                  <View style={styles.progressContainer}>
-                    <View style={styles.progressBarBg}>
-                      <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
-                    </View>
-                    <View style={styles.progressLabelRow}>
-                      <Text style={styles.progressText}>
-                        Repaid: {item.paidCount || 0} / {item.totalCount} EMIs
+                      <Ionicons
+                        name={isOverdue ? 'alert-circle' : 'checkmark-circle-outline'}
+                        size={12}
+                        color={isOverdue ? colors.error : '#0284C7'}
+                        style={{ marginRight: 3 }}
+                      />
+                      <Text
+                        style={[
+                          styles.statusTxt,
+                          {
+                            color: isOverdue ? colors.error : '#0284C7',
+                          },
+                        ]}
+                      >
+                        {isOverdue
+                          ? item.overdueCount > 1
+                            ? `${item.overdueCount} EMIs Overdue`
+                            : item.daysOverdue > 0
+                            ? `Overdue (${item.daysOverdue}d)`
+                            : 'Overdue'
+                          : 'Upcoming'}
                       </Text>
-                      <Text style={styles.progressPercent}>{progressPct}%</Text>
                     </View>
                   </View>
-                ) : null}
 
-                {/* Overdue Warning Callout (if loan has overdue installments) */}
-                {item.totalOverdue > 0 ? (
-                  <View style={styles.overdueCallout}>
-                    <Ionicons name="warning-outline" size={15} color={colors.error} />
-                    <Text style={styles.overdueCalloutTxt}>
-                      Total Overdue Dues:{' '}
-                      <Text style={{ fontFamily: fonts.bold }}>
-                        ₹{item.totalOverdue.toLocaleString('en-IN')}
-                      </Text>
-                      {item.penaltyAmount > 0 ? ` (incl. ₹${item.penaltyAmount} penalty)` : ''}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {/* Financial Summary Grid */}
-                <View style={styles.detailRow}>
-                  <View style={styles.detailCol}>
-                    <Text style={styles.detailLabel}>Next Due Date</Text>
-                    <Text style={styles.detailVal}>{formatDate(item.dueDate)}</Text>
-                  </View>
-                  <View style={styles.detailCol}>
-                    <Text style={styles.detailLabel}>Monthly EMI</Text>
-                    <Text style={styles.detailVal}>₹{Number(item.amount || 0).toLocaleString('en-IN')}</Text>
-                  </View>
-                  <View style={styles.detailCol}>
-                    <Text style={styles.detailLabel}>Current Due</Text>
-                    <Text style={[styles.detailVal, { color: isOverdue ? colors.error : colors.dark, fontFamily: fonts.bold }]}>
-                      ₹{Number(item.dueAmount || item.amount || 0).toLocaleString('en-IN')}
-                    </Text>
-                  </View>
-                  <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.detailLabel}>Total Balance</Text>
-                    <Text style={[styles.detailVal, { color: colors.primary, fontFamily: fonts.semiBold }]}>
-                      ₹{Number(item.totalRemainingDue || 0).toLocaleString('en-IN')}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Borrower Contact & Address */}
-                {item.borrowerMobile ? (
-                  <View style={styles.contactRow}>
-                    <Ionicons name="call-outline" size={13} color={colors.muted} />
-                    <Text style={styles.mobileTxt}>{item.borrowerMobile}</Text>
-                    {item.borrowerAddress ? (
-                      <>
-                        <Text style={styles.bulletDot}>•</Text>
-                        <Text style={styles.addressTxt} numberOfLines={1}>
-                          {item.borrowerAddress}
+                  {/* Repayment Progress Bar */}
+                  {item.totalCount ? (
+                    <View style={styles.progressContainer}>
+                      <View style={styles.progressBarBg}>
+                        <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
+                      </View>
+                      <View style={styles.progressLabelRow}>
+                        <Text style={styles.progressText}>
+                          Repaid: {item.paidCount || 0} / {item.totalCount} EMIs
                         </Text>
-                      </>
-                    ) : null}
+                        <Text style={styles.progressPercent}>{progressPct}%</Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {/* Disbursement, Opening Date & Recurring Monthly Payment Cycle */}
+                  <View style={styles.scheduleInfoBox}>
+                    <View style={styles.scheduleItem}>
+                      <Text style={styles.scheduleLabel}>Disbursed On</Text>
+                      <Text style={styles.scheduleVal}>{formatDate(item.disbursementDate) || '—'}</Text>
+                    </View>
+                    <View style={styles.scheduleDivider} />
+                    <View style={styles.scheduleItem}>
+                      <Text style={styles.scheduleLabel}>EMI Opening Date</Text>
+                      <Text style={styles.scheduleVal}>{formatDate(item.emiOpeningDate) || '—'}</Text>
+                    </View>
+                    <View style={styles.scheduleDivider} />
+                    <View style={styles.scheduleItem}>
+                      <Text style={styles.scheduleLabel}>Monthly Due Day</Text>
+                      <Text style={[styles.scheduleVal, { color: colors.primary, fontFamily: fonts.bold }]}>
+                        {monthlyEmiDayStr}
+                      </Text>
+                    </View>
                   </View>
-                ) : null}
+
+                  {/* Overdue Warning Callout */}
+                  {item.totalOverdue > 0 ? (
+                    <View style={styles.overdueCallout}>
+                      <Ionicons name="warning-outline" size={15} color={colors.error} />
+                      <Text style={styles.overdueCalloutTxt}>
+                        Total Overdue Dues:{' '}
+                        <Text style={{ fontFamily: fonts.bold }}>
+                          ₹{item.totalOverdue.toLocaleString('en-IN')}
+                        </Text>
+                        {item.penaltyAmount > 0 ? ` (incl. ₹${item.penaltyAmount} penalty)` : ''}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Financial Summary Grid */}
+                  <View style={styles.detailRow}>
+                    <View style={styles.detailCol}>
+                      <Text style={styles.detailLabel}>Next Due Date</Text>
+                      <Text style={styles.detailVal}>{formatDate(item.dueDate)}</Text>
+                    </View>
+                    <View style={styles.detailCol}>
+                      <Text style={styles.detailLabel}>Monthly EMI</Text>
+                      <Text style={styles.detailVal}>₹{Number(item.amount || 0).toLocaleString('en-IN')}</Text>
+                    </View>
+                    <View style={styles.detailCol}>
+                      <Text style={styles.detailLabel}>Current Due</Text>
+                      <Text
+                        style={[
+                          styles.detailVal,
+                          { color: isOverdue ? colors.error : colors.dark, fontFamily: fonts.bold },
+                        ]}
+                      >
+                        ₹{Number(item.dueAmount || item.amount || 0).toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+                    <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
+                      <Text style={styles.detailLabel}>Total Balance</Text>
+                      <Text style={[styles.detailVal, { color: colors.primary, fontFamily: fonts.semiBold }]}>
+                        ₹{Number(item.totalRemainingDue || 0).toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Last EMI Paid Date (if available) */}
+                  {item.lastPaidDate ? (
+                    <View style={styles.lastPaymentRow}>
+                      <Ionicons name="checkmark-circle" size={13} color="#059669" />
+                      <Text style={styles.lastPaymentTxt}>
+                        Last Payment: ₹{Number(item.lastPaidAmount || item.amount || 0).toLocaleString('en-IN')} on {formatDate(item.lastPaidDate)}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Borrower Contact & Address */}
+                  {item.borrowerMobile ? (
+                    <View style={styles.contactRow}>
+                      <Ionicons name="call-outline" size={13} color={colors.muted} />
+                      <Text style={styles.mobileTxt}>{item.borrowerMobile}</Text>
+                      {item.borrowerAddress ? (
+                        <>
+                          <Text style={styles.bulletDot}>•</Text>
+                          <Text style={styles.addressTxt} numberOfLines={1}>
+                            {item.borrowerAddress}
+                          </Text>
+                        </>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
 
                 {/* Actions Row */}
                 <View style={styles.actionsRow}>
@@ -589,7 +642,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.text, padding: 0 },
   tabsRow: { flexDirection: 'row', gap: 6, marginBottom: 12 },
   tab: {
-    paddingHorizontal: 11,
+    paddingHorizontal: 13,
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: colors.white,
@@ -601,18 +654,46 @@ const styles = StyleSheet.create({
   tabTxtActive: { color: colors.white, fontFamily: fonts.semiBold },
   listContainer: { paddingBottom: 80 },
   card: { marginBottom: 12, padding: 14, borderRadius: 12 },
+  cardClickableArea: { marginBottom: 4 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   borrowerName: { fontFamily: fonts.bold, fontSize: fontSize.base, color: colors.dark },
-  loanIdBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
+  idAndDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
+  loanIdBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   loanIdTxt: { fontFamily: fonts.medium, fontSize: fontSize.xs, color: colors.muted },
+  viewDetailsHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  viewDetailsHintTxt: { fontFamily: fonts.medium, fontSize: 9, color: colors.primary },
   statusTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   statusTxt: { fontFamily: fonts.semiBold, fontSize: 10 },
-  progressContainer: { marginTop: 10, marginBottom: 4 },
+  progressContainer: { marginTop: 10, marginBottom: 6 },
   progressBarBg: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
   progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   progressText: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted },
   progressPercent: { fontFamily: fonts.semiBold, fontSize: 10, color: colors.dark },
+  scheduleInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  scheduleItem: { flex: 1, alignItems: 'center' },
+  scheduleDivider: { width: 1, height: 24, backgroundColor: '#CBD5E1' },
+  scheduleLabel: { fontFamily: fonts.regular, fontSize: 9, color: colors.muted },
+  scheduleVal: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.dark, marginTop: 2 },
   overdueCallout: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -637,6 +718,16 @@ const styles = StyleSheet.create({
   detailCol: { alignItems: 'flex-start' },
   detailLabel: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted },
   detailVal: { fontFamily: fonts.semiBold, fontSize: fontSize.xs, color: colors.text, marginTop: 2 },
+  lastPaymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  lastPaymentTxt: { fontFamily: fonts.regular, fontSize: 10, color: '#047857' },
   contactRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   mobileTxt: { fontFamily: fonts.medium, fontSize: 11, color: colors.dark },
   bulletDot: { color: colors.muted, fontSize: 10 },
