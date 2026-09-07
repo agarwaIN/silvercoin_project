@@ -81,6 +81,9 @@ export default function RecoveryScreen({ navigation }) {
   const overdueItems = items.filter(
     (i) => i.recoveryStatus === 'overdue' || (i.dueDate && i.dueDate < todayStr),
   );
+  const advanceItems = items.filter(
+    (i) => i.isAdvancePaid || (i.totalAdvanceAmount && i.totalAdvanceAmount > 0),
+  );
   const upcomingItems = items.filter(
     (i) => i.recoveryStatus !== 'overdue' && (!i.dueDate || i.dueDate >= todayStr),
   );
@@ -89,8 +92,8 @@ export default function RecoveryScreen({ navigation }) {
     (sum, i) => sum + (i.totalOverdue != null ? i.totalOverdue : (i.dueAmount || 0)),
     0,
   );
-  const upcomingAmount = upcomingItems.reduce(
-    (sum, i) => sum + (i.dueAmount || i.amount || 0),
+  const totalAdvanceCollected = items.reduce(
+    (sum, i) => sum + (Number(i.totalAdvanceAmount) || 0),
     0,
   );
   const totalRemainingBalance = items.reduce(
@@ -164,18 +167,30 @@ export default function RecoveryScreen({ navigation }) {
       return;
     }
 
+    // Strictly enforce Transaction/UTR Reference for UPI or Bank
+    if (['UPI', 'Bank'].includes(payMode)) {
+      if (!txnRef || !txnRef.trim()) {
+        showAlert(
+          'UTR Reference Mandatory',
+          `Transaction / UTR Reference number is mandatory for ${payMode} payments. Please enter the unique transaction reference to prevent duplicate entries.`,
+        );
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
+      const cleanRef = txnRef.trim();
       if (isEmployee) {
-        await employeeApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum);
+        await employeeApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef);
       } else {
-        await adminApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum);
+        await adminApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef);
       }
       showAlert('Success', `Recorded payment of ₹${amountNum.toLocaleString('en-IN')} successfully.`);
       setSelectedItem(null);
       await loadData();
     } catch (err) {
-      showAlert('Error', err.response?.data?.message || 'Failed to record payment.');
+      showAlert('Payment Error', err.response?.data?.message || err.message || 'Failed to record payment.');
     } finally {
       setSubmitting(false);
     }
@@ -187,7 +202,7 @@ export default function RecoveryScreen({ navigation }) {
       <Header title="EMI Recovery & Collection" onBack={() => navigation.goBack()} />
 
       <View style={styles.container}>
-        {/* Metrics Banner (Overdue, Upcoming, Total Balance) */}
+        {/* Metrics Banner (Overdue, Advance/Upcoming, Total Balance) */}
         <View style={styles.metricsRow}>
           <View style={[styles.metricCard, { borderLeftColor: colors.error }]}>
             <View style={styles.metricHeaderRow}>
@@ -200,15 +215,23 @@ export default function RecoveryScreen({ navigation }) {
             <Text style={styles.metricSub}>{overdueItems.length} Loans</Text>
           </View>
 
-          <View style={[styles.metricCard, { borderLeftColor: '#D97706' }]}>
+          <View style={[styles.metricCard, { borderLeftColor: totalAdvanceCollected > 0 ? '#059669' : '#D97706' }]}>
             <View style={styles.metricHeaderRow}>
-              <Ionicons name="calendar-outline" size={16} color="#D97706" />
-              <Text style={styles.metricLabel}>Upcoming Due</Text>
+              <Ionicons
+                name={totalAdvanceCollected > 0 ? 'shield-checkmark' : 'calendar-outline'}
+                size={16}
+                color={totalAdvanceCollected > 0 ? '#059669' : '#D97706'}
+              />
+              <Text style={styles.metricLabel}>
+                {totalAdvanceCollected > 0 ? 'Advance Collected' : 'Upcoming Due'}
+              </Text>
             </View>
-            <Text style={[styles.metricValue, { color: '#D97706' }]}>
-              ₹{upcomingAmount.toLocaleString('en-IN')}
+            <Text style={[styles.metricValue, { color: totalAdvanceCollected > 0 ? '#059669' : '#D97706' }]}>
+              ₹{(totalAdvanceCollected > 0 ? totalAdvanceCollected : upcomingItems.reduce((s, i) => s + (i.dueAmount || 0), 0)).toLocaleString('en-IN')}
             </Text>
-            <Text style={styles.metricSub}>{upcomingItems.length} Loans</Text>
+            <Text style={styles.metricSub}>
+              {totalAdvanceCollected > 0 ? `${advanceItems.length} Loans in Advance` : `${upcomingItems.length} Loans`}
+            </Text>
           </View>
 
           <View style={[styles.metricCard, { borderLeftColor: colors.primary }]}>
@@ -279,6 +302,7 @@ export default function RecoveryScreen({ navigation }) {
           renderItem={({ item }) => {
             const isOverdue =
               item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
+            const isAdvance = !isOverdue && item.totalAdvanceAmount > 0;
 
             const progressPct =
               item.totalCount && item.totalCount > 0
@@ -318,21 +342,21 @@ export default function RecoveryScreen({ navigation }) {
                       style={[
                         styles.statusTag,
                         {
-                          backgroundColor: isOverdue ? '#FEE2E2' : '#E0F2FE',
+                          backgroundColor: isOverdue ? '#FEE2E2' : isAdvance ? '#D1FAE5' : item.isPartiallyPaid ? '#FEF3C7' : '#E0F2FE',
                         },
                       ]}
                     >
                       <Ionicons
-                        name={isOverdue ? 'alert-circle' : 'checkmark-circle-outline'}
+                        name={isOverdue ? 'alert-circle' : isAdvance ? 'shield-checkmark' : item.isPartiallyPaid ? 'pie-chart' : 'checkmark-circle-outline'}
                         size={12}
-                        color={isOverdue ? colors.error : '#0284C7'}
+                        color={isOverdue ? colors.error : isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7'}
                         style={{ marginRight: 3 }}
                       />
                       <Text
                         style={[
                           styles.statusTxt,
                           {
-                            color: isOverdue ? colors.error : '#0284C7',
+                            color: isOverdue ? colors.error : isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7',
                           },
                         ]}
                       >
@@ -342,6 +366,10 @@ export default function RecoveryScreen({ navigation }) {
                             : item.daysOverdue > 0
                             ? `Overdue (${item.daysOverdue}d)`
                             : 'Overdue'
+                          : isAdvance
+                          ? `Advance (${item.advanceEmisCount || 1} EMIs)`
+                          : item.isPartiallyPaid
+                          ? 'Part Paid'
                           : 'Upcoming'}
                       </Text>
                     </View>
@@ -359,6 +387,34 @@ export default function RecoveryScreen({ navigation }) {
                         </Text>
                         <Text style={styles.progressPercent}>{progressPct}%</Text>
                       </View>
+                    </View>
+                  ) : null}
+
+                  {/* Advance Payment Callout (if borrower has paid ahead) */}
+                  {isAdvance ? (
+                    <View style={styles.advanceCallout}>
+                      <Ionicons name="shield-checkmark" size={16} color="#059669" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.advanceCalloutTxt}>
+                          EMI Advance Paid: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.totalAdvanceAmount).toLocaleString('en-IN')}</Text>
+                          {item.advanceEmisCount > 0 ? ` (${item.advanceEmisCount} EMIs paid ahead)` : ''}
+                        </Text>
+                        <Text style={styles.advanceSubTxt}>
+                          Next Upcoming EMI Date: <Text style={{ fontFamily: fonts.semiBold }}>{formatDate(item.upcomingEmiDate || item.dueDate)}</Text>
+                          {' '}(No payment due until then)
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {/* Part Payment Callout (if borrower paid a partial amount on current EMI) */}
+                  {item.isPartiallyPaid ? (
+                    <View style={styles.partPaymentCallout}>
+                      <Ionicons name="pie-chart-outline" size={15} color="#D97706" />
+                      <Text style={styles.partPaymentCalloutTxt}>
+                        Part Payment Recorded: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.partialPaidAmount || 0).toLocaleString('en-IN')}</Text>
+                        {' '}| Remaining for this EMI: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.dueAmount || 0).toLocaleString('en-IN')}</Text>
+                      </Text>
                     </View>
                   ) : null}
 
@@ -400,7 +456,7 @@ export default function RecoveryScreen({ navigation }) {
                   <View style={styles.detailRow}>
                     <View style={styles.detailCol}>
                       <Text style={styles.detailLabel}>Next Due Date</Text>
-                      <Text style={styles.detailVal}>{formatDate(item.dueDate)}</Text>
+                      <Text style={styles.detailVal}>{formatDate(item.upcomingEmiDate || item.dueDate)}</Text>
                     </View>
                     <View style={styles.detailCol}>
                       <Text style={styles.detailLabel}>Monthly EMI</Text>
@@ -411,10 +467,13 @@ export default function RecoveryScreen({ navigation }) {
                       <Text
                         style={[
                           styles.detailVal,
-                          { color: isOverdue ? colors.error : colors.dark, fontFamily: fonts.bold },
+                          {
+                            color: isOverdue ? colors.error : isAdvance ? '#059669' : colors.dark,
+                            fontFamily: fonts.bold,
+                          },
                         ]}
                       >
-                        ₹{Number(item.dueAmount || item.amount || 0).toLocaleString('en-IN')}
+                        {isAdvance ? `₹0 (Paid Ahead)` : `₹${Number(item.dueAmount || item.amount || 0).toLocaleString('en-IN')}`}
                       </Text>
                     </View>
                     <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
@@ -513,17 +572,15 @@ export default function RecoveryScreen({ navigation }) {
             {/* Financial Overview in Modal */}
             <View style={styles.modalOverviewBox}>
               <View style={styles.modalOverviewCol}>
-                <Text style={styles.modalOverviewLabel}>Current EMI</Text>
-                <Text style={styles.modalOverviewVal}>₹{Number(selectedItem?.dueAmount || 0).toLocaleString('en-IN')}</Text>
+                <Text style={styles.modalOverviewLabel}>Monthly EMI</Text>
+                <Text style={styles.modalOverviewVal}>₹{Number(selectedItem?.amount || 0).toLocaleString('en-IN')}</Text>
               </View>
-              {selectedItem?.totalOverdue > 0 ? (
-                <View style={styles.modalOverviewCol}>
-                  <Text style={[styles.modalOverviewLabel, { color: colors.error }]}>Overdue</Text>
-                  <Text style={[styles.modalOverviewVal, { color: colors.error }]}>
-                    ₹{Number(selectedItem?.totalOverdue || 0).toLocaleString('en-IN')}
-                  </Text>
-                </View>
-              ) : null}
+              <View style={styles.modalOverviewCol}>
+                <Text style={styles.modalOverviewLabel}>Current Due</Text>
+                <Text style={[styles.modalOverviewVal, { color: selectedItem?.totalOverdue > 0 ? colors.error : colors.dark }]}>
+                  ₹{Number(selectedItem?.dueAmount || selectedItem?.amount || 0).toLocaleString('en-IN')}
+                </Text>
+              </View>
               <View style={styles.modalOverviewCol}>
                 <Text style={styles.modalOverviewLabel}>Loan Balance</Text>
                 <Text style={styles.modalOverviewVal}>₹{Number(selectedItem?.totalRemainingDue || 0).toLocaleString('en-IN')}</Text>
@@ -535,9 +592,13 @@ export default function RecoveryScreen({ navigation }) {
             <View style={styles.presetChipsRow}>
               <TouchableOpacity
                 style={styles.presetChip}
-                onPress={() => setPayAmount(String(selectedItem?.dueAmount || ''))}
+                onPress={() => setPayAmount(String(selectedItem?.dueAmount || selectedItem?.amount || ''))}
               >
-                <Text style={styles.presetChipTxt}>Current EMI (₹{selectedItem?.dueAmount})</Text>
+                <Text style={styles.presetChipTxt}>
+                  {selectedItem?.isPartiallyPaid
+                    ? `Remaining Due (₹${selectedItem?.dueAmount})`
+                    : `1 Full EMI (₹${selectedItem?.amount})`}
+                </Text>
               </TouchableOpacity>
               {selectedItem?.totalOverdue > selectedItem?.dueAmount ? (
                 <TouchableOpacity
@@ -547,6 +608,14 @@ export default function RecoveryScreen({ navigation }) {
                   <Text style={[styles.presetChipTxt, { color: colors.error }]}>
                     All Overdue (₹{selectedItem?.totalOverdue})
                   </Text>
+                </TouchableOpacity>
+              ) : null}
+              {selectedItem?.amount ? (
+                <TouchableOpacity
+                  style={styles.presetChip}
+                  onPress={() => setPayAmount(String(Number(selectedItem.amount) * 2))}
+                >
+                  <Text style={styles.presetChipTxt}>2 EMIs (Advance)</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -559,7 +628,7 @@ export default function RecoveryScreen({ navigation }) {
               placeholder="Enter collected amount"
             />
 
-            <Text style={styles.fieldLabel}>Payment Mode</Text>
+            <Text style={styles.fieldLabel}>Payment Mode *</Text>
             <View style={styles.modeRow}>
               {['Cash', 'UPI', 'Bank'].map((mode) => (
                 <TouchableOpacity
@@ -575,10 +644,18 @@ export default function RecoveryScreen({ navigation }) {
             </View>
 
             <Input
-              label="Transaction / UTR Reference (Optional)"
+              label={
+                ['UPI', 'Bank'].includes(payMode)
+                  ? 'Transaction / UTR Reference * (Mandatory)'
+                  : 'Receipt / Reference (Optional for Cash)'
+              }
               value={txnRef}
               onChangeText={setTxnRef}
-              placeholder="Reference number if UPI or Bank"
+              placeholder={
+                ['UPI', 'Bank'].includes(payMode)
+                  ? 'Enter mandatory UTR / Bank Reference No.'
+                  : 'Optional receipt / slip number'
+              }
             />
 
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
@@ -678,6 +755,33 @@ const styles = StyleSheet.create({
   progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   progressText: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted },
   progressPercent: { fontFamily: fonts.semiBold, fontSize: 10, color: colors.dark },
+  advanceCallout: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginTop: 8,
+  },
+  advanceCalloutTxt: { fontFamily: fonts.medium, fontSize: 11, color: '#065F46' },
+  advanceSubTxt: { fontFamily: fonts.regular, fontSize: 10, color: '#047857', marginTop: 2 },
+  partPaymentCallout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  partPaymentCalloutTxt: { fontFamily: fonts.medium, fontSize: 11, color: '#92400E' },
   scheduleInfoBox: {
     flexDirection: 'row',
     alignItems: 'center',

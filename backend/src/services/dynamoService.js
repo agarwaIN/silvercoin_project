@@ -292,6 +292,16 @@ async function updateEmiPayment(paymentId, updates) {
   }));
 }
 
+async function findEmiByTxnRef(txnRef) {
+  if (!txnRef) return null;
+  const items = await scanAll(tableName('emis'));
+  const normalized = String(txnRef).trim().toLowerCase();
+  return items.find(e =>
+    (e.transactionRef && String(e.transactionRef).trim().toLowerCase() === normalized) ||
+    (e.txnRef && String(e.txnRef).trim().toLowerCase() === normalized)
+  ) || null;
+}
+
 async function createOtpSession(session) {
   await docClient.send(new PutCommand({
     TableName: tableName('otpSessions'),
@@ -356,6 +366,7 @@ module.exports = {
   listEmiByLoan,
   updateEmiPayment,
   deleteEmiPayment,
+  findEmiByTxnRef,
   createOtpSession,
   getOtpSession,
   updateOtpSession,

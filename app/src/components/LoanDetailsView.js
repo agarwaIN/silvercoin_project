@@ -1,13 +1,37 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDate } from '../utils/date';
+import * as Location from 'expo-location';
 
 export default function LoanDetailsView({ loan }) {
   if (!loan) return null;
 
   const changedFields = loan.changedFields || [];
+
+  const [resolvedLocName, setResolvedLocName] = useState(loan.geoLocation?.locationName || '');
+  const [resolvedDistrict, setResolvedDistrict] = useState(loan.geoLocation?.district || loan.propertyDistrict || '');
+
+  useEffect(() => {
+    if (loan.geoLocation?.lat && loan.geoLocation?.lng && (!resolvedLocName || !resolvedDistrict)) {
+      const lat = parseFloat(loan.geoLocation.lat);
+      const lng = parseFloat(loan.geoLocation.lng);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        Location.reverseGeocodeAsync({ latitude: lat, longitude: lng })
+          .then((results) => {
+            if (results && results.length > 0) {
+              const r = results[0];
+              const name = [r.name, r.street].filter(Boolean).join(', ') || r.subregion || r.city || '';
+              const dist = r.district || r.subregion || r.city || '';
+              if (!resolvedLocName && name) setResolvedLocName(name);
+              if (!resolvedDistrict && dist) setResolvedDistrict(dist);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [loan.geoLocation, resolvedLocName, resolvedDistrict]);
 
   const Row = ({ label, value, fieldKey }) => {
     const isChanged = fieldKey && changedFields.includes(fieldKey);
@@ -83,6 +107,8 @@ export default function LoanDetailsView({ loan }) {
         {loan.otherLoan && <Row label="Loan Details" value={loan.otherLoanDetails} fieldKey="otherLoanDetails" /> }
         <Row label="Possession" value={loan.possessionStatus} fieldKey="possessionStatus" />
         <Row label="Geo Location" value={loan.geoLocation?.lat ? `${loan.geoLocation.lat}, ${loan.geoLocation.lng}` : ''} fieldKey="geoLocation" />
+        <Row label="Location Name" value={loan.geoLocation?.locationName || loan.locationName || resolvedLocName} fieldKey="geoLocationName" />
+        <Row label="District" value={loan.geoLocation?.district || loan.propertyDistrict || loan.district || resolvedDistrict} fieldKey="propertyDistrict" />
         <Row label="House Video" value={loan.houseVideoUri ? '✓ Recorded' : (loan.propertyPhotos?.some(p => p.type === 'video') ? '✓ Recorded' : 'Not recorded')} fieldKey="houseVideoUri" />
         <Row label="Photos Uploaded" value={loan.propertyPhotos?.length ? `${loan.propertyPhotos.length} item(s)` : ''} fieldKey="propertyPhotos" />
         <Row label="Docs Uploaded" value={loan.propertyDocs?.length ? `${loan.propertyDocs.length} doc(s)` : ''} fieldKey="propertyDocs" />

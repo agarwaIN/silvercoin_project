@@ -66,15 +66,22 @@ const sb = StyleSheet.create({
 
 // ─── Reusable Components ─────────────────────────────────────────────────────
 function FieldLabel({ text, required }) {
+  const cleanText = text ? text.replace(/\s*[\(—\-]?\s*optional\s*\)?/i, '').trim() : '';
   return (
     <Text style={fl.label}>
-      {text}{required && <Text style={fl.star}> *</Text>}
+      {cleanText}
+      {required ? (
+        <Text style={fl.star}> *</Text>
+      ) : (
+        <Text style={fl.optional}> (Optional)</Text>
+      )}
     </Text>
   );
 }
 const fl = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '500', color: colors.text, marginBottom: 6, marginTop: 14 },
-  star: { color: colors.error },
+  star: { color: colors.error, fontWeight: '700' },
+  optional: { color: colors.muted, fontWeight: '400', fontSize: 11 },
 });
 
 function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline, editable = true, loading }) {
@@ -125,7 +132,7 @@ function VideoSectionCard({
       <View style={vid.cardHeader}>
         <View style={{ flex: 1 }}>
           <Text style={vid.title}>
-            {title} {required && <Text style={{ color: colors.error }}>*</Text>}
+            {title} {required ? <Text style={{ color: colors.error, fontWeight: '700' }}>*</Text> : <Text style={{ color: colors.muted, fontWeight: '400', fontSize: 11 }}>(Optional)</Text>}
           </Text>
           <Text style={vid.sub}>{description}</Text>
         </View>
@@ -310,7 +317,7 @@ function Step1({ data, setData, loanId }) {
       <FieldLabel text="Owner Mobile" required />
       <StyledInput value={data.ownerMobile} onChangeText={v => setData(d => ({ ...d, ownerMobile: v }))} placeholder="9876543210" keyboardType="phone-pad" />
 
-      <FieldLabel text="Owner Email (optional)" />
+      <FieldLabel text="Owner Email" />
       <StyledInput value={data.ownerEmail} onChangeText={v => setData(d => ({ ...d, ownerEmail: v }))} placeholder="owner@email.com" keyboardType="email-address" />
 
       <FieldLabel text="Owner Aadhaar Number" required />
@@ -488,10 +495,13 @@ function Step2({ data, setData, loanId }) {
     setLocLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { Alert.alert('Permission denied'); return; }
+      if (status !== 'granted') { Alert.alert('Permission denied', 'Location permission is required to capture property coordinates.'); return; }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const [geo] = await Location.reverseGeocodeAsync({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      const results = await Location.reverseGeocodeAsync({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      const geo = (results && results.length > 0) ? results[0] : {};
       const address = [geo.name, geo.street, geo.district, geo.city, geo.postalCode].filter(Boolean).join(', ');
+      const locName = [geo.name, geo.street].filter(Boolean).join(', ') || geo.subregion || geo.city || '';
+      const district = geo.district || geo.subregion || geo.city || '';
       const now = new Date();
       const dateStr = formatDate(now);
       const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -499,7 +509,9 @@ function Step2({ data, setData, loanId }) {
         ...d,
         geoLat: loc.coords.latitude.toFixed(4),
         geoLng: loc.coords.longitude.toFixed(4),
-        geoAddress: address,
+        geoAddress: address || d.geoAddress,
+        geoLocName: locName || d.geoLocName,
+        geoDistrict: district || d.geoDistrict,
         geoDate: `${dateStr}, ${timeStr}`,
       }));
     } catch { Alert.alert('Error', 'Could not get location.'); }
@@ -779,7 +791,7 @@ function Step2({ data, setData, loanId }) {
           <Ionicons name="location" size={18} color={colors.dark} />
           <View style={{ flex: 1 }}>
             <Text style={geo.coords}>Captured: {data.geoLat}, {data.geoLng}</Text>
-            <Text style={geo.date}>{data.geoDate}</Text>
+            <Text style={geo.date}>{data.geoDate || 'Coordinates captured'}</Text>
           </View>
           <TouchableOpacity onPress={captureLocation}>
             <Text style={{ fontSize: 12, color: colors.dark, fontWeight: '600' }}>Re-capture</Text>
@@ -792,6 +804,21 @@ function Step2({ data, setData, loanId }) {
             : <><Ionicons name="location-outline" size={20} color={colors.white} /><Text style={geo.captureTxt}>Capture Geo Location</Text></>}
         </TouchableOpacity>
       )}
+
+      {/* ── Geo Location Name & District ── */}
+      <FieldLabel text="Location / Area Name" required />
+      <StyledInput
+        value={data.geoLocName}
+        onChangeText={v => setData(d => ({ ...d, geoLocName: v }))}
+        placeholder="Auto-filled from GPS or enter location name"
+      />
+
+      <FieldLabel text="District" required />
+      <StyledInput
+        value={data.geoDistrict}
+        onChangeText={v => setData(d => ({ ...d, geoDistrict: v }))}
+        placeholder="Auto-filled from GPS or enter district"
+      />
 
       {/* ── Document Upload Modal with Naming Field ── */}
       <Modal visible={modalVisible} transparent animationType="fade">
@@ -1021,6 +1048,8 @@ function Step4({ data }) {
         {data.otherLoan === 'Yes' && <Row label="Loan Details" value={data.otherLoanDetails} />}
         <Row label="Possession" value={data.possessionStatus} />
         <Row label="Geo Location" value={data.geoLat ? `${data.geoLat}, ${data.geoLng}` : ''} />
+        <Row label="Location Name" value={data.geoLocName} />
+        <Row label="District" value={data.geoDistrict} />
         <Row label="Property Address" value={data.geoAddress} />
         <Row label="Photos" value={data.propertyPhotos?.length ? `${data.propertyPhotos.length} photo(s)` : ''} />
         <Row label="Documents" value={data.propertyDocs?.length ? `${data.propertyDocs.length} doc(s)` : ''} />
@@ -1069,6 +1098,8 @@ const initialFormData = {
   otherLoanDetails: '',
   geoLat: '',
   geoLng: '',
+  geoLocName: '',
+  geoDistrict: '',
   geoDate: '',
   geoAddress: '',
   possessionStatus: '',
@@ -1115,6 +1146,8 @@ export default function NewLoanScreen({ route, navigation }) {
     otherLoanDetails: existingLoan?.otherLoanDetails || '',
     geoLat: existingLoan?.geoLocation?.lat || '', 
     geoLng: existingLoan?.geoLocation?.lng || '', 
+    geoLocName: existingLoan?.geoLocation?.locationName || existingLoan?.locationName || '',
+    geoDistrict: existingLoan?.geoLocation?.district || existingLoan?.propertyDistrict || existingLoan?.district || '',
     geoDate: '', 
     geoAddress: existingLoan?.propertyAddress || '',
     possessionStatus: existingLoan?.possessionStatus || '', 
@@ -1193,7 +1226,57 @@ export default function NewLoanScreen({ route, navigation }) {
     return () => sub.remove();
   }, [step, formData]);
 
+  const validateStep = (stepIndex, data) => {
+    if (stepIndex === 0) {
+      if (!data.ownerName?.trim()) return 'Please enter Owner Name.';
+      const mobile = (data.ownerMobile || '').trim();
+      if (!mobile || !/^\d{10}$/.test(mobile)) return 'Please enter a valid 10-digit Owner Mobile number.';
+      const aadhar = (data.aadhaar || '').trim();
+      if (!aadhar || !/^\d{12}$/.test(aadhar)) return 'Please enter a valid 12-digit Aadhaar Number.';
+      if (!data.spouseName?.trim()) return 'Please enter Spouse Name.';
+      if (!data.familyOccupation?.trim()) return 'Please enter Family Occupation.';
+      if (!data.monthlyIncome || Number(data.monthlyIncome) <= 0) return 'Please enter a valid Monthly Income.';
+      const ifsc = (data.ifsc || '').trim();
+      if (!ifsc || ifsc.length !== 11) return 'Please enter a valid 11-character IFSC code.';
+      if (!data.bankName?.trim()) return 'Please enter or fetch Bank Name.';
+      if (!data.accountHolder?.trim()) return 'Please enter Account Holder Name.';
+      const accNum = (data.accountNumber || '').trim();
+      if (!accNum || accNum.length < 6) return 'Please enter a valid Bank Account Number.';
+      if (!data.ownerAddress?.trim()) return 'Please enter residential Owner Address.';
+      if (!data.videoUri) return 'Please record or upload the Owner Verification Video.';
+      if (!data.houseVideoUri) return 'Please record or upload the House / Property Video.';
+    }
+
+    if (stepIndex === 1) {
+      if (!data.propertyPhotos || data.propertyPhotos.length === 0) return 'Please upload at least one Property Photo.';
+      if (!data.propertyArea || Number(data.propertyArea) <= 0) return 'Please enter Property Area (sq. m).';
+      if (!data.marketValue || Number(data.marketValue) <= 0) return 'Please enter Market Value of the property.';
+      if (data.descendantCount === '' || data.descendantCount === null || isNaN(Number(data.descendantCount))) {
+        return 'Please enter Transferred to Descendant count (enter 0 if none).';
+      }
+      if (data.otherLoan === 'Yes' && !data.otherLoanDetails?.trim()) {
+        return 'Please provide remark/details for the existing loan on this property.';
+      }
+      if (!data.geoLat || !data.geoLng) return 'Please capture the Geo Location of the property.';
+      if (!data.geoLocName?.trim()) return 'Please enter Location / Area Name.';
+      if (!data.geoDistrict?.trim()) return 'Please enter District name.';
+      if (!data.geoAddress?.trim()) return 'Please enter Property Address.';
+    }
+
+    if (stepIndex === 2) {
+      if (!data.loanAmount || Number(data.loanAmount) <= 0) return 'Please enter Requested Loan Amount.';
+    }
+
+    return null;
+  };
+
   const handleNext = async () => {
+    const validationError = validateStep(step, formData);
+    if (validationError) {
+      showAlert('Required Field Missing', validationError);
+      return;
+    }
+
     setLoading(true);
     try {
       let currentLoanId = loanId;
@@ -1204,12 +1287,20 @@ export default function NewLoanScreen({ route, navigation }) {
       }
       if (step === 0) {
         await updateLoan(currentLoanId, {
-          ownerName: formData.ownerName, ownerMobile: formData.ownerMobile,
-          ownerEmail: formData.ownerEmail, aadhaar: formData.aadhaar,
-          spouseName: formData.spouseName, familyOccupation: formData.familyOccupation,
+          ownerName: formData.ownerName?.trim(),
+          ownerMobile: formData.ownerMobile?.trim(),
+          ownerEmail: formData.ownerEmail?.trim() || '',
+          aadhaar: formData.aadhaar?.trim(),
+          spouseName: formData.spouseName?.trim(),
+          familyOccupation: formData.familyOccupation?.trim(),
           monthlyIncome: Number(formData.monthlyIncome),
-          bankDetails: { ifsc: formData.ifsc, bankName: formData.bankName, accountHolder: formData.accountHolder, accountNumber: formData.accountNumber },
-          ownerAddress: formData.ownerAddress,
+          bankDetails: {
+            ifsc: formData.ifsc?.trim(),
+            bankName: formData.bankName?.trim(),
+            accountHolder: formData.accountHolder?.trim(),
+            accountNumber: formData.accountNumber?.trim(),
+          },
+          ownerAddress: formData.ownerAddress?.trim(),
         });
 
         // Upload Owner Video if pending
@@ -1242,17 +1333,29 @@ export default function NewLoanScreen({ route, navigation }) {
       }
       if (step === 1) {
         await updateLoan(currentLoanId, {
-          propertyArea: Number(formData.propertyArea), marketValue: Number(formData.marketValue),
-          descendantCount: Number(formData.descendantCount), otherLoan: formData.otherLoan === 'Yes',
-          otherLoanDetails: formData.otherLoanDetails,
-          geoLocation: { lat: formData.geoLat, lng: formData.geoLng },
-          propertyAddress: formData.geoAddress, possessionStatus: formData.possessionStatus,
+          propertyArea: Number(formData.propertyArea),
+          marketValue: Number(formData.marketValue),
+          descendantCount: Number(formData.descendantCount),
+          otherLoan: formData.otherLoan === 'Yes',
+          otherLoanDetails: formData.otherLoanDetails?.trim() || '',
+          geoLocation: {
+            lat: formData.geoLat,
+            lng: formData.geoLng,
+            locationName: formData.geoLocName?.trim() || '',
+            district: formData.geoDistrict?.trim() || '',
+          },
+          locationName: formData.geoLocName?.trim() || '',
+          propertyDistrict: formData.geoDistrict?.trim() || '',
+          propertyAddress: formData.geoAddress?.trim() || '',
+          possessionStatus: formData.possessionStatus,
         });
       }
       if (step === 2) {
         await updateLoan(currentLoanId, {
-          loanAmount: Number(formData.loanAmount), loanPurpose: formData.loanPurpose,
-          repaymentMonths: Number(formData.repaymentMonths), notes: formData.notes,
+          loanAmount: Number(formData.loanAmount),
+          loanPurpose: formData.loanPurpose?.trim() || '',
+          repaymentMonths: formData.repaymentMonths ? Number(formData.repaymentMonths) : null,
+          notes: formData.notes?.trim() || '',
         });
       }
       setStep(s => s + 1);

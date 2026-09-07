@@ -248,6 +248,24 @@ async function buildLoanRecoveryItems(loans) {
     const lastPaidDate = paidEmis.length > 0 ? (paidEmis[0].paidDate ? paidEmis[0].paidDate.slice(0, 10) : paidEmis[0].dueDate) : null;
     const lastPaidAmount = paidEmis.length > 0 ? Number(paidEmis[0].paidAmount || paidEmis[0].amount || 0) : 0;
 
+    // Calculate advance payments: EMIs paid ahead of today
+    const futurePaidEmis = emis.filter(e => e.status === 'paid' && e.dueDate > todayStr);
+    const advancePaidSum = futurePaidEmis.reduce((sum, e) => sum + Number(e.paidAmount || e.amount || 0), 0);
+    const advanceEmisCount = futurePaidEmis.length;
+
+    // Also check if current upcoming EMI has any partial payment made ahead
+    const partialAdvance = (currentEmi && currentEmi.dueDate > todayStr) ? Number(currentEmi.paidAmount || 0) : 0;
+    const totalAdvanceAmount = advancePaidSum + partialAdvance;
+    const isAdvancePaid = totalAdvanceAmount > 0;
+
+    // Check if current EMI has a part payment
+    const currentEmiPaid = Number(currentEmi.paidAmount || 0);
+    const isPartiallyPaid = currentEmi.status === 'partial' || (currentEmiPaid > 0 && currentEmi.status !== 'paid');
+    const partialPaidAmount = isPartiallyPaid ? currentEmiPaid : 0;
+
+    // Upcoming EMI date (the date of the next installment to be paid)
+    const upcomingEmiDate = currentEmi ? currentEmi.dueDate : null;
+
     recoveryItems.push({
       loanId: loan.loanId,
       displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
@@ -264,6 +282,16 @@ async function buildLoanRecoveryItems(loans) {
       dueAmount: Math.max(0, finalCurrentDue),
       currentEmiStatus: currentEmi.status || 'pending',
       daysOverdue,
+
+      // Part payment details
+      isPartiallyPaid,
+      partialPaidAmount,
+
+      // Advance payment details
+      isAdvancePaid,
+      totalAdvanceAmount,
+      advanceEmisCount,
+      upcomingEmiDate,
 
       // Disbursement, EMI opening date, and monthly payment cycle
       disbursementDate,
@@ -297,15 +325,31 @@ async function buildLoanRecoveryItems(loans) {
 /**
  * Records an EMI payment with smart cascading across unpaid installments.
  * Supports partial payment, full payment, and advance multi-installment payments.
+ * Strictly enforces mandatory and unique UTR/Transaction numbers for UPI and Bank payments.
  * @param {string} loanId 
  * @param {string} initialPaymentId 
  * @param {number} amount 
  * @param {string} userId 
+ * @param {Object} paymentDetails 
  */
-async function recordLoanPayment(loanId, initialPaymentId, amount, userId) {
+async function recordLoanPayment(loanId, initialPaymentId, amount, userId, paymentDetails = {}) {
   let remainingAmount = Number(amount);
   if (isNaN(remainingAmount) || remainingAmount <= 0) {
     throw new Error('Invalid payment amount');
+  }
+
+  const mode = (paymentDetails.paymentMode || paymentDetails.payMode || 'Cash').trim();
+  const rawTxnRef = (paymentDetails.transactionRef || paymentDetails.txnRef || '').trim();
+
+  // If payment mode is UPI or Bank, transaction reference is mandatory and must be unique
+  if (['upi', 'bank'].includes(mode.toLowerCase())) {
+    if (!rawTxnRef) {
+      throw new Error('Transaction / UTR reference number is mandatory for UPI and Bank payments.');
+    }
+    const existing = await db.findEmiByTxnRef(rawTxnRef);
+    if (existing) {
+      throw new Error(`Duplicate payment prevented: A payment with reference "${rawTxnRef}" has already been recorded in the system.`);
+    }
   }
 
   const emis = await db.listEmiByLoan(loanId);
@@ -345,13 +389,18 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId) {
       paidAmount: newPaidAmount,
       status: newStatus,
       paidDate: new Date().toISOString(),
-      markedBy: userId
+      markedBy: userId,
+      paymentMode: mode,
+      transactionRef: rawTxnRef || null,
+      txnRef: rawTxnRef || null,
     });
 
     updatedPayments.push({
       paymentId: emi.paymentId,
       paidAmount: newPaidAmount,
-      status: newStatus
+      status: newStatus,
+      paymentMode: mode,
+      transactionRef: rawTxnRef || null,
     });
   }
 
@@ -363,7 +412,10 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId) {
       paidAmount: newPaid,
       status: 'paid',
       paidDate: new Date().toISOString(),
-      markedBy: userId
+      markedBy: userId,
+      paymentMode: mode,
+      transactionRef: rawTxnRef || null,
+      txnRef: rawTxnRef || null,
     });
   }
 

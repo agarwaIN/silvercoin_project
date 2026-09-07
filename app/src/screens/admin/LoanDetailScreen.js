@@ -30,7 +30,7 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [disburseModalVisible, setDisburseModalVisible] = useState(false);
   const [disburseData, setDisburseData] = useState({ date: formatDate(new Date()), amount: '', bankName: '', transactionNumber: '' });
   const [payEmiModalVisible, setPayEmiModalVisible] = useState(false);
-  const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0 });
+  const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0, paymentMode: 'Cash', txnRef: '' });
 
   const load = useCallback(async () => {
     const data = await getLoan(loanId);
@@ -121,9 +121,15 @@ export default function LoanDetailScreen({ route, navigation }) {
       showAlert('Error', 'Please enter a valid amount.');
       return;
     }
+    const mode = payEmiData.paymentMode || 'Cash';
+    const cleanRef = (payEmiData.txnRef || '').trim();
+    if (['UPI', 'Bank'].includes(mode) && !cleanRef) {
+      showAlert('Required Field Missing', 'Transaction / UTR reference number is mandatory for UPI and Bank payments.');
+      return;
+    }
     setProcessing(true);
     try {
-      await payEmi(loanId, payEmiData.paymentId, payEmiData.amount);
+      await payEmi(loanId, payEmiData.paymentId, payEmiData.amount, mode, cleanRef);
       setPayEmiModalVisible(false);
       await load();
       showAlert('Success', 'EMI payment recorded.');
@@ -320,7 +326,16 @@ export default function LoanDetailScreen({ route, navigation }) {
                     {!isPaid && loan.status === 'active' && (
                       <TouchableOpacity 
                         style={{ marginLeft: 12, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-                        onPress={() => { setPayEmiData({ paymentId: emi.paymentId, amount: (totalDue - (emi.paidAmount || 0)).toString(), dueAmount: totalDue - (emi.paidAmount || 0) }); setPayEmiModalVisible(true); }}
+                        onPress={() => {
+                          setPayEmiData({
+                            paymentId: emi.paymentId,
+                            amount: (totalDue - (emi.paidAmount || 0)).toString(),
+                            dueAmount: totalDue - (emi.paidAmount || 0),
+                            paymentMode: 'Cash',
+                            txnRef: '',
+                          });
+                          setPayEmiModalVisible(true);
+                        }}
                       >
                         <Text style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.white }}>Pay</Text>
                       </TouchableOpacity>
@@ -457,6 +472,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Receive Payment</Text>
             <Text style={styles.modalSubtitle}>Enter the amount received from the customer. Remaining due: ₹{payEmiData.dueAmount}</Text>
+            
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Amount (₹)"
@@ -464,6 +480,54 @@ export default function LoanDetailScreen({ route, navigation }) {
               onChangeText={t => setPayEmiData({...payEmiData, amount: t})}
               keyboardType="numeric"
             />
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 12, marginBottom: 6 }}>
+              Payment Mode *
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              {['Cash', 'UPI', 'Bank'].map(mode => (
+                <TouchableOpacity
+                  key={mode}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: payEmiData.paymentMode === mode ? colors.primary : colors.border,
+                    backgroundColor: payEmiData.paymentMode === mode ? colors.primary : colors.white,
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setPayEmiData({ ...payEmiData, paymentMode: mode })}
+                >
+                  <Text
+                    style={{
+                      fontFamily: fonts.semiBold,
+                      fontSize: 13,
+                      color: payEmiData.paymentMode === mode ? colors.white : colors.text,
+                    }}
+                  >
+                    {mode}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+              {['UPI', 'Bank'].includes(payEmiData.paymentMode)
+                ? 'Transaction / UTR Reference * (Mandatory)'
+                : 'Receipt / Reference (Optional for Cash)'}
+            </Text>
+            <TextInput
+              style={[styles.modalInputSmall, { marginBottom: 16 }]}
+              placeholder={
+                ['UPI', 'Bank'].includes(payEmiData.paymentMode)
+                  ? 'Enter mandatory UTR / Bank Reference No.'
+                  : 'Optional receipt / slip number'
+              }
+              value={payEmiData.txnRef}
+              onChangeText={t => setPayEmiData({ ...payEmiData, txnRef: t })}
+            />
+
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => setPayEmiModalVisible(false)} disabled={processing}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
