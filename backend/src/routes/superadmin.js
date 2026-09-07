@@ -90,7 +90,63 @@ router.patch('/users/:userId/deactivate', async (req, res) => {
   res.json({ message: 'User deactivated' });
 });
 
-router.get('/recovery', (req, res) => res.json([]));
-router.get('/loans/:loanId/media-preview', (req, res) => notImplemented(res));
+router.get('/recovery', async (req, res) => {
+  try {
+    const loans = await db.listAllLoans();
+    const { buildLoanRecoveryItems } = require('../services/emiService');
+    const recoveryItems = await buildLoanRecoveryItems(loans || []);
+    res.json(recoveryItems);
+  } catch (err) {
+    console.error('Superadmin recovery fetch error:', err);
+    res.status(500).json({ message: 'Failed to fetch recovery items' });
+  }
+});
+
+router.get('/loans/:loanId/media-preview', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    
+    const { getPresignedUrl } = require('../services/localFileStorageService');
+    const urls = [];
+    const seenKeys = new Set();
+
+    const addMediaUrl = async (type, name, uri, extra = {}) => {
+      if (!uri || seenKeys.has(uri)) return;
+      const url = await getPresignedUrl(uri);
+      if (url) {
+        urls.push({ type, name, url, ...extra });
+        seenKeys.add(uri);
+      }
+    };
+
+    if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri);
+    if (loan.houseVideoUri) await addMediaUrl('video', 'House Video', loan.houseVideoUri);
+    if (Array.isArray(loan.videos)) {
+      for (const v of loan.videos) {
+        if (v && v.uri) await addMediaUrl('video', v.name || 'Property / Verification Video', v.uri);
+      }
+    }
+    if (Array.isArray(loan.propertyPhotos)) {
+      for (const p of loan.propertyPhotos) {
+        if (p && p.uri) {
+          const isVid = p.type === 'video' || (typeof p.uri === 'string' && p.uri.toLowerCase().endsWith('.mp4'));
+          await addMediaUrl(isVid ? 'video' : 'photo', isVid ? 'House / Property Video' : 'Property Photo', p.uri);
+        }
+      }
+    }
+    if (Array.isArray(loan.propertyDocs)) {
+      for (const d of loan.propertyDocs) {
+        if (d && d.uri) await addMediaUrl('document', d.name || 'Property Document', d.uri, { docType: d.docType, date: d.date });
+      }
+    }
+    if (loan.agreementUri) await addMediaUrl('document', 'Loan Agreement', loan.agreementUri);
+    res.json(urls);
+  } catch (err) {
+    console.error('Error in /superadmin/loans/:loanId/media-preview:', err);
+    res.json([]);
+  }
+});
 
 module.exports = router;
+

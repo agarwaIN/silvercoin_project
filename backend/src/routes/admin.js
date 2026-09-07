@@ -103,11 +103,8 @@ router.delete('/employees/:userId', async (req, res) => {
 
 router.get('/loans', async (req, res) => {
   try {
-    let loans = await db.listLoansByAdmin(req.user.userId);
-    if (!loans || loans.length === 0) {
-      loans = await db.listAllLoans();
-    }
-    res.json(loans);
+    const loans = await db.listLoansByAdmin(req.user.userId);
+    res.json(loans || []);
   } catch (err) {
     console.error('Error fetching admin loans:', err);
     res.status(500).json({ message: 'Failed to fetch loans' });
@@ -117,7 +114,7 @@ router.get('/loans', async (req, res) => {
 router.get('/loans/:loanId', async (req, res) => {
   try {
     const loan = await db.getLoanById(req.params.loanId);
-    if (!loan) {
+    if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) {
       return res.status(404).json({ message: 'Loan not found' });
     }
     const emis = await ensureEmiSchedule(loan);
@@ -147,16 +144,13 @@ router.patch('/profile', async (req, res) => {
 
 router.get('/emi-this-month', async (req, res) => {
   try {
-    let loans = await db.listLoansByAdmin(req.user.userId);
-    if (!loans || loans.length === 0) {
-      loans = await db.listAllLoans();
-    }
+    const loans = await db.listLoansByAdmin(req.user.userId);
     let totalCount = 0;
     let totalAmount = 0;
     const now = new Date();
     const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
 
-    for (const loan of loans) {
+    for (const loan of (loans || [])) {
       const emis = await db.listEmiByLoan(loan.loanId);
       for (const emi of emis) {
         if ((emi.status === 'paid' || emi.status === 'partial') && emi.paidDate && emi.paidDate.startsWith(currentMonth)) {
@@ -173,11 +167,8 @@ router.get('/emi-this-month', async (req, res) => {
 
 router.get('/recovery', async (req, res) => {
   try {
-    let loans = await db.listLoansByAdmin(req.user.userId);
-    if (!loans || loans.length === 0) {
-      loans = await db.listAllLoans();
-    }
-    const recoveryItems = await buildLoanRecoveryItems(loans);
+    const loans = await db.listLoansByAdmin(req.user.userId);
+    const recoveryItems = await buildLoanRecoveryItems(loans || []);
     res.json(recoveryItems);
   } catch (err) {
     console.error('Recovery Fetch Error:', err);
@@ -188,7 +179,7 @@ router.get('/recovery', async (req, res) => {
 router.post('/loans/:loanId/pay-emi', async (req, res) => {
   try {
     const loan = await db.getLoanById(req.params.loanId);
-    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
 
     const { paymentId, amount, paymentMode, transactionRef, txnRef } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, { paymentMode, transactionRef, txnRef });
@@ -208,13 +199,11 @@ router.get('/recovery-agents', async (req, res) => {
 router.get('/reports', async (req, res) => {
   try {
     const adminId = req.user.userId;
-    let [loans, employees] = await Promise.all([
+    const [rawLoans, employees] = await Promise.all([
       db.listLoansByAdmin(adminId),
       db.listUsersByCreator(adminId),
     ]);
-    if (!loans || loans.length === 0) {
-      loans = await db.listAllLoans();
-    }
+    const loans = rawLoans || [];
 
     const emps = employees.filter(e => e.role === 'employee');
 
