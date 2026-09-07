@@ -16,9 +16,25 @@ function notImplemented(res) {
   return res.status(501).json({ message: 'Not implemented yet' });
 }
 
+const { ensureEmiSchedule } = require('../services/emiService');
+
 router.get('/users', async (req, res) => {
-  const users = await db.listAllUsers();
-  res.json(users);
+  try {
+    const users = await db.listAllUsers();
+    const userMap = new Map(users.map(u => [u.userId, u]));
+    const enriched = users.map(u => {
+      const creator = u.createdBy ? userMap.get(u.createdBy) : null;
+      return {
+        ...u,
+        creatorName: creator ? creator.name : null,
+        creatorRole: creator ? creator.role : null,
+      };
+    });
+    res.json(enriched);
+  } catch (err) {
+    console.error('Error fetching superadmin users:', err);
+    res.status(500).json({ message: 'Failed to fetch users' });
+  }
 });
 
 router.get('/admins', async (req, res) => {
@@ -32,14 +48,57 @@ router.get('/employees', async (req, res) => {
 });
 
 router.get('/loans', async (req, res) => {
-  const loans = await db.listAllLoans();
-  res.json(loans);
+  try {
+    const loans = await db.listAllLoans();
+    const allUsers = await db.listAllUsers();
+    const userMap = new Map(allUsers.map(u => [u.userId, u]));
+
+    const enriched = loans.map(loan => {
+      const admin = userMap.get(loan.adminId);
+      const emp = userMap.get(loan.employeeId);
+      return {
+        ...loan,
+        adminName: admin ? admin.name : null,
+        adminEmail: admin ? admin.email : null,
+        adminMobile: admin ? admin.mobile : null,
+        employeeName: emp ? emp.name : null,
+        employeeEmail: emp ? emp.email : null,
+        employeeMobile: emp ? emp.mobile : null,
+      };
+    });
+    res.json(enriched);
+  } catch (err) {
+    console.error('Error fetching superadmin loans:', err);
+    res.status(500).json({ message: 'Failed to fetch loans' });
+  }
 });
 
 router.get('/loans/:loanId', async (req, res) => {
-  const loan = await db.getLoanById(req.params.loanId);
-  if (!loan) return res.status(404).json({ message: 'Loan not found' });
-  res.json(loan);
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    
+    const [admin, emp, emis] = await Promise.all([
+      loan.adminId ? db.getUserById(loan.adminId) : null,
+      loan.employeeId ? db.getUserById(loan.employeeId) : null,
+      ensureEmiSchedule(loan),
+    ]);
+
+    const enriched = {
+      ...loan,
+      emis: emis || [],
+      adminName: admin ? admin.name : null,
+      adminEmail: admin ? admin.email : null,
+      adminMobile: admin ? admin.mobile : null,
+      employeeName: emp ? emp.name : null,
+      employeeEmail: emp ? emp.email : null,
+      employeeMobile: emp ? emp.mobile : null,
+    };
+    res.json(enriched);
+  } catch (err) {
+    console.error('Error fetching superadmin loan details:', err);
+    res.status(500).json({ message: 'Failed to fetch loan details' });
+  }
 });
 
 router.post('/create-user', [
@@ -81,13 +140,44 @@ router.post('/create-user', [
   res.status(201).json({ message: 'User created successfully.', userId, tempPassword: password });
 });
 
-router.patch('/users/:userId/deactivate', async (req, res) => {
-  const user = await db.getUserById(req.params.userId);
-  if (!user || user.role === 'superadmin') {
-    return res.status(404).json({ message: 'User not found' });
+router.patch('/users/:userId/activate', async (req, res) => {
+  try {
+    const user = await db.getUserById(req.params.userId);
+    if (!user || user.role === 'superadmin') {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    await db.updateUser(user.userId, { isActive: true });
+    res.json({ message: 'User activated successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to activate user' });
   }
-  await db.updateUser(user.userId, { isActive: false });
-  res.json({ message: 'User deactivated' });
+});
+
+router.patch('/users/:userId/deactivate', async (req, res) => {
+  try {
+    const user = await db.getUserById(req.params.userId);
+    if (!user || user.role === 'superadmin') {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    await db.updateUser(user.userId, { isActive: false });
+    res.json({ message: 'User deactivated successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to deactivate user' });
+  }
+});
+
+router.delete('/users/:userId', async (req, res) => {
+  try {
+    const user = await db.getUserById(req.params.userId);
+    if (!user || user.role === 'superadmin') {
+      return res.status(404).json({ message: 'User not found or cannot delete superadmin' });
+    }
+    await db.deleteUser(user.userId);
+    res.json({ message: `${user.role === 'admin' ? 'Admin' : 'Employee'} deleted successfully` });
+  } catch (err) {
+    console.error('Error deleting user:', err);
+    res.status(500).json({ message: 'Failed to delete user' });
+  }
 });
 
 router.get('/recovery', async (req, res) => {
