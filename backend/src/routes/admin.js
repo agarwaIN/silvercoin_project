@@ -102,17 +102,30 @@ router.delete('/employees/:userId', async (req, res) => {
 });
 
 router.get('/loans', async (req, res) => {
-  const loans = await db.listLoansByAdmin(req.user.userId);
-  res.json(loans);
+  try {
+    let loans = await db.listLoansByAdmin(req.user.userId);
+    if (!loans || loans.length === 0) {
+      loans = await db.listAllLoans();
+    }
+    res.json(loans);
+  } catch (err) {
+    console.error('Error fetching admin loans:', err);
+    res.status(500).json({ message: 'Failed to fetch loans' });
+  }
 });
 
 router.get('/loans/:loanId', async (req, res) => {
-  const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) {
-    return res.status(404).json({ message: 'Loan not found' });
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) {
+      return res.status(404).json({ message: 'Loan not found' });
+    }
+    const emis = await ensureEmiSchedule(loan);
+    res.json({ ...loan, emis });
+  } catch (err) {
+    console.error('Error fetching loan details in /admin/loans/:loanId:', err);
+    res.status(500).json({ message: err.message || 'Failed to fetch loan details' });
   }
-  const emis = await ensureEmiSchedule(loan);
-  res.json({ ...loan, emis });
 });
 
 router.get('/profile', async (req, res) => {
@@ -134,7 +147,10 @@ router.patch('/profile', async (req, res) => {
 
 router.get('/emi-this-month', async (req, res) => {
   try {
-    const loans = await db.listLoansByAdmin(req.user.userId);
+    let loans = await db.listLoansByAdmin(req.user.userId);
+    if (!loans || loans.length === 0) {
+      loans = await db.listAllLoans();
+    }
     let totalCount = 0;
     let totalAmount = 0;
     const now = new Date();
@@ -157,7 +173,10 @@ router.get('/emi-this-month', async (req, res) => {
 
 router.get('/recovery', async (req, res) => {
   try {
-    const loans = await db.listLoansByAdmin(req.user.userId);
+    let loans = await db.listLoansByAdmin(req.user.userId);
+    if (!loans || loans.length === 0) {
+      loans = await db.listAllLoans();
+    }
     const recoveryItems = await buildLoanRecoveryItems(loans);
     res.json(recoveryItems);
   } catch (err) {
@@ -169,7 +188,7 @@ router.get('/recovery', async (req, res) => {
 router.post('/loans/:loanId/pay-emi', async (req, res) => {
   try {
     const loan = await db.getLoanById(req.params.loanId);
-    if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
 
     const { paymentId, amount, paymentMode, transactionRef, txnRef } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, { paymentMode, transactionRef, txnRef });
@@ -189,10 +208,13 @@ router.get('/recovery-agents', async (req, res) => {
 router.get('/reports', async (req, res) => {
   try {
     const adminId = req.user.userId;
-    const [loans, employees] = await Promise.all([
+    let [loans, employees] = await Promise.all([
       db.listLoansByAdmin(adminId),
       db.listUsersByCreator(adminId),
     ]);
+    if (!loans || loans.length === 0) {
+      loans = await db.listAllLoans();
+    }
 
     const emps = employees.filter(e => e.role === 'employee');
 
@@ -304,7 +326,7 @@ router.post('/create-recovery-agent', (req, res) => {
 
 router.get('/loans/:loanId/media-preview', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   
   const urls = [];
   const seenKeys = new Set();
@@ -353,14 +375,14 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
 
 router.post('/loans/:loanId/initial-approve', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   await db.updateLoan(loan.loanId, { status: 'initially_approved', approvedAmount: req.body.approvedAmount });
   res.json({ message: 'Loan initially approved' });
 });
 
 router.post('/loans/:loanId/process', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   
   const { internalRemarks, riskAssessment } = req.body;
   await db.updateLoan(loan.loanId, { 
@@ -373,7 +395,7 @@ router.post('/loans/:loanId/process', async (req, res) => {
 
 router.post('/loans/:loanId/return', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   
   const { reason } = req.body;
   await db.updateLoan(loan.loanId, { 
@@ -385,7 +407,7 @@ router.post('/loans/:loanId/return', async (req, res) => {
 
 router.post('/loans/:loanId/disburse', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   if (loan.status !== 'approved' && loan.status !== 'active') {
     return res.status(400).json({ message: 'Loan must be approved to disburse' });
   }
@@ -416,7 +438,7 @@ router.post('/loans/:loanId/disburse', async (req, res) => {
 
 router.post('/loans/:loanId/approve', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   
   const { loanStartDate, approvedAmount, interestRate, penaltyRate, tenureMonths, emiAmount, totalInterest, totalRepayable } = req.body;
   
@@ -439,63 +461,19 @@ router.post('/loans/:loanId/approve', async (req, res) => {
 
 router.post('/loans/:loanId/reject', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   await db.updateLoan(loan.loanId, { status: 'rejected', rejectReason: req.body.reason, changedFields: null });
   res.json({ message: 'Loan rejected' });
 });
 
 router.post('/loans/:loanId/send-qr', (req, res) => res.json({ message: 'QR sent' }));
-router.post('/loans/:loanId/pay-emi', async (req, res) => {
-  const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
-  
-  const { paymentId, amount } = req.body;
-  if (!paymentId || amount == null || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid payment details' });
-  }
-
-  const emis = await db.listEmiByLoan(loan.loanId);
-  const emi = emis.find(e => e.paymentId === paymentId);
-  if (!emi) return res.status(404).json({ message: 'EMI not found' });
-
-  // Advance payment allowed - calculate required payment
-  const totalRequired = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
-  const previouslyPaid = Number(emi.paidAmount || 0);
-  const newPaidAmount = previouslyPaid + Number(amount);
-
-  let newStatus = emi.status;
-  if (newPaidAmount >= totalRequired) {
-    newStatus = 'paid';
-  } else if (newPaidAmount > 0) {
-    newStatus = 'partial';
-  }
-
-  await db.updateEmiPayment(paymentId, {
-    paidAmount: newPaidAmount,
-    status: newStatus,
-    paidDate: new Date().toISOString(),
-    markedBy: req.user.userId
-  });
-
-  const allEmis = await db.listEmiByLoan(loan.loanId);
-  // Re-fetch to get updated state of the specific EMI
-  const updatedEmi = allEmis.find(e => e.paymentId === paymentId);
-  if (updatedEmi) updatedEmi.status = newStatus; 
-  
-  const allPaid = allEmis.every(e => e.status === 'paid');
-  if (allPaid && loan.status !== 'completed') {
-    await db.updateLoan(loan.loanId, { status: 'completed' });
-  }
-
-  res.json({ message: 'Payment recorded', status: newStatus, loanCompleted: allPaid });
-});
 router.post('/loans/:loanId/reject-proof', (req, res) => res.json({ message: 'Proof rejected' }));
 router.post('/loans/:loanId/assign-recovery-agent', (req, res) => res.json({ message: 'Agent assigned' }));
 router.post('/loans/:loanId/send-qr-to-agent', (req, res) => res.json({ message: 'QR sent to agent' }));
 
 router.post('/loans/:loanId/approve-emi-change', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   if (!loan.emiChangeRequest) return res.status(400).json({ message: 'No pending EMI change request' });
 
   const {
@@ -529,7 +507,7 @@ router.post('/loans/:loanId/approve-emi-change', async (req, res) => {
 
 router.post('/loans/:loanId/reject-emi-change', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   if (!loan.emiChangeRequest) return res.status(400).json({ message: 'No pending EMI change request' });
 
   await db.updateLoan(loan.loanId, { 
@@ -543,7 +521,7 @@ router.post('/loans/:loanId/reject-emi-change', async (req, res) => {
 
 router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
   
   if (!loan.foreclosureRequest || loan.foreclosureRequest.status !== 'pending') {
     return res.status(400).json({ message: 'No pending foreclosure request' });

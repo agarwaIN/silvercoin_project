@@ -8,22 +8,42 @@ import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
 import { getLoan } from '../../api/superadminApi';
 
+import { Ionicons } from '@expo/vector-icons';
+
 export default function LoanDetailScreen({ route }) {
-  const { loanId } = route.params;
+  const rawParams = route.params || {};
+  const loanId = rawParams.loanId || rawParams.params?.loanId || rawParams.loan?.loanId;
   const [loan, setLoan] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
 
   const load = useCallback(async () => {
-    const data = await getLoan(loanId);
-    setLoan(data);
+    if (!loanId) {
+      setLoading(false);
+      setErrorMessage('Loan ID is missing or invalid.');
+      return;
+    }
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      const data = await getLoan(loanId);
+      setLoan(data);
+    } catch (err) {
+      console.error('Failed to load superadmin loan:', err);
+      const msg = err.response?.data?.message || err.message || 'Failed to load loan details.';
+      setErrorMessage(msg);
+    } finally {
+      setLoading(false);
+    }
   }, [loanId]);
 
-  useFocusEffect(useCallback(() => { void load().catch(() => {}); }, [load]));
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load().catch(() => {});
+    await load();
     setRefreshing(false);
   };
 
@@ -31,6 +51,19 @@ export default function LoanDetailScreen({ route }) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
         <Header title="Loan" onBack={() => navigation.goBack()} />
+        {loading ? (
+          <View style={styles.statusStateContainer}>
+            <Text style={styles.statusStateText}>Loading loan details...</Text>
+          </View>
+        ) : (
+          <View style={styles.statusStateContainer}>
+            <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+            <Text style={styles.statusStateTitle}>Unable to Load Loan</Text>
+            <Text style={styles.statusStateSubtitle}>
+              {errorMessage || 'Loan details could not be loaded.'}
+            </Text>
+          </View>
+        )}
       </SafeAreaView>
     );
   }
@@ -66,4 +99,8 @@ const styles = StyleSheet.create({
   label: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text },
   field: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.text, marginBottom: 8 },
   note: { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 16 },
+  statusStateContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  statusStateText: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted, marginTop: 12 },
+  statusStateTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginTop: 12, marginBottom: 6 },
+  statusStateSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: 20 },
 });
