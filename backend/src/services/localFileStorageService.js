@@ -6,6 +6,9 @@ const jwt = require('jsonwebtoken');
 const ROOT = path.join(__dirname, '../../uploads');
 
 function absPath(key) {
+  if (!key || typeof key !== 'string') {
+    throw new Error('Invalid file key');
+  }
   const safe = String(key).replace(/^\/+/, '');
   const full = path.resolve(ROOT, safe);
   if (!full.startsWith(`${ROOT}${path.sep}`) && full !== ROOT) {
@@ -44,16 +47,31 @@ async function openDownloadStream(key) {
 }
 
 async function getPresignedUrl(key, expiresIn = 3600) {
-  const secret = process.env.JWT_SECRET || 'silvercoin_secret_key_default';
-  const token = jwt.sign(
-    { key, type: 'file_access' },
-    secret,
-    { expiresIn }
-  );
+  if (!key) return null;
+  if (typeof key !== 'string') {
+    if (typeof key === 'object' && key.uri && typeof key.uri === 'string') {
+      key = key.uri;
+    } else {
+      return null;
+    }
+  }
+  if (key.startsWith('http://') || key.startsWith('https://') || key.startsWith('data:') || key.startsWith('file://')) {
+    return key;
+  }
+  try {
+    const secret = process.env.JWT_SECRET || 'silvercoin_secret_key_default';
+    const token = jwt.sign(
+      { key, type: 'file_access' },
+      secret,
+      { expiresIn }
+    );
 
-  const host = process.env.PUBLIC_ORIGIN || process.env.APP_PUBLIC_ORIGIN || 'http://13.200.237.51';
-
-  return `${host.replace(/\/+$/, '')}/api/files/download?key=${encodeURIComponent(key)}&token=${token}`;
+    const host = process.env.PUBLIC_ORIGIN || process.env.APP_PUBLIC_ORIGIN || 'http://13.200.237.51';
+    return `${host.replace(/\/+$/, '')}/api/files/download?key=${encodeURIComponent(key)}&token=${token}`;
+  } catch (err) {
+    console.error('Error generating presigned URL:', err);
+    return null;
+  }
 }
 
 module.exports = {
@@ -61,3 +79,4 @@ module.exports = {
   getPresignedUrl,
   openDownloadStream,
 };
+

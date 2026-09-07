@@ -32,59 +32,65 @@ function addMonths(dateStr, monthsToAdd) {
 async function ensureEmiSchedule(loan) {
   if (!loan || !loan.loanId) return [];
 
-  const existing = await db.listEmiByLoan(loan.loanId);
-  if (existing && existing.length > 0) {
-    return existing;
-  }
+  try {
+    const existing = await db.listEmiByLoan(loan.loanId);
+    if (existing && existing.length > 0) {
+      return existing;
+    }
 
-  const tenure = parseInt(loan.tenureMonths || loan.repaymentMonths, 10);
-  const emiAmount = Number(loan.emiAmount || 0);
+    const tenure = parseInt(loan.tenureMonths || loan.repaymentMonths, 10);
+    const emiAmount = Number(loan.emiAmount || 0);
 
-  if (!tenure || tenure <= 0 || !emiAmount || emiAmount <= 0) {
+    if (!tenure || isNaN(tenure) || tenure <= 0 || tenure > 360 || !emiAmount || isNaN(emiAmount) || emiAmount <= 0) {
+      return [];
+    }
+
+    // Determine loan start date
+    let startDate = loan.loanStartDate;
+    if (!startDate && loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date) {
+      startDate = loan.disbursements[0].date;
+    }
+    if (!startDate) {
+      startDate = loan.createdAt || new Date().toISOString();
+    }
+
+    const regularEmi = Math.round(emiAmount);
+    const totalRepayable = Number(loan.totalRepayable) || (regularEmi * tenure);
+    const lastEmi = totalRepayable - (regularEmi * (tenure - 1));
+
+    const generatedEmis = [];
+    for (let i = 0; i < tenure; i++) {
+      const isLast = (i === tenure - 1);
+      const dueDate = addMonths(startDate, i + 1);
+      const amount = isLast ? Math.max(0, lastEmi) : regularEmi;
+      const paymentId = `${loan.loanId}-EMI-${String(i + 1).padStart(2, '0')}`;
+
+      const emi = {
+        paymentId,
+        loanId: loan.loanId,
+        dueDate,
+        amount,
+        paidAmount: 0,
+        penaltyAmount: 0,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+
+      try {
+        await db.createEmiPayment(emi);
+        generatedEmis.push(emi);
+      } catch (err) {
+        console.warn(`Could not create EMI ${paymentId}:`, err.message);
+      }
+    }
+
+    return generatedEmis;
+  } catch (err) {
+    console.error('Error generating EMI schedule in ensureEmiSchedule:', err);
     return [];
   }
-
-  // Determine loan start date
-  let startDate = loan.loanStartDate;
-  if (!startDate && loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date) {
-    startDate = loan.disbursements[0].date;
-  }
-  if (!startDate) {
-    startDate = loan.createdAt || new Date().toISOString();
-  }
-
-  const regularEmi = Math.round(emiAmount);
-  const totalRepayable = Number(loan.totalRepayable) || (regularEmi * tenure);
-  const lastEmi = totalRepayable - (regularEmi * (tenure - 1));
-
-  const generatedEmis = [];
-  for (let i = 0; i < tenure; i++) {
-    const isLast = (i === tenure - 1);
-    const dueDate = addMonths(startDate, i + 1);
-    const amount = isLast ? Math.max(0, lastEmi) : regularEmi;
-    const paymentId = `${loan.loanId}-EMI-${String(i + 1).padStart(2, '0')}`;
-
-    const emi = {
-      paymentId,
-      loanId: loan.loanId,
-      dueDate,
-      amount,
-      paidAmount: 0,
-      penaltyAmount: 0,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      await db.createEmiPayment(emi);
-      generatedEmis.push(emi);
-    } catch (err) {
-      console.warn(`Could not create EMI ${paymentId}:`, err.message);
-    }
-  }
-
-  return generatedEmis;
 }
+
 
 /**
  * Reschedules remaining unpaid EMIs when an EMI change is approved.
