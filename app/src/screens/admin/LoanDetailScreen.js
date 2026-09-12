@@ -394,6 +394,7 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. Incomplete documents, mismatch in address..."
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={rejectReason}
               onChangeText={setRejectReason}
               multiline
@@ -417,6 +418,7 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. Needs clearer photos of property..."
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={returnReason}
               onChangeText={setReturnReason}
               multiline
@@ -441,12 +443,14 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Internal Remarks"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={internalRemarks}
               onChangeText={setInternalRemarks}
             />
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Risk Assessment (e.g. Low, Medium, High)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={riskAssessment}
               onChangeText={setRiskAssessment}
             />
@@ -470,12 +474,14 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Date (DD/MM/YYYY)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={disburseData.date}
               onChangeText={t => setDisburseData({...disburseData, date: t})}
             />
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Amount (₹)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={disburseData.amount?.toString()}
               onChangeText={t => setDisburseData({...disburseData, amount: t})}
               keyboardType="numeric"
@@ -483,12 +489,14 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Bank Name"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={disburseData.bankName}
               onChangeText={t => setDisburseData({...disburseData, bankName: t})}
             />
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Transaction Number / UTR"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={disburseData.transactionNumber}
               onChangeText={t => setDisburseData({...disburseData, transactionNumber: t})}
             />
@@ -513,6 +521,7 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Amount (₹)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={payEmiData.amount?.toString()}
               onChangeText={t => setPayEmiData({...payEmiData, amount: t})}
               keyboardType="numeric"
@@ -561,6 +570,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                   ? 'Enter mandatory UTR / Bank Reference No.'
                   : 'Optional receipt / slip number'
               }
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={payEmiData.txnRef}
               onChangeText={t => setPayEmiData({ ...payEmiData, txnRef: t })}
             />

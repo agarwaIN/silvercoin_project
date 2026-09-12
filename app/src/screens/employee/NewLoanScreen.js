@@ -286,13 +286,13 @@ function Step1({ data, setData, loanId }) {
     setUploading(true);
     try {
       const fd = new FormData();
+      fd.append('videoType', videoType);
       fd.append('video', {
         uri,
         name: isHouse ? 'house_video.mp4' : 'owner_video.mp4',
         type: 'video/mp4',
       });
-      fd.append('videoType', videoType);
-      await uploadVideo(loanId, fd);
+      await uploadVideo(loanId, fd, videoType);
       if (isHouse) {
         setData(d => ({ ...d, houseVideoUploaded: true }));
       } else {
@@ -601,6 +601,33 @@ function Step2({ data, setData, loanId }) {
       }
     } catch (err) {
       Alert.alert('Document Error', 'Could not open document picker.');
+    }
+  };
+
+  const captureDocWithCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Needed', 'Allow camera access to capture document photo.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const cameraAsset = {
+        uri: asset.uri,
+        name: `doc_camera_${Date.now()}.jpg`,
+        mimeType: 'image/jpeg',
+      };
+      setPickedAsset(cameraAsset);
+      if (!docNameInput.trim()) {
+        setDocNameInput(selectedDocType || 'Document Photo');
+      }
+    } catch (err) {
+      Alert.alert('Camera Error', 'Could not capture document with camera.');
     }
   };
 
@@ -918,6 +945,19 @@ function Step2({ data, setData, loanId }) {
               </Text>
             </TouchableOpacity>
 
+            {/* Camera Action: Capture Document with Camera */}
+            <TouchableOpacity
+              style={[stdS.filePickerBtn, { marginBottom: 8, backgroundColor: '#F0FDF4', borderColor: colors.dark }]}
+              onPress={captureDocWithCamera}
+            >
+              <Ionicons name="camera-outline" size={20} color={colors.dark} />
+              <Text style={[stdS.filePickerTxt, { color: colors.dark, fontWeight: '700' }]} numberOfLines={1}>
+                {pickedAsset && (pickedAsset.name?.includes('doc_camera_') || pickedAsset.mimeType === 'image/jpeg')
+                  ? `Captured: ${pickedAsset.name}`
+                  : 'Capture Document with Camera'}
+              </Text>
+            </TouchableOpacity>
+
             {/* Secondary Action: Image or Other File */}
             <TouchableOpacity
               style={[stdS.filePickerBtn, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
@@ -925,7 +965,7 @@ function Step2({ data, setData, loanId }) {
             >
               <Ionicons name="images-outline" size={18} color={colors.muted} />
               <Text style={[stdS.filePickerTxt, { color: colors.text }]} numberOfLines={1}>
-                {pickedAsset && !(pickedAsset.mimeType?.includes('pdf') || pickedAsset.name?.toLowerCase().endsWith('.pdf'))
+                {pickedAsset && !pickedAsset.name?.includes('doc_camera_') && !(pickedAsset.mimeType?.includes('pdf') || pickedAsset.name?.toLowerCase().endsWith('.pdf'))
                   ? `Selected: ${pickedAsset.name}`
                   : 'Choose Image / Other Document File'}
               </Text>
@@ -1408,9 +1448,9 @@ export default function NewLoanScreen({ route, navigation }) {
         if (formData.videoUri && !formData.videoUploaded) {
           try {
             const fd = new FormData();
-            fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
             fd.append('videoType', 'owner');
-            await uploadVideo(currentLoanId, fd);
+            fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
+            await uploadVideo(currentLoanId, fd, 'owner');
             setFormData(d => ({ ...d, videoUploaded: true }));
           } catch (vErr) {
             console.warn('Owner video upload error:', vErr);
@@ -1422,9 +1462,9 @@ export default function NewLoanScreen({ route, navigation }) {
         if (formData.houseVideoUri && !formData.houseVideoUploaded) {
           try {
             const fdHouse = new FormData();
-            fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
             fdHouse.append('videoType', 'house');
-            await uploadVideo(currentLoanId, fdHouse);
+            fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
+            await uploadVideo(currentLoanId, fdHouse, 'house');
             setFormData(d => ({ ...d, houseVideoUploaded: true }));
           } catch (hErr) {
             console.warn('House video upload error:', hErr);
@@ -1516,18 +1556,18 @@ export default function NewLoanScreen({ route, navigation }) {
       if (formData.videoUri && !formData.videoUploaded && loanId) {
         try {
           const fd = new FormData();
-          fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
           fd.append('videoType', 'owner');
-          await uploadVideo(loanId, fd);
+          fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
+          await uploadVideo(loanId, fd, 'owner');
           setFormData(d => ({ ...d, videoUploaded: true }));
         } catch {}
       }
       if (formData.houseVideoUri && !formData.houseVideoUploaded && loanId) {
         try {
           const fdHouse = new FormData();
-          fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
           fdHouse.append('videoType', 'house');
-          await uploadVideo(loanId, fdHouse);
+          fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
+          await uploadVideo(loanId, fdHouse, 'house');
           setFormData(d => ({ ...d, houseVideoUploaded: true }));
         } catch {}
       }

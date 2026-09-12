@@ -335,23 +335,36 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     };
 
     if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri);
-    if (loan.houseVideoUri) await addMediaUrl('video', 'House Video', loan.houseVideoUri);
+    if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri);
     if (Array.isArray(loan.videos)) {
       for (const v of loan.videos) {
-        if (v && v.uri) await addMediaUrl('video', v.name || 'Property / Verification Video', v.uri);
+        if (v && v.uri) {
+          const vLabel = v.name || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
+          await addMediaUrl('video', vLabel, v.uri);
+        }
       }
     }
     if (Array.isArray(loan.propertyPhotos)) {
       for (const p of loan.propertyPhotos) {
         if (p && p.uri) {
-          const isVid = p.type === 'video' || (typeof p.uri === 'string' && p.uri.toLowerCase().endsWith('.mp4'));
+          const isVid = p.type === 'video' || (typeof p.uri === 'string' && (p.uri.toLowerCase().endsWith('.mp4') || p.uri.toLowerCase().includes('video')));
           await addMediaUrl(isVid ? 'video' : 'photo', isVid ? 'House / Property Video' : 'Property Photo', p.uri);
         }
       }
     }
     if (Array.isArray(loan.propertyDocs)) {
       for (const d of loan.propertyDocs) {
-        if (d && d.uri) await addMediaUrl('document', d.name || 'Property Document', d.uri, { docType: d.docType, date: d.date });
+        if (d && d.uri) {
+          const isDocVid = (d.docType && d.docType.toLowerCase().includes('video')) ||
+                           (d.name && d.name.toLowerCase().includes('video')) ||
+                           (d.mimeType && d.mimeType.toLowerCase().includes('video')) ||
+                           (typeof d.uri === 'string' && d.uri.toLowerCase().endsWith('.mp4'));
+          if (isDocVid) {
+            await addMediaUrl('video', d.name || 'House / Property Video', d.uri);
+          } else {
+            await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, { docType: d.docType, date: d.date });
+          }
+        }
       }
     }
     if (loan.agreementUri) await addMediaUrl('document', 'Loan Agreement', loan.agreementUri);

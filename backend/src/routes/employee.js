@@ -173,16 +173,19 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     };
 
     if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri);
-    if (loan.houseVideoUri) await addMediaUrl('video', 'House Video', loan.houseVideoUri);
+    if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri);
     if (Array.isArray(loan.videos)) {
       for (const v of loan.videos) {
-        if (v && v.uri) await addMediaUrl('video', v.name || 'Property / Verification Video', v.uri);
+        if (v && v.uri) {
+          const vLabel = v.name || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
+          await addMediaUrl('video', vLabel, v.uri);
+        }
       }
     }
     if (Array.isArray(loan.propertyPhotos)) {
       for (const p of loan.propertyPhotos) {
         if (p && p.uri) {
-          const isVid = p.type === 'video' || (typeof p.uri === 'string' && p.uri.toLowerCase().endsWith('.mp4'));
+          const isVid = p.type === 'video' || (typeof p.uri === 'string' && (p.uri.toLowerCase().endsWith('.mp4') || p.uri.toLowerCase().includes('video')));
           await addMediaUrl(isVid ? 'video' : 'photo', isVid ? 'House / Property Video' : 'Property Photo', p.uri);
         }
       }
@@ -190,7 +193,15 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     if (Array.isArray(loan.propertyDocs)) {
       for (const d of loan.propertyDocs) {
         if (d && d.uri) {
-          await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, { docType: d.docType, date: d.date });
+          const isDocVid = (d.docType && d.docType.toLowerCase().includes('video')) ||
+                           (d.name && d.name.toLowerCase().includes('video')) ||
+                           (d.mimeType && d.mimeType.toLowerCase().includes('video')) ||
+                           (typeof d.uri === 'string' && d.uri.toLowerCase().endsWith('.mp4'));
+          if (isDocVid) {
+            await addMediaUrl('video', d.name || 'House / Property Video', d.uri);
+          } else {
+            await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, { docType: d.docType, date: d.date });
+          }
         }
       }
     }
@@ -259,11 +270,11 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
 
-  const rawType = (req.body.videoType || '').toLowerCase();
-  const rawName = (req.body.name || req.file.originalname || '').toLowerCase();
+  const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase();
+  const rawName = (req.query.name || req.body.name || req.file.originalname || '').toLowerCase();
   const isHouse = rawType === 'house' || rawType.includes('property') || rawName.includes('house');
   const videoType = isHouse ? 'house' : 'owner';
-  const label = isHouse ? 'House Video' : 'Owner Verification Video';
+  const label = isHouse ? 'House / Property Video' : 'Owner Verification Video';
 
   const key = `loans/${loan.loanId}/${videoType}_video_${Date.now()}.mp4`;
   await uploadBuffer(key, req.file.buffer);
@@ -275,7 +286,9 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
     updates.videoUri = key;
   }
 
-  const existingVideos = Array.isArray(loan.videos) ? [...loan.videos] : [];
+  // Reload fresh loan state before updating videos array to prevent overwriting concurrent uploads
+  const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
+  const existingVideos = Array.isArray(freshLoan.videos) ? [...freshLoan.videos] : [];
   const entry = {
     id: `${videoType}_${Date.now()}`,
     uri: key,

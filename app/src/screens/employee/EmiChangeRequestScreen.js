@@ -147,6 +147,7 @@ function Field({ label, value, onChangeText, keyboardType = 'numeric', suffix })
       <View style={styles.inputWrapper}>
         <TextInput
           style={styles.input}
+          placeholderTextColor={colors.placeholder || '#4B5563'}
           value={value}
           onChangeText={onChangeText}
           keyboardType={keyboardType}

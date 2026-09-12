@@ -17,6 +17,10 @@ import { fonts, fontSize } from '../theme/typography';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import { usePopup } from '../context/PopupContext';
 import { useAuth } from '../context/AuthContext';
 import { uploadRegistryDocument as uploadAdminDoc } from '../api/adminApi';
@@ -36,16 +40,32 @@ const STANDARD_DOC_TYPES = [
   'Owner Pics',
 ];
 
-function FullScreenVideo({ url, onClose }) {
+function FullScreenVideo({ url, name, onClose, onDownload, downloading }) {
   const player = useVideoPlayer(url, (p) => {
     p.play();
   });
   return (
     <View style={styles.modalBg}>
       <VideoView style={styles.fullMedia} player={player} allowsFullscreen allowsPictureInPicture />
-      <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-        <Ionicons name="close" size={30} color={colors.white} />
-      </TouchableOpacity>
+      <View style={styles.videoTopBar}>
+        <TouchableOpacity
+          style={styles.videoDownloadBtn}
+          onPress={onDownload}
+          disabled={downloading}
+        >
+          {downloading ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <>
+              <Ionicons name="download-outline" size={18} color={colors.white} />
+              <Text style={styles.videoDownloadTxt}>Save to Device</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.closeBtnVideo} onPress={onClose}>
+          <Ionicons name="close" size={26} color={colors.white} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -64,6 +84,68 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const [docDate, setDocDate] = useState(formatDate(new Date()));
   const [pickedFile, setPickedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadAndSaveMedia = async (url, originalName, mimeType) => {
+    if (!url) {
+      showAlert('Error', 'No media URL found to download.');
+      return;
+    }
+    setDownloading(true);
+    try {
+      let ext = '.bin';
+      const cleanUrl = url.split('?')[0].toLowerCase();
+      if (cleanUrl.endsWith('.mp4') || (mimeType && mimeType.includes('video'))) ext = '.mp4';
+      else if (cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg')) ext = '.jpg';
+      else if (cleanUrl.endsWith('.png')) ext = '.png';
+      else if (cleanUrl.endsWith('.pdf') || (mimeType && mimeType.includes('pdf'))) ext = '.pdf';
+
+      const safeName = (originalName || 'file')
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/\.[a-zA-Z0-9]+$/, '');
+      const filename = `${safeName}_${Date.now()}${ext}`;
+      const localUri = `${FileSystem.documentDirectory}${filename}`;
+
+      const downloadRes = await FileSystem.downloadAsync(url, localUri);
+      if (downloadRes.status !== 200) {
+        throw new Error(`Download failed with status ${downloadRes.status}`);
+      }
+
+      const isMedia = ext === '.mp4' || ext === '.jpg' || ext === '.png';
+      if (isMedia) {
+        try {
+          const { status } = await MediaLibrary.requestPermissionsAsync();
+          if (status === 'granted') {
+            const asset = await MediaLibrary.createAssetAsync(downloadRes.uri);
+            try {
+              await MediaLibrary.createAlbumAsync('ShreeLoan', asset, false);
+            } catch {}
+            showAlert('Saved to Device', `${safeName}${ext} has been downloaded and automatically saved to your Gallery!`);
+            return;
+          }
+        } catch (mediaErr) {
+          console.warn('MediaLibrary save error:', mediaErr);
+        }
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(downloadRes.uri, {
+          dialogTitle: `Save ${safeName}`,
+          mimeType: ext === '.pdf' ? 'application/pdf' : (ext === '.mp4' ? 'video/mp4' : 'application/octet-stream'),
+          UTI: ext === '.pdf' ? 'com.adobe.pdf' : (ext === '.mp4' ? 'public.movie' : 'public.item'),
+        });
+        showAlert('Downloaded', 'File downloaded successfully. You can save or open it on your device.');
+      } else {
+        showAlert('Downloaded', `Saved to device: ${filename}`);
+      }
+    } catch (err) {
+      console.error('Download error:', err);
+      showAlert('Download Notice', 'Opening browser to download directly.');
+      Linking.openURL(url).catch(() => {});
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const normalizeMediaUrl = (url) => {
     if (!url) return '';
@@ -134,6 +216,32 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       }
     } catch (err) {
       showAlert('Error', 'Failed to pick file from device.');
+    }
+  };
+
+  const handleCameraDocument = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permission Needed', 'Allow camera access to capture document photo.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setPickedFile({
+        uri: asset.uri,
+        name: `doc_camera_${Date.now()}.jpg`,
+        mimeType: 'image/jpeg',
+      });
+      if (!customDocName.trim()) {
+        setCustomDocName(selectedDocType || 'Document Photo');
+      }
+    } catch (err) {
+      showAlert('Camera Error', 'Could not capture document with camera.');
     }
   };
 
@@ -226,11 +334,11 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Document & Media Inventory</Text>
+        <Text style={styles.title} numberOfLines={2}>Document & Media Inventory</Text>
         {loanId && (
           <TouchableOpacity style={styles.addDocBtn} onPress={() => openUploadModal('Custom Document')}>
-            <Ionicons name="add" size={16} color={colors.white} />
-            <Text style={styles.addDocTxt}>+ Add Document</Text>
+            <Ionicons name="add" size={15} color={colors.white} />
+            <Text style={styles.addDocTxt}>Add Document</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -294,10 +402,19 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                 </Text>
               </View>
               {isUploaded ? (
-                <TouchableOpacity style={styles.viewDocBtn} onPress={() => handlePress(docItem)}>
-                  <Ionicons name="eye-outline" size={14} color={colors.primary} />
-                  <Text style={styles.viewDocTxt}>View</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                  <TouchableOpacity
+                    style={styles.downloadIconBtn}
+                    onPress={() => downloadAndSaveMedia(docItem.url, docItem.name, docItem.mimeType)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="download-outline" size={15} color={colors.dark} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.viewDocBtn} onPress={() => handlePress(docItem)}>
+                    <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                    <Text style={styles.viewDocTxt}>View</Text>
+                  </TouchableOpacity>
+                </View>
               ) : loanId ? (
                 <TouchableOpacity
                   style={styles.uploadDocBtn}
@@ -325,10 +442,19 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                 <Text style={styles.checkTitle}>{cDoc.name || cDoc.docType || 'Custom Document'}</Text>
                 <Text style={styles.checkSub}>{cDoc.date ? `Uploaded on ${formatDate(cDoc.date)}` : 'Custom file'}</Text>
               </View>
-              <TouchableOpacity style={styles.viewDocBtn} onPress={() => handlePress(cDoc)}>
-                <Ionicons name="open-outline" size={14} color={colors.primary} />
-                <Text style={styles.viewDocTxt}>Open</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={styles.downloadIconBtn}
+                  onPress={() => downloadAndSaveMedia(cDoc.url, cDoc.name, cDoc.mimeType)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="download-outline" size={15} color={colors.dark} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.viewDocBtn} onPress={() => handlePress(cDoc)}>
+                  <Ionicons name="open-outline" size={14} color={colors.primary} />
+                  <Text style={styles.viewDocTxt}>Open</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>
@@ -339,7 +465,13 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       {/* Inline Fullscreen Viewer for Images, Videos & Documents */}
       <Modal visible={!!selectedMedia} transparent animationType="fade" onRequestClose={() => setSelectedMedia(null)}>
         {selectedMedia?.type === 'video' ? (
-          <FullScreenVideo url={selectedMedia.url} onClose={() => setSelectedMedia(null)} />
+          <FullScreenVideo
+            url={selectedMedia.url}
+            name={selectedMedia.name}
+            onClose={() => setSelectedMedia(null)}
+            onDownload={() => downloadAndSaveMedia(selectedMedia.url, selectedMedia.name, 'video/mp4')}
+            downloading={downloading}
+          />
         ) : selectedMedia ? (
           <View style={styles.modalBg}>
             <View style={styles.modalHeaderRow}>
@@ -359,15 +491,31 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                     {selectedMedia.name || 'PDF Document'}
                   </Text>
                   <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: 24 }}>
-                    Tap the button below to open directly in your device's PDF viewer.
+                    Tap below to download to your device or open directly in your PDF viewer.
                   </Text>
-                  <TouchableOpacity
-                    style={styles.externalBtn}
-                    onPress={() => Linking.openURL(selectedMedia.url).catch(() => showAlert('Notice', 'Cannot open PDF directly.'))}
-                  >
-                    <Ionicons name="open-outline" size={18} color={colors.white} />
-                    <Text style={styles.externalBtnTxt}>Open In PDF Reader</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <TouchableOpacity
+                      style={[styles.externalBtn, { backgroundColor: colors.dark }]}
+                      onPress={() => downloadAndSaveMedia(selectedMedia.url, selectedMedia.name, 'application/pdf')}
+                      disabled={downloading}
+                    >
+                      {downloading ? (
+                        <ActivityIndicator size="small" color={colors.white} />
+                      ) : (
+                        <>
+                          <Ionicons name="download-outline" size={18} color={colors.white} />
+                          <Text style={styles.externalBtnTxt}>Save PDF to Device</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.externalBtn}
+                      onPress={() => Linking.openURL(selectedMedia.url).catch(() => showAlert('Notice', 'Cannot open PDF directly.'))}
+                    >
+                      <Ionicons name="open-outline" size={18} color={colors.white} />
+                      <Text style={styles.externalBtnTxt}>Open In PDF Reader</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : (
                 <Image
@@ -379,6 +527,20 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
             </View>
 
             <View style={styles.modalFooterRow}>
+              <TouchableOpacity
+                style={[styles.externalBtn, { backgroundColor: colors.dark }]}
+                onPress={() => downloadAndSaveMedia(selectedMedia.url, selectedMedia.name, selectedMedia.mimeType)}
+                disabled={downloading}
+              >
+                {downloading ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="download-outline" size={18} color={colors.white} />
+                    <Text style={styles.externalBtnTxt}>Save to Device</Text>
+                  </>
+                )}
+              </TouchableOpacity>
               <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(selectedMedia.url).catch(() => {})}>
                 <Ionicons name="open-outline" size={16} color={colors.white} />
                 <Text style={styles.externalBtnTxt}>Open Externally</Text>
@@ -415,7 +577,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                 <TextInput
                   style={styles.textInput}
                   placeholder="e.g. Electricity Bill / NOC"
-                  placeholderTextColor={colors.muted}
+                  placeholderTextColor={colors.placeholder || '#4B5563'}
                   value={customDocName}
                   onChangeText={setCustomDocName}
                   autoCapitalize="words"
@@ -427,7 +589,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
             <TextInput
               style={styles.textInput}
               placeholder="DD/MM/YYYY"
-              placeholderTextColor={colors.muted}
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={docDate}
               onChangeText={setDocDate}
             />
@@ -436,7 +598,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
 
             {/* Primary Option: Choose Latest Downloaded PDF */}
             <TouchableOpacity
-              style={[styles.pickFileBtn, { backgroundColor: '#EFF6FF', borderColor: colors.primary, marginBottom: 8 }]}
+              style={[styles.pickFileBtn, { backgroundColor: '#EFF6FF', borderColor: colors.primary, marginBottom: 8, marginTop: 10 }]}
               onPress={() => handlePickDocument('application/pdf')}
             >
               <Ionicons name="document-text" size={20} color={colors.primary} />
@@ -447,14 +609,27 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
               </Text>
             </TouchableOpacity>
 
+            {/* Camera Option: Capture Document with Camera */}
+            <TouchableOpacity
+              style={[styles.pickFileBtn, { backgroundColor: '#F0FDF4', borderColor: colors.dark, marginBottom: 8, marginTop: 0 }]}
+              onPress={handleCameraDocument}
+            >
+              <Ionicons name="camera-outline" size={20} color={colors.dark} />
+              <Text style={[styles.pickFileTxt, { color: colors.dark, fontWeight: '700' }]} numberOfLines={1}>
+                {pickedFile && (pickedFile.name?.includes('doc_camera_') || pickedFile.mimeType === 'image/jpeg')
+                  ? `Captured: ${pickedFile.name}`
+                  : 'Capture Document with Camera'}
+              </Text>
+            </TouchableOpacity>
+
             {/* Secondary Option: Choose Image / Photo File */}
             <TouchableOpacity
-              style={styles.pickFileBtn}
+              style={[styles.pickFileBtn, { marginTop: 0 }]}
               onPress={() => handlePickDocument('*/*')}
             >
               <Ionicons name="images-outline" size={18} color={colors.muted} />
               <Text style={[styles.pickFileTxt, { color: colors.text }]} numberOfLines={1}>
-                {pickedFile && !(pickedFile.mimeType?.includes('pdf') || pickedFile.name?.toLowerCase().endsWith('.pdf'))
+                {pickedFile && !pickedFile.name?.includes('doc_camera_') && !(pickedFile.mimeType?.includes('pdf') || pickedFile.name?.toLowerCase().endsWith('.pdf'))
                   ? `Selected: ${pickedFile.name}`
                   : 'Choose Image / Photo File'}
               </Text>
@@ -491,10 +666,10 @@ const styles = StyleSheet.create({
   loadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dark, padding: 14, borderRadius: 12, gap: 8, marginTop: 12, marginBottom: 12 },
   loadText: { color: colors.white, fontWeight: '600', fontSize: 14 },
   container: { marginTop: 8, marginBottom: 16, backgroundColor: colors.white, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title: { fontSize: 14, fontFamily: fonts.bold, color: colors.dark, textTransform: 'uppercase', letterSpacing: 0.5 },
-  addDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.dark, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16 },
-  addDocTxt: { color: colors.white, fontFamily: fonts.medium, fontSize: 11 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 },
+  title: { fontSize: 13, fontFamily: fonts.bold, color: colors.dark, textTransform: 'uppercase', letterSpacing: 0.5, flex: 1, flexShrink: 1, marginRight: 6 },
+  addDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.dark, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, flexShrink: 0 },
+  addDocTxt: { color: colors.white, fontFamily: fonts.semiBold, fontSize: 11 },
   sectionHeader: { fontFamily: fonts.bold, fontSize: fontSize.xs, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 14, marginBottom: 8 },
   scroll: { gap: 10, paddingBottom: 6 },
   mediaBox: { width: 100, height: 90, backgroundColor: colors.inputBg, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, padding: 8 },
@@ -505,6 +680,7 @@ const styles = StyleSheet.create({
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
   checkTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.xs, color: colors.dark },
   checkSub: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted, marginTop: 1 },
+  downloadIconBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 6, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: colors.border },
   viewDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#E0F2FE' },
   viewDocTxt: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.primary },
   uploadDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.dark },
@@ -513,11 +689,15 @@ const styles = StyleSheet.create({
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' },
   fullMedia: { width: '100%', height: '100%' },
   closeBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 25 },
+  videoTopBar: { position: 'absolute', top: Platform.OS === 'ios' ? 44 : 20, left: 16, right: 16, zIndex: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  videoDownloadBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  videoDownloadTxt: { color: colors.white, fontFamily: fonts.semiBold, fontSize: 13 },
+  closeBtnVideo: { padding: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   modalHeaderRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 44 : 20, paddingBottom: 12, backgroundColor: 'rgba(0,0,0,0.9)' },
   modalMediaTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.white, flex: 1, marginRight: 12 },
   closeBtnHeader: { padding: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 },
   previewContainer: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
-  modalFooterRow: { width: '100%', flexDirection: 'row', justifyContent: 'center', paddingVertical: 12, backgroundColor: 'rgba(0,0,0,0.9)' },
+  modalFooterRow: { width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 10, flexWrap: 'wrap', paddingVertical: 14, paddingHorizontal: 16, backgroundColor: 'rgba(0,0,0,0.9)' },
   externalBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   externalBtnTxt: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.white },
   uploadModalCard: { width: '100%', backgroundColor: colors.white, borderRadius: 16, padding: 20 },

@@ -82,7 +82,7 @@ export default function LoanDetailsView({ loan }) {
         <Row label="Monthly Income" value={loan.monthlyIncome ? `₹${loan.monthlyIncome.toLocaleString('en-IN')}` : ''} fieldKey="monthlyIncome" />
         <Row label="Residential Address" value={loan.ownerAddress} fieldKey="ownerAddress" />
         <Row label="Owner Details Remark" value={loan.ownerRemark || loan.remarks?.owner} fieldKey="ownerRemark" />
-        <Row label="Owner Verification Video" value={loan.videoUri ? '✓ Recorded' : 'Not recorded'} fieldKey="videoUri" />
+        <Row label="Owner Verification Video" value={(loan.videoUri || loan.videos?.some(v => v.videoType === 'owner')) ? '✓ Recorded' : 'Not recorded'} fieldKey="videoUri" />
       </View>
 
       <View style={rv.card}>
@@ -112,7 +112,7 @@ export default function LoanDetailsView({ loan }) {
         <Row label="Location / Area Name" value={loan.geoLocation?.locationName || loan.locationName || resolvedLocName} fieldKey="geoLocationName" />
         <Row label="District" value={loan.geoLocation?.district || loan.propertyDistrict || loan.district || resolvedDistrict} fieldKey="propertyDistrict" />
         <Row label="Property Details Remark" value={loan.propertyRemark || loan.remarks?.property} fieldKey="propertyRemark" />
-        <Row label="House / Property Video" value={loan.houseVideoUri ? '✓ Recorded' : (loan.propertyPhotos?.some(p => p.type === 'video') ? '✓ Recorded' : 'Not recorded')} fieldKey="houseVideoUri" />
+        <Row label="House / Property Video" value={(loan.houseVideoUri || loan.videos?.some(v => v.videoType === 'house') || loan.propertyPhotos?.some(p => p.type === 'video')) ? '✓ Recorded' : 'Not recorded'} fieldKey="houseVideoUri" />
         <Row label="Photos Uploaded" value={loan.propertyPhotos?.length ? `${loan.propertyPhotos.length} item(s)` : ''} fieldKey="propertyPhotos" />
         <Row label="Documents Uploaded" value={loan.propertyDocs?.length ? `${loan.propertyDocs.length} doc(s)` : ''} fieldKey="propertyDocs" />
       </View>

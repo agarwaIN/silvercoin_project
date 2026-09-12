@@ -180,6 +180,7 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInputSmall}
               placeholder="Amount (₹)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={foreclosureData.amount}
               onChangeText={t => setForeclosureData({...foreclosureData, amount: t})}
               keyboardType="numeric"
@@ -187,6 +188,7 @@ export default function LoanDetailScreen({ route, navigation }) {
             <TextInput
               style={styles.modalInput}
               placeholder="Reason for foreclosure"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
               value={foreclosureData.reason}
               onChangeText={t => setForeclosureData({...foreclosureData, reason: t})}
               multiline

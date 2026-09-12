@@ -17,8 +17,10 @@ export const getLoanMediaPreview = (loanId) =>
 export const uploadPropertyPhotos = (loanId, formData) =>
   api.post(`/employee/loans/${loanId}/upload-photo`, formData).then((r) => r.data);
 
-export const uploadVideo = (loanId, formData) =>
-  api.post(`/employee/loans/${loanId}/upload-video`, formData).then((r) => r.data);
+export const uploadVideo = (loanId, formData, videoType) => {
+  const query = videoType ? `?videoType=${encodeURIComponent(videoType)}` : '';
+  return api.post(`/employee/loans/${loanId}/upload-video${query}`, formData).then((r) => r.data);
+};
 
 export const submitAgreement = (loanId, formData) =>
   api.post(`/employee/loans/${loanId}/agreement`, formData).then((r) => r.data);
