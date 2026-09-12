@@ -12,6 +12,7 @@ import * as Sharing from 'expo-sharing';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
+import * as FileSystem from 'expo-file-system';
 import {
   createLoan, updateLoan, submitLoan,
   uploadVideo, uploadPropertyPhotos, uploadRegistryDocument,
@@ -21,6 +22,21 @@ import { usePopup } from '../../context/PopupContext';
 import Header from '../../components/Header';
 import { formatDate } from '../../utils/date';
 import { getStandardDocTitle, isVideoFileAsset } from '../../components/MediaViewer';
+
+export const ensureLocalFileUri = async (rawUri, fallbackExt = '.mp4') => {
+  if (!rawUri || typeof rawUri !== 'string') return rawUri;
+  if (rawUri.startsWith('content://')) {
+    try {
+      const ext = rawUri.toLowerCase().endsWith('.mov') ? '.mov' : fallbackExt;
+      const targetUri = `${FileSystem.cacheDirectory}picked_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+      await FileSystem.copyAsync({ from: rawUri, to: targetUri });
+      return targetUri;
+    } catch (err) {
+      console.warn('FileSystem copyAsync content URI error:', err);
+    }
+  }
+  return rawUri;
+};
 
 export function resolveMediaUri(raw) {
   if (!raw) return '';
@@ -305,8 +321,9 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
     );
   };
 
-  const handleVideoCaptured = async (uri, videoType) => {
+  const handleVideoCaptured = async (rawUri, videoType) => {
     const isHouse = videoType === 'house';
+    const uri = await ensureLocalFileUri(rawUri, '.mp4');
     if (isHouse) {
       setData(d => ({ ...d, houseVideoUri: uri, houseVideoUploaded: false }));
     } else {
@@ -338,13 +355,14 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
         name: isHouse ? 'house_video.mp4' : 'owner_video.mp4',
         type: 'video/mp4',
       });
-      await uploadVideo(activeLoanId, fd, videoType, isHouse ? 'House / Property Video' : 'Owner Verification Video');
+      const res = await uploadVideo(activeLoanId, fd, videoType, isHouse ? 'House / Property Video' : 'Owner Verification Video');
       if (isHouse) {
-        setData(d => ({ ...d, houseVideoUploaded: true }));
+        setData(d => ({ ...d, houseVideoUri: res?.key || uri, houseVideoUploaded: true }));
       } else {
-        setData(d => ({ ...d, videoUploaded: true }));
+        setData(d => ({ ...d, videoUri: res?.key || uri, videoUploaded: true }));
       }
-    } catch {
+    } catch (err) {
+      console.warn('Video upload error:', err);
       Alert.alert('Upload notice', 'Video saved locally. Will retry on next step or submit.');
     } finally {
       setUploading(false);
@@ -1833,16 +1851,19 @@ export default function NewLoanScreen({ route, navigation }) {
         // Upload Owner Video if pending
         if (formData.videoUri && !formData.videoUploaded) {
           try {
+            const ownerUri = await ensureLocalFileUri(formData.videoUri, '.mp4');
             const fd = new FormData();
             fd.append('videoType', 'owner');
             fd.append('name', 'Owner Verification Video');
             fd.append('video', {
-              uri: Platform.OS === 'android' ? formData.videoUri : formData.videoUri.replace('file://', ''),
+              uri: Platform.OS === 'android' ? ownerUri : ownerUri.replace('file://', ''),
               name: 'owner_video.mp4',
               type: 'video/mp4'
             });
-            await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
-            setFormData(d => ({ ...d, videoUploaded: true }));
+            const res = await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
+            if (res?.key) {
+              setFormData(d => ({ ...d, videoUri: res.key, videoUploaded: true }));
+            }
           } catch (vErr) {
             console.warn('Owner video upload error:', vErr);
             showAlert('Notice', 'Owner video saved locally. It will upload upon application submit.');
@@ -1852,16 +1873,19 @@ export default function NewLoanScreen({ route, navigation }) {
         // Upload House Video if pending
         if (formData.houseVideoUri && !formData.houseVideoUploaded) {
           try {
+            const houseUri = await ensureLocalFileUri(formData.houseVideoUri, '.mp4');
             const fdHouse = new FormData();
             fdHouse.append('videoType', 'house');
             fdHouse.append('name', 'House / Property Video');
             fdHouse.append('video', {
-              uri: Platform.OS === 'android' ? formData.houseVideoUri : formData.houseVideoUri.replace('file://', ''),
+              uri: Platform.OS === 'android' ? houseUri : houseUri.replace('file://', ''),
               name: 'house_video.mp4',
               type: 'video/mp4'
             });
-            await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
-            setFormData(d => ({ ...d, houseVideoUploaded: true }));
+            const res = await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
+            if (res?.key) {
+              setFormData(d => ({ ...d, houseVideoUri: res.key, houseVideoUploaded: true }));
+            }
           } catch (hErr) {
             console.warn('House video upload error:', hErr);
             showAlert('Notice', 'House video saved locally. It will upload upon application submit.');
@@ -1971,35 +1995,46 @@ export default function NewLoanScreen({ route, navigation }) {
         setLoanId(currentLoanId);
       }
 
+      let finalVideoUri = formData.videoUri;
+      let finalHouseVideoUri = formData.houseVideoUri;
+
       // Ensure pending videos are uploaded before final submit
       if (formData.videoUri && !formData.videoUploaded && currentLoanId) {
         try {
+          const ownerUri = await ensureLocalFileUri(formData.videoUri, '.mp4');
           const fd = new FormData();
           fd.append('videoType', 'owner');
           fd.append('name', 'Owner Verification Video');
           fd.append('video', {
-            uri: Platform.OS === 'android' ? formData.videoUri : formData.videoUri.replace('file://', ''),
+            uri: Platform.OS === 'android' ? ownerUri : ownerUri.replace('file://', ''),
             name: 'owner_video.mp4',
             type: 'video/mp4'
           });
-          await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
-          setFormData(d => ({ ...d, videoUploaded: true }));
+          const res = await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
+          if (res?.key) {
+            finalVideoUri = res.key;
+            setFormData(d => ({ ...d, videoUri: res.key, videoUploaded: true }));
+          }
         } catch (vErr) {
           console.warn('Submit owner video upload error:', vErr);
         }
       }
       if (formData.houseVideoUri && !formData.houseVideoUploaded && currentLoanId) {
         try {
+          const houseUri = await ensureLocalFileUri(formData.houseVideoUri, '.mp4');
           const fdHouse = new FormData();
           fdHouse.append('videoType', 'house');
           fdHouse.append('name', 'House / Property Video');
           fdHouse.append('video', {
-            uri: Platform.OS === 'android' ? formData.houseVideoUri : formData.houseVideoUri.replace('file://', ''),
+            uri: Platform.OS === 'android' ? houseUri : houseUri.replace('file://', ''),
             name: 'house_video.mp4',
             type: 'video/mp4'
           });
-          await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
-          setFormData(d => ({ ...d, houseVideoUploaded: true }));
+          const res = await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
+          if (res?.key) {
+            finalHouseVideoUri = res.key;
+            setFormData(d => ({ ...d, houseVideoUri: res.key, houseVideoUploaded: true }));
+          }
         } catch (hErr) {
           console.warn('Submit house video upload error:', hErr);
         }
@@ -2058,8 +2093,8 @@ export default function NewLoanScreen({ route, navigation }) {
       }
       // Final submit with full media payload
       await submitLoan(currentLoanId, {
-        videoUri: formData.videoUri,
-        houseVideoUri: formData.houseVideoUri,
+        videoUri: finalVideoUri,
+        houseVideoUri: finalHouseVideoUri,
         propertyDocs: formData.propertyDocs,
       });
       showAlert('Submitted!', 'Loan application submitted successfully.');
