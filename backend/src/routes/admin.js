@@ -579,9 +579,10 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
     mimeType: req.file.mimetype || 'application/octet-stream'
   };
 
-  const isStd = docType !== 'Custom Document';
+  // If this docType is a standard doc, replace only prior entry with identical standard docType, else append
+  const isStd = docType && docType !== 'Custom Document';
   const filtered = isStd
-    ? existingDocs.filter(d => (d.docType || '').toLowerCase() !== docType.toLowerCase() && (d.name || '').toLowerCase() !== docType.toLowerCase())
+    ? existingDocs.filter(d => (d.docType || '').trim().toLowerCase() !== docType.trim().toLowerCase())
     : existingDocs;
   filtered.push(newDocEntry);
 

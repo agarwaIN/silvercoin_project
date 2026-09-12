@@ -61,7 +61,8 @@ router.post('/loans', async (req, res) => {
 
 router.get('/loans/:loanId', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.employeeId !== req.user.userId) {
+  const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+  if (!loan || !isEmp) {
     return res.status(404).json({ message: 'Loan not found' });
   }
   const emis = await ensureEmiSchedule(loan);
@@ -70,7 +71,8 @@ router.get('/loans/:loanId', async (req, res) => {
 
 router.patch('/loans/:loanId', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.employeeId !== req.user.userId) {
+  const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+  if (!loan || !isEmp) {
     return res.status(404).json({ message: 'Loan not found' });
   }
   if (['approved'].includes(loan.status)) {
@@ -95,7 +97,8 @@ router.patch('/loans/:loanId', async (req, res) => {
 
 router.post('/loans/:loanId/submit', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.employeeId !== req.user.userId) {
+  const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+  if (!loan || !isEmp) {
     return res.status(404).json({ message: 'Loan not found' });
   }
   await db.updateLoan(loan.loanId, { status: 'submitted', updatedAt: new Date().toISOString() });
@@ -138,7 +141,8 @@ router.get('/recovery', async (req, res) => {
 router.post('/loans/:loanId/pay-emi', async (req, res) => {
   try {
     const loan = await db.getLoanById(req.params.loanId);
-    if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+    const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+    if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
 
     const { paymentId, amount, paymentMode, transactionRef, txnRef } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, { paymentMode, transactionRef, txnRef });
@@ -153,7 +157,8 @@ router.get('/recovery-agents', (req, res) => res.json([]));
 router.get('/loans/:loanId/media-preview', async (req, res) => {
   try {
     const loan = await db.getLoanById(req.params.loanId);
-    if (!loan || (loan.employeeId && loan.employeeId !== req.user.userId && loan.assignedEmployeeId !== req.user.userId)) {
+    const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+    if (!loan || !isEmp) {
       return res.status(404).json({ message: 'Loan not found' });
     }
     
@@ -229,7 +234,8 @@ router.get('/loans/:loanId/pdf', async (req, res) => {
 
 router.post('/loans/:loanId/registry-document', upload.single('document'), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+  if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
   const docType = req.query.docType || req.body.docType || 'Custom Document';
@@ -254,10 +260,10 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
     mimeType: req.file.mimetype || 'application/octet-stream'
   };
 
-  // If this docType is a standard doc, replace any prior entry of that standard docType, else append
-  const isStd = docType !== 'Custom Document';
+  // If this docType is a standard doc, replace only prior entry with identical standard docType, else append
+  const isStd = docType && docType !== 'Custom Document';
   const filtered = isStd
-    ? existingDocs.filter(d => (d.docType || '').toLowerCase() !== docType.toLowerCase() && (d.name || '').toLowerCase() !== docType.toLowerCase())
+    ? existingDocs.filter(d => (d.docType || '').trim().toLowerCase() !== docType.trim().toLowerCase())
     : existingDocs;
   filtered.push(newDocEntry);
 
@@ -267,7 +273,8 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
 
 router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+  if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
 
   const newItems = [];
@@ -296,7 +303,8 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
 
 router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+  if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
 
   const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase();
@@ -327,10 +335,8 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   };
   if (isHouse) {
     updates.houseVideoUri = key;
-    if (freshLoan.videoUri) updates.videoUri = freshLoan.videoUri;
   } else {
     updates.videoUri = key;
-    if (freshLoan.houseVideoUri) updates.houseVideoUri = freshLoan.houseVideoUri;
   }
 
   await db.updateLoan(loan.loanId, updates);

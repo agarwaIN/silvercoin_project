@@ -204,6 +204,7 @@ async function getLoanById(loanId) {
   const result = await docClient.send(new GetCommand({
     TableName: tableName('loans'),
     Key: { loanId },
+    ConsistentRead: true,
   }));
   return result.Item || null;
 }

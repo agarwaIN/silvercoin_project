@@ -70,11 +70,85 @@ function FullScreenVideo({ url, name, onClose, onDownload, downloading }) {
   );
 }
 
+export const getStandardDocTitle = (d) => {
+  if (!d) return null;
+  const typeStr = (d.docType || '').toLowerCase();
+  const nameStr = (d.name || '').toLowerCase();
+  const combined = `${typeStr} ${nameStr}`
+    .replace(/[\u2010-\u2015\u2212_/-]/g, ' ')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 1. Khasara / Khatoni (distinctive keywords)
+  if (
+    combined.includes('khasara') ||
+    combined.includes('khatoni') ||
+    combined.includes('khasra') ||
+    combined.includes('khatauni') ||
+    combined.includes('jamabandi') ||
+    combined.includes('land record') ||
+    combined.includes('revenue record')
+  ) {
+    return 'Khasara / Khatoni';
+  }
+
+  // 2. Gift Deed
+  if (combined.includes('gift') || combined.includes('transfer deed') || combined.includes('hibanama')) {
+    return 'Gift Deed';
+  }
+
+  // 3. Farat / Fard
+  if (combined.includes('farat') || combined.includes('fard') || combined.includes('fardh') || combined.includes('nakal') || combined.includes('land right')) {
+    return 'Farat';
+  }
+
+  // 4. Property Registry 3
+  if (
+    combined.includes('registry 3') ||
+    combined.includes('registery 3') ||
+    combined.includes('registry3') ||
+    combined.includes('tertiary') ||
+    (combined.includes('registry') && combined.includes('3')) ||
+    (combined.includes('registery') && combined.includes('3'))
+  ) {
+    return 'Property Registry - 3';
+  }
+
+  // 5. Property Registry 2
+  if (
+    combined.includes('registry 2') ||
+    combined.includes('registery 2') ||
+    combined.includes('registry2') ||
+    combined.includes('secondary') ||
+    (combined.includes('registry') && combined.includes('2')) ||
+    (combined.includes('registery') && combined.includes('2'))
+  ) {
+    return 'Property Registry - 2';
+  }
+
+  // 6. Property Registry 1 (or default registry)
+  if (
+    combined.includes('registry 1') ||
+    combined.includes('registery 1') ||
+    combined.includes('registry1') ||
+    combined.includes('primary') ||
+    (combined.includes('registry') && combined.includes('1')) ||
+    (combined.includes('registery') && combined.includes('1')) ||
+    combined.includes('registry') ||
+    combined.includes('registery')
+  ) {
+    return 'Property Registry - 1';
+  }
+
+  return null;
+};
+
 export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
   const [media, setMedia] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!!loanId);
   const [selectedMedia, setSelectedMedia] = useState(null);
 
   // Custom Upload Modal State
@@ -291,17 +365,22 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
     }
   };
 
-  if (!media && !loading) {
+  if (loading) {
+    return (
+      <View style={{ padding: 24, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="small" color={colors.dark} />
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>Loading Media & Documents...</Text>
+      </View>
+    );
+  }
+
+  if (!media) {
     return (
       <TouchableOpacity style={styles.loadBtn} onPress={load}>
         <Ionicons name="images-outline" size={20} color={colors.white} />
         <Text style={styles.loadText}>Load Uploaded Media & Documents</Text>
       </TouchableOpacity>
     );
-  }
-
-  if (loading) {
-    return <ActivityIndicator style={{ margin: 20 }} color={colors.dark} />;
   }
 
   // Filter media items into categories
@@ -364,31 +443,25 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   // Map uploaded docs to standard docs or custom docs
   const uploadedStandardMap = {};
   const customDocsList = [];
-
-  const normStr = (str) =>
-    (str || '')
-      .toLowerCase()
-      .replace(/[\u2010-\u2015\u2212_/-]/g, ' ')
-      .replace(/[^a-z0-9]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
   docs.forEach((d) => {
-    const rawId = `${d.docType || ''} ${d.name || ''}`;
-    const cleanId = normStr(rawId);
-    const matchedStd = standardDocsList.find((s) => {
-      const cleanTitle = normStr(s.title);
-      return (
-        cleanId.includes(cleanTitle) ||
-        cleanTitle.includes(cleanId) ||
-        s.matchKeys.some((k) => {
-          const cleanKey = normStr(k);
-          return cleanId.includes(cleanKey) || cleanKey.includes(cleanId);
-        })
-      );
-    });
-    if (matchedStd && !uploadedStandardMap[matchedStd.title]) {
-      uploadedStandardMap[matchedStd.title] = d;
+    let matchedTitle = getStandardDocTitle(d);
+
+    // Smart slot allocation: If a document is a registry document and slot 1 is already taken,
+    // assign it to Registry - 2 (or Registry - 3) so multiple uploaded registries aren't lost to customDocsList
+    if (matchedTitle === 'Property Registry - 1' && uploadedStandardMap['Property Registry - 1']) {
+      if (!uploadedStandardMap['Property Registry - 2']) {
+        matchedTitle = 'Property Registry - 2';
+      } else if (!uploadedStandardMap['Property Registry - 3']) {
+        matchedTitle = 'Property Registry - 3';
+      }
+    } else if (matchedTitle === 'Property Registry - 2' && uploadedStandardMap['Property Registry - 2']) {
+      if (!uploadedStandardMap['Property Registry - 3']) {
+        matchedTitle = 'Property Registry - 3';
+      }
+    }
+
+    if (matchedTitle && !uploadedStandardMap[matchedTitle]) {
+      uploadedStandardMap[matchedTitle] = d;
     } else {
       customDocsList.push(d);
     }

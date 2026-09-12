@@ -15,10 +15,22 @@ import { colors } from '../../theme/colors';
 import {
   createLoan, updateLoan, submitLoan,
   uploadVideo, uploadPropertyPhotos, uploadRegistryDocument,
+  getLoanMediaPreview,
 } from '../../api/employeeApi';
 import { usePopup } from '../../context/PopupContext';
 import Header from '../../components/Header';
 import { formatDate } from '../../utils/date';
+import { getStandardDocTitle } from '../../components/MediaViewer';
+
+export function resolveMediaUri(raw) {
+  if (!raw) return '';
+  const s = typeof raw === 'object' && raw.uri ? raw.uri : String(raw);
+  if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('file://') || s.startsWith('content://') || s.startsWith('data:')) {
+    return s;
+  }
+  const clean = s.replace(/^\/+/, '');
+  return `http://13.200.237.51:5000/api/files/download?key=${encodeURIComponent(clean)}`;
+}
 
 // ─── Step Progress Bar ────────────────────────────────────────────────────────
 const STEPS = [
@@ -211,15 +223,16 @@ function VideoSectionCard({
 // Open Document handler with local file sharing support
 const openDoc = async (uri) => {
   if (!uri) return;
+  const resolved = resolveMediaUri(uri);
   try {
-    if (uri.startsWith('http://') || uri.startsWith('https://')) {
-      await Linking.openURL(uri);
+    if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+      await Linking.openURL(resolved);
     } else {
       const isAvailable = await Sharing.isAvailableAsync();
       if (isAvailable) {
-        await Sharing.shareAsync(uri);
+        await Sharing.shareAsync(resolved);
       } else {
-        await Linking.openURL(uri);
+        await Linking.openURL(resolved);
       }
     }
   } catch (err) {
@@ -228,7 +241,7 @@ const openDoc = async (uri) => {
 };
 
 // ─── STEP 1: Owner & Verification ─────────────────────────────────────────────
-function Step1({ data, setData, loanId }) {
+function Step1({ data, setData, loanId, setLoanId }) {
   const [ifscLoading, setIfscLoading] = useState(false);
   const [ownerUploading, setOwnerUploading] = useState(false);
   const [houseUploading, setHouseUploading] = useState(false);
@@ -300,19 +313,31 @@ function Step1({ data, setData, loanId }) {
       setData(d => ({ ...d, videoUri: uri, videoUploaded: false }));
     }
 
-    if (!loanId) return;
+    let activeLoanId = loanId;
+    if (!activeLoanId && setLoanId) {
+      try {
+        const created = await createLoan();
+        activeLoanId = created.loanId;
+        setLoanId(activeLoanId);
+      } catch (cErr) {
+        console.warn('Auto createLoan on video capture failed:', cErr);
+      }
+    }
+
+    if (!activeLoanId) return;
 
     const setUploading = isHouse ? setHouseUploading : setOwnerUploading;
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append('videoType', videoType);
+      fd.append('name', isHouse ? 'House / Property Video' : 'Owner Verification Video');
       fd.append('video', {
-        uri,
+        uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
         name: isHouse ? 'house_video.mp4' : 'owner_video.mp4',
         type: 'video/mp4',
       });
-      await uploadVideo(loanId, fd, videoType);
+      await uploadVideo(activeLoanId, fd, videoType, isHouse ? 'House / Property Video' : 'Owner Verification Video');
       if (isHouse) {
         setData(d => ({ ...d, houseVideoUploaded: true }));
       } else {
@@ -469,7 +494,7 @@ const STANDARD_PROPERTY_DOCS = [
 ];
 
 // ─── STEP 2: Property Details ──────────────────────────────────────────────────
-function Step2({ data, setData, loanId }) {
+function Step2({ data, setData, loanId, setLoanId }) {
   const [locLoading, setLocLoading] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
@@ -502,15 +527,39 @@ function Step2({ data, setData, loanId }) {
               quality: 0.8,
             });
             if (result.canceled || !result.assets?.length) return;
-            const newItems = result.assets.map(a => ({ uri: a.uri, type: a.type || 'image', uploaded: false }));
+            const newItems = result.assets.map(a => ({
+              uri: a.uri,
+              localUri: a.uri,
+              type: a.type || 'image',
+              uploaded: false,
+            }));
             const allPhotos = [...(data.propertyPhotos || []), ...newItems].slice(0, 15);
             setData(d => ({ ...d, propertyPhotos: allPhotos }));
-            if (!loanId) return;
+
+            let activeLoanId = loanId;
+            if (!activeLoanId && setLoanId) {
+              try {
+                const created = await createLoan();
+                activeLoanId = created.loanId;
+                setLoanId(activeLoanId);
+              } catch (cErr) {
+                console.warn('Auto createLoan on photo upload failed:', cErr);
+              }
+            }
+
+            if (!activeLoanId) return;
             setPhotoUploading(true);
             try {
               const fd = new FormData();
-              newItems.forEach((item, i) => fd.append('photos', { uri: item.uri, name: `photo_${Date.now()}_${i}.jpg`, type: 'image/jpeg' }));
-              await uploadPropertyPhotos(loanId, fd);
+              newItems.forEach((item, i) => {
+                const isVid = item.type === 'video' || (item.uri && (item.uri.toLowerCase().endsWith('.mp4') || item.uri.toLowerCase().endsWith('.mov')));
+                fd.append('photos', {
+                  uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
+                  name: isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`,
+                  type: isVid ? 'video/mp4' : 'image/jpeg',
+                });
+              });
+              await uploadPropertyPhotos(activeLoanId, fd);
               setData(d => ({
                 ...d,
                 propertyPhotos: (d.propertyPhotos || []).map(p => newItems.some(ni => ni.uri === p.uri) ? { ...p, uploaded: true } : p)
@@ -531,15 +580,37 @@ function Step2({ data, setData, loanId }) {
               videoMaxDuration: 120,
             });
             if (result.canceled || !result.assets?.[0]) return;
-            const newItem = { uri: result.assets[0].uri, type: result.assets[0].type || 'image', uploaded: false };
+            const isVid = result.assets[0].type === 'video' || (result.assets[0].uri && (result.assets[0].uri.toLowerCase().endsWith('.mp4') || result.assets[0].uri.toLowerCase().endsWith('.mov')));
+            const newItem = {
+              uri: result.assets[0].uri,
+              localUri: result.assets[0].uri,
+              type: isVid ? 'video' : (result.assets[0].type || 'image'),
+              uploaded: false,
+            };
             const updated = [...(data.propertyPhotos || []), newItem].slice(0, 15);
             setData(d => ({ ...d, propertyPhotos: updated }));
-            if (!loanId) return;
+
+            let activeLoanId = loanId;
+            if (!activeLoanId && setLoanId) {
+              try {
+                const created = await createLoan();
+                activeLoanId = created.loanId;
+                setLoanId(activeLoanId);
+              } catch (cErr) {
+                console.warn('Auto createLoan on camera photo failed:', cErr);
+              }
+            }
+
+            if (!activeLoanId) return;
             setPhotoUploading(true);
             try {
               const fd = new FormData();
-              fd.append('photos', { uri: newItem.uri, name: `photo_${Date.now()}.jpg`, type: 'image/jpeg' });
-              await uploadPropertyPhotos(loanId, fd);
+              fd.append('photos', {
+                uri: Platform.OS === 'android' ? newItem.uri : newItem.uri.replace('file://', ''),
+                name: isVid ? `photo_vid_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`,
+                type: isVid ? 'video/mp4' : 'image/jpeg',
+              });
+              await uploadPropertyPhotos(activeLoanId, fd);
               setData(d => ({
                 ...d,
                 propertyPhotos: (d.propertyPhotos || []).map(p => p.uri === newItem.uri ? { ...p, uploaded: true } : p)
@@ -639,11 +710,15 @@ function Step2({ data, setData, loanId }) {
       return;
     }
     const finalName = docNameInput.trim() || pickedAsset.name || selectedDocType;
+    const recognizedStd = getStandardDocTitle({ docType: selectedDocType, name: finalName });
+    const effectiveDocType = (selectedDocType === 'Custom Document' && recognizedStd) ? recognizedStd : selectedDocType;
+
     const newDoc = {
       id: Date.now().toString(),
       uri: pickedAsset.uri,
+      localUri: pickedAsset.uri,
       name: finalName,
-      docType: selectedDocType,
+      docType: effectiveDocType,
       date: formatDate(new Date()),
       uploaded: false,
       mimeType: pickedAsset.mimeType || 'application/pdf',
@@ -652,15 +727,26 @@ function Step2({ data, setData, loanId }) {
     // Filter existing matching standard doc or append new doc
     setData(d => {
       const existingDocs = d.propertyDocs || [];
-      const updated = selectedDocType === 'Custom Document'
+      const updated = effectiveDocType === 'Custom Document'
         ? [...existingDocs, newDoc]
-        : [...existingDocs.filter(doc => doc.docType !== selectedDocType && doc.name !== selectedDocType), newDoc];
+        : [...existingDocs.filter(doc => doc.docType !== effectiveDocType && doc.name !== effectiveDocType && getStandardDocTitle(doc) !== effectiveDocType), newDoc];
       return { ...d, propertyDocs: updated };
     });
 
     setModalVisible(false);
 
-    if (!loanId) return;
+    let activeLoanId = loanId;
+    if (!activeLoanId && setLoanId) {
+      try {
+        const created = await createLoan();
+        activeLoanId = created.loanId;
+        setLoanId(activeLoanId);
+      } catch (cErr) {
+        console.warn('Auto createLoan on doc upload failed:', cErr);
+      }
+    }
+
+    if (!activeLoanId) return;
     setDocUploading(true);
     try {
       const fd = new FormData();
@@ -669,17 +755,17 @@ function Step2({ data, setData, loanId }) {
         name: pickedAsset.name || 'document',
         type: pickedAsset.mimeType || 'application/pdf',
       });
-      fd.append('docType', selectedDocType);
+      fd.append('docType', effectiveDocType);
       fd.append('name', finalName);
       fd.append('date', newDoc.date);
-      const res = await uploadRegistryDocument(loanId, fd, {
-        docType: selectedDocType,
+      const res = await uploadRegistryDocument(activeLoanId, fd, {
+        docType: effectiveDocType,
         name: finalName,
         date: newDoc.date,
       });
       setData(d => ({
         ...d,
-        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true, uri: res?.key || d2.uri } : d2)
+        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true, serverKey: res?.key, uri: d2.localUri || d2.uri } : d2)
       }));
     } catch {
       Alert.alert('Upload Notice', 'Document saved locally. Will retry on submit.');
@@ -752,7 +838,7 @@ function Step2({ data, setData, loanId }) {
       <View style={stdS.container}>
         {STANDARD_PROPERTY_DOCS.map((std) => {
           const uploadedDoc = (data.propertyDocs || []).find(
-            (d) => d.docType === std.type || d.name?.toLowerCase() === std.title.toLowerCase()
+            (d) => d.docType === std.type || getStandardDocTitle(d) === std.title
           );
           return (
             <View key={std.id} style={stdS.card}>
@@ -775,7 +861,7 @@ function Step2({ data, setData, loanId }) {
               <View style={stdS.actions}>
                 {uploadedDoc ? (
                   <>
-                    <TouchableOpacity style={stdS.viewBtn} onPress={() => openDoc(uploadedDoc.uri)}>
+                    <TouchableOpacity style={stdS.viewBtn} onPress={() => openDoc(uploadedDoc.localUri || uploadedDoc.uri)}>
                       <Ionicons name="eye-outline" size={15} color={colors.primary} />
                       <Text style={stdS.viewTxt}>View</Text>
                     </TouchableOpacity>
@@ -811,7 +897,7 @@ function Step2({ data, setData, loanId }) {
       </TouchableOpacity>
 
       {/* Render Custom Documents List */}
-      {(data.propertyDocs || []).filter(d => !STANDARD_PROPERTY_DOCS.some(std => std.type === d.docType || std.title.toLowerCase() === d.name?.toLowerCase())).map(doc => (
+      {(data.propertyDocs || []).filter(d => !STANDARD_PROPERTY_DOCS.some(std => std.type === d.docType || std.title.toLowerCase() === d.name?.toLowerCase()) && !getStandardDocTitle(d)).map(doc => (
         <View key={doc.id} style={docS.row}>
           <Ionicons name="document-text-outline" size={20} color={colors.dark} />
           <View style={{ flex: 1 }}>
@@ -819,7 +905,7 @@ function Step2({ data, setData, loanId }) {
             <Text style={{ fontSize: 11, color: colors.muted }}>{doc.docType || 'Custom Document'}</Text>
           </View>
           {doc.uploaded && <Ionicons name="checkmark-circle" size={16} color={colors.success} />}
-          <TouchableOpacity onPress={() => openDoc(doc.uri)} style={{ paddingHorizontal: 6 }}>
+          <TouchableOpacity onPress={() => openDoc(doc.localUri || doc.uri)} style={{ paddingHorizontal: 6 }}>
             <Ionicons name="eye-outline" size={18} color={colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => removeDoc(doc.id)} style={{ paddingHorizontal: 6 }}>
@@ -1146,8 +1232,9 @@ function Step3({ data, setData }) {
 
 // ─── MEDIA PREVIEW MODALS FOR STEP 4 ──────────────────────────────────────────
 function ReviewVideoModal({ visible, uri, title, onClose }) {
-  const player = useVideoPlayer(uri || null, p => {
-    if (visible && uri) p.play();
+  const resolvedUri = resolveMediaUri(uri);
+  const player = useVideoPlayer(resolvedUri || null, p => {
+    if (visible && resolvedUri) p.play();
   });
 
   if (!visible || !uri) return null;
@@ -1169,6 +1256,7 @@ function ReviewVideoModal({ visible, uri, title, onClose }) {
 
 function ReviewImageModal({ visible, uri, onClose }) {
   if (!visible || !uri) return null;
+  const resolvedUri = resolveMediaUri(uri);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -1179,16 +1267,27 @@ function ReviewImageModal({ visible, uri, onClose }) {
             <Ionicons name="close" size={24} color={colors.white} />
           </TouchableOpacity>
         </View>
-        <Image source={{ uri }} style={rv.fullImage} resizeMode="contain" />
+        <Image source={{ uri: resolvedUri }} style={rv.fullImage} resizeMode="contain" />
       </View>
     </Modal>
   );
 }
 
 // ─── STEP 4: Review & Submit ───────────────────────────────────────────────────
-function Step4({ data }) {
+function Step4({ data, loanId }) {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [serverMedia, setServerMedia] = useState([]);
+
+  useEffect(() => {
+    if (loanId) {
+      getLoanMediaPreview(loanId)
+        .then((items) => {
+          if (Array.isArray(items)) setServerMedia(items);
+        })
+        .catch(() => {});
+    }
+  }, [loanId]);
 
   const Row = ({ label, value }) => (
     <View style={rv.row}>
@@ -1197,8 +1296,23 @@ function Step4({ data }) {
     </View>
   );
 
-  const photos = data.propertyPhotos || [];
-  const docs = data.propertyDocs || [];
+  const serverOwnerVideo = serverMedia.find(m => m.type === 'video' && (m.videoType === 'owner' || m.name?.toLowerCase().includes('owner')));
+  const serverHouseVideo = serverMedia.find(m => m.type === 'video' && (m.videoType === 'house' || m.name?.toLowerCase().includes('house') || m.name?.toLowerCase().includes('property')));
+
+  const rawOwnerUri = data.videoUri || serverOwnerVideo?.url;
+  const rawHouseUri = data.houseVideoUri || serverHouseVideo?.url;
+  const ownerVideoUri = rawOwnerUri ? resolveMediaUri(rawOwnerUri) : null;
+  const houseVideoUri = rawHouseUri ? resolveMediaUri(rawHouseUri) : null;
+
+  const serverPhotos = serverMedia.filter(m => m.type === 'photo' || m.type === 'image');
+  const photos = (data.propertyPhotos && data.propertyPhotos.length > 0)
+    ? data.propertyPhotos.map(p => ({ ...p, uri: resolveMediaUri(p.uri || p) }))
+    : serverPhotos.map(m => ({ uri: m.url, type: 'image' }));
+
+  const serverDocs = serverMedia.filter(m => m.type === 'document');
+  const docs = (data.propertyDocs && data.propertyDocs.length > 0)
+    ? data.propertyDocs.map(d => ({ ...d, uri: resolveMediaUri(d.localUri || d.uri) }))
+    : serverDocs.map(m => ({ uri: m.url, name: m.name, docType: m.docType, date: m.date, mimeType: m.mimeType }));
 
   return (
     <View style={{ paddingHorizontal: 16 }}>
@@ -1265,7 +1379,7 @@ function Step4({ data }) {
           </View>
           <View style={rv.mediaCountBadge}>
             <Text style={rv.mediaCountBadgeTxt}>
-              {(data.videoUri ? 1 : 0) + (data.houseVideoUri ? 1 : 0) + photos.length + docs.length} Items
+              {(ownerVideoUri ? 1 : 0) + (houseVideoUri ? 1 : 0) + photos.length + docs.length} Items
             </Text>
           </View>
         </View>
@@ -1275,42 +1389,42 @@ function Step4({ data }) {
         <View style={rv.videoGrid}>
           {/* Owner Video */}
           <TouchableOpacity
-            style={[rv.mediaTile, !data.videoUri && rv.mediaTileEmpty]}
-            onPress={() => data.videoUri && setSelectedVideo({ uri: data.videoUri, title: 'Owner Verification Video' })}
-            disabled={!data.videoUri}
+            style={[rv.mediaTile, !ownerVideoUri && rv.mediaTileEmpty]}
+            onPress={() => ownerVideoUri && setSelectedVideo({ uri: ownerVideoUri, title: 'Owner Verification Video' })}
+            disabled={!ownerVideoUri}
             activeOpacity={0.7}
           >
             <View style={rv.mediaTileIconBox}>
-              <Ionicons name="videocam" size={24} color={data.videoUri ? '#D97706' : colors.muted} />
+              <Ionicons name="videocam" size={24} color={ownerVideoUri ? '#D97706' : colors.muted} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={rv.mediaTileTitle} numberOfLines={1}>Owner Verification</Text>
-              <Text style={[rv.mediaTileStatus, data.videoUri ? { color: colors.success } : { color: colors.muted }]}>
-                {data.videoUri ? '✓ Recorded (Tap to Watch)' : 'Not recorded'}
+              <Text style={[rv.mediaTileStatus, ownerVideoUri ? { color: colors.success } : { color: colors.muted }]}>
+                {ownerVideoUri ? '✓ Recorded (Tap to Watch)' : 'Not recorded'}
               </Text>
             </View>
-            {data.videoUri && (
+            {ownerVideoUri && (
               <Ionicons name="play-circle" size={26} color="#D97706" />
             )}
           </TouchableOpacity>
 
           {/* House Video */}
           <TouchableOpacity
-            style={[rv.mediaTile, !data.houseVideoUri && rv.mediaTileEmpty]}
-            onPress={() => data.houseVideoUri && setSelectedVideo({ uri: data.houseVideoUri, title: 'House / Property Video' })}
-            disabled={!data.houseVideoUri}
+            style={[rv.mediaTile, !houseVideoUri && rv.mediaTileEmpty]}
+            onPress={() => houseVideoUri && setSelectedVideo({ uri: houseVideoUri, title: 'House / Property Video' })}
+            disabled={!houseVideoUri}
             activeOpacity={0.7}
           >
             <View style={rv.mediaTileIconBox}>
-              <Ionicons name="videocam" size={24} color={data.houseVideoUri ? '#D97706' : colors.muted} />
+              <Ionicons name="videocam" size={24} color={houseVideoUri ? '#D97706' : colors.muted} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={rv.mediaTileTitle} numberOfLines={1}>House / Property Walkthrough</Text>
-              <Text style={[rv.mediaTileStatus, data.houseVideoUri ? { color: colors.success } : { color: colors.muted }]}>
-                {data.houseVideoUri ? '✓ Recorded (Tap to Watch)' : 'Not recorded'}
+              <Text style={[rv.mediaTileStatus, houseVideoUri ? { color: colors.success } : { color: colors.muted }]}>
+                {houseVideoUri ? '✓ Recorded (Tap to Watch)' : 'Not recorded'}
               </Text>
             </View>
-            {data.houseVideoUri && (
+            {houseVideoUri && (
               <Ionicons name="play-circle" size={26} color="#D97706" />
             )}
           </TouchableOpacity>
@@ -1347,7 +1461,8 @@ function Step4({ data }) {
         {docs.length > 0 ? (
           <View style={{ gap: 8 }}>
             {docs.map((d, idx) => {
-              const isImg = d.mimeType?.includes('image') || d.uri?.toLowerCase().endsWith('.jpg') || d.uri?.toLowerCase().endsWith('.png');
+              const uriStr = typeof d.uri === 'string' ? d.uri.toLowerCase() : '';
+              const isImg = d.mimeType?.includes('image') || uriStr.endsWith('.jpg') || uriStr.endsWith('.jpeg') || uriStr.endsWith('.png');
               return (
                 <View key={d.id || idx} style={rv.docCard}>
                   <Ionicons
@@ -1364,7 +1479,7 @@ function Step4({ data }) {
                   <TouchableOpacity
                     style={rv.viewDocBtn}
                     onPress={() => {
-                      if (isImg && !d.uri.startsWith('http')) {
+                      if (isImg) {
                         setSelectedImage(d.uri);
                       } else {
                         openDoc(d.uri);
@@ -1746,10 +1861,11 @@ export default function NewLoanScreen({ route, navigation }) {
           try {
             const fd = new FormData();
             unuploadedPhotos.forEach((item, i) => {
+              const isVid = item.type === 'video' || (item.uri && (item.uri.toLowerCase().endsWith('.mp4') || item.uri.toLowerCase().endsWith('.mov')));
               fd.append('photos', {
                 uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
-                name: `photo_${Date.now()}_${i}.jpg`,
-                type: 'image/jpeg'
+                name: isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`,
+                type: isVid ? 'video/mp4' : 'image/jpeg'
               });
             });
             await uploadPropertyPhotos(currentLoanId, fd);
@@ -1767,22 +1883,24 @@ export default function NewLoanScreen({ route, navigation }) {
         for (const uDoc of unuploadedDocs) {
           try {
             const fd = new FormData();
+            const recognizedStd = getStandardDocTitle({ docType: uDoc.docType, name: uDoc.name });
+            const effectiveDocType = (uDoc.docType === 'Custom Document' && recognizedStd) ? recognizedStd : (uDoc.docType || 'Custom Document');
             fd.append('document', {
               uri: Platform.OS === 'android' ? uDoc.uri : uDoc.uri.replace('file://', ''),
               name: uDoc.name || 'document',
               type: uDoc.mimeType || 'application/pdf',
             });
-            fd.append('docType', uDoc.docType || 'Custom Document');
+            fd.append('docType', effectiveDocType);
             fd.append('name', uDoc.name || 'Document');
             fd.append('date', uDoc.date || formatDate(new Date()));
             const res = await uploadRegistryDocument(currentLoanId, fd, {
-              docType: uDoc.docType || 'Custom Document',
+              docType: effectiveDocType,
               name: uDoc.name || 'Document',
               date: uDoc.date || formatDate(new Date()),
             });
             setFormData(d => ({
               ...d,
-              propertyDocs: (d.propertyDocs || []).map(item => item.id === uDoc.id ? { ...item, uploaded: true, uri: res?.key || item.uri } : item)
+              propertyDocs: (d.propertyDocs || []).map(item => item.id === uDoc.id ? { ...item, uploaded: true, serverKey: res?.key, uri: item.localUri || item.uri } : item)
             }));
           } catch (dErr) {
             console.warn('Property doc upload error:', dErr);
@@ -1851,10 +1969,11 @@ export default function NewLoanScreen({ route, navigation }) {
         try {
           const fdPhotos = new FormData();
           pendingPhotos.forEach((item, i) => {
+            const isVid = item.type === 'video' || (item.uri && (item.uri.toLowerCase().endsWith('.mp4') || item.uri.toLowerCase().endsWith('.mov')));
             fdPhotos.append('photos', {
               uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
-              name: `photo_${Date.now()}_${i}.jpg`,
-              type: 'image/jpeg'
+              name: isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`,
+              type: isVid ? 'video/mp4' : 'image/jpeg'
             });
           });
           await uploadPropertyPhotos(loanId, fdPhotos);
@@ -1872,22 +1991,24 @@ export default function NewLoanScreen({ route, navigation }) {
         for (const pDoc of pendingDocs) {
           try {
             const fdDoc = new FormData();
+            const recognizedStd = getStandardDocTitle({ docType: pDoc.docType, name: pDoc.name });
+            const effectiveDocType = (pDoc.docType === 'Custom Document' && recognizedStd) ? recognizedStd : (pDoc.docType || 'Custom Document');
             fdDoc.append('document', {
               uri: Platform.OS === 'android' ? pDoc.uri : pDoc.uri.replace('file://', ''),
               name: pDoc.name || 'document',
               type: pDoc.mimeType || 'application/pdf',
             });
-            fdDoc.append('docType', pDoc.docType || 'Custom Document');
+            fdDoc.append('docType', effectiveDocType);
             fdDoc.append('name', pDoc.name || 'Document');
             fdDoc.append('date', pDoc.date || formatDate(new Date()));
             await uploadRegistryDocument(loanId, fdDoc, {
-              docType: pDoc.docType || 'Custom Document',
+              docType: effectiveDocType,
               name: pDoc.name || 'Document',
               date: pDoc.date || formatDate(new Date()),
             });
             setFormData(d => ({
               ...d,
-              propertyDocs: (d.propertyDocs || []).map(item => item.id === pDoc.id ? { ...item, uploaded: true } : item)
+              propertyDocs: (d.propertyDocs || []).map(item => item.id === pDoc.id ? { ...item, uploaded: true, uri: item.localUri || item.uri } : item)
             }));
           } catch (dErr) {
             console.warn('Submit doc upload error:', dErr);
@@ -1927,10 +2048,10 @@ export default function NewLoanScreen({ route, navigation }) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 40 }}
       >
-        {step === 0 && <Step1 data={formData} setData={setFormData} loanId={loanId} />}
-        {step === 1 && <Step2 data={formData} setData={setFormData} loanId={loanId} />}
+        {step === 0 && <Step1 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanId} />}
+        {step === 1 && <Step2 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanId} />}
         {step === 2 && <Step3 data={formData} setData={setFormData} />}
-        {step === 3 && <Step4 data={formData} />}
+        {step === 3 && <Step4 data={formData} loanId={loanId} />}
       </ScrollView>
 
       {/* Footer — Back + Next/Submit side by side with Android navigation safe area */}
