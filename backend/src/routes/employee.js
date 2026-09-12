@@ -267,6 +267,12 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
+  const fileMime = (req.file.mimetype || '').toLowerCase();
+  const fileOrigName = (req.file.originalname || '').toLowerCase();
+  if (fileMime.startsWith('video/') || fileOrigName.match(/\.(mp4|mov|avi|mkv|webm|3gp|m4v)$/)) {
+    return res.status(400).json({ message: 'Videos cannot be uploaded in the document section. Please upload a PDF or image document.' });
+  }
+
   const docType = req.query.docType || req.body.docType || 'Custom Document';
   const name = req.query.name || req.body.name || req.file.originalname || 'Document';
   const docDate = req.query.date || req.body.date || new Date().toISOString().split('T')[0];

@@ -144,6 +144,18 @@ export const getStandardDocTitle = (d) => {
   return null;
 };
 
+export const isVideoFileAsset = (asset) => {
+  if (!asset) return false;
+  const mime = (asset.mimeType || asset.type || '').toLowerCase();
+  const uri = (asset.uri || '').toLowerCase();
+  const name = (asset.name || '').toLowerCase();
+  return (
+    mime.startsWith('video/') ||
+    uri.endsWith('.mp4') || uri.endsWith('.mov') || uri.endsWith('.avi') || uri.endsWith('.mkv') || uri.endsWith('.webm') || uri.endsWith('.3gp') || uri.endsWith('.m4v') ||
+    name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.avi') || name.endsWith('.mkv') || name.endsWith('.webm') || name.endsWith('.3gp') || name.endsWith('.m4v')
+  );
+};
+
 export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
@@ -286,7 +298,12 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
         multiple: false,
       });
       if (!res.canceled && res.assets && res.assets.length > 0) {
-        setPickedFile(res.assets[0]);
+        const selected = res.assets[0];
+        if (isVideoFileAsset(selected)) {
+          showAlert('Invalid File', 'Videos cannot be uploaded in the Document section. Please select a valid document (PDF, PNG, JPG).');
+          return;
+        }
+        setPickedFile(selected);
       }
     } catch (err) {
       showAlert('Error', 'Failed to pick file from device.');
@@ -322,6 +339,10 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const handleUploadSubmit = async () => {
     if (!pickedFile) {
       showAlert('Required', 'Please pick a file to upload.');
+      return;
+    }
+    if (isVideoFileAsset(pickedFile)) {
+      showAlert('Invalid File', 'Videos cannot be uploaded in the Document section. Please select a valid document (PDF, PNG, JPG).');
       return;
     }
     if (!loanId) {

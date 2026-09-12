@@ -20,7 +20,7 @@ import {
 import { usePopup } from '../../context/PopupContext';
 import Header from '../../components/Header';
 import { formatDate } from '../../utils/date';
-import { getStandardDocTitle } from '../../components/MediaViewer';
+import { getStandardDocTitle, isVideoFileAsset } from '../../components/MediaViewer';
 
 export function resolveMediaUri(raw) {
   if (!raw) return '';
@@ -671,6 +671,10 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
+      if (isVideoFileAsset(asset)) {
+        Alert.alert('Invalid File', 'Videos cannot be uploaded in the Document section. Please select a valid document (PDF, PNG, JPG).');
+        return;
+      }
       setPickedAsset(asset);
       if (!docNameInput.trim()) {
         setDocNameInput(asset.name || selectedDocType);
@@ -710,6 +714,10 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
   const handleModalUpload = async () => {
     if (!pickedAsset) {
       Alert.alert('Required', 'Please select a document file to upload.');
+      return;
+    }
+    if (isVideoFileAsset(pickedAsset)) {
+      Alert.alert('Invalid File', 'Videos cannot be uploaded in the Document section. Please select a valid document (PDF, PNG, JPG).');
       return;
     }
     const finalName = docNameInput.trim() || pickedAsset.name || selectedDocType;
