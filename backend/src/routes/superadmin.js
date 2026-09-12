@@ -210,21 +210,23 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
       }
     };
 
-    if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri);
-    if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri);
+    if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri, { videoType: 'owner' });
+    if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri, { videoType: 'house' });
     if (Array.isArray(loan.videos)) {
       for (const v of loan.videos) {
         if (v && v.uri) {
           const vLabel = v.name || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
-          await addMediaUrl('video', vLabel, v.uri);
+          await addMediaUrl('video', vLabel, v.uri, { videoType: v.videoType || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
         }
       }
     }
     if (Array.isArray(loan.propertyPhotos)) {
-      for (const p of loan.propertyPhotos) {
+      for (let idx = 0; idx < loan.propertyPhotos.length; idx++) {
+        const p = loan.propertyPhotos[idx];
         if (p && p.uri) {
           const isVid = p.type === 'video' || (typeof p.uri === 'string' && (p.uri.toLowerCase().endsWith('.mp4') || p.uri.toLowerCase().includes('video')));
-          await addMediaUrl(isVid ? 'video' : 'photo', isVid ? 'House / Property Video' : 'Property Photo', p.uri);
+          const pLabel = p.name || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
+          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, p.uri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
         }
       }
     }
@@ -236,14 +238,19 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
                            (d.mimeType && d.mimeType.toLowerCase().includes('video')) ||
                            (typeof d.uri === 'string' && d.uri.toLowerCase().endsWith('.mp4'));
           if (isDocVid) {
-            await addMediaUrl('video', d.name || 'House / Property Video', d.uri);
+            await addMediaUrl('video', d.name || 'House / Property Video', d.uri, { videoType: 'house' });
           } else {
-            await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, { docType: d.docType, date: d.date });
+            await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, {
+              docType: d.docType,
+              date: d.date,
+              mimeType: d.mimeType,
+              id: d.id,
+            });
           }
         }
       }
     }
-    if (loan.agreementUri) await addMediaUrl('document', 'Loan Agreement', loan.agreementUri);
+    if (loan.agreementUri) await addMediaUrl('document', 'Loan Agreement', loan.agreementUri, { docType: 'Loan Agreement' });
     res.json(urls);
   } catch (err) {
     console.error('Error in /superadmin/loans/:loanId/media-preview:', err);

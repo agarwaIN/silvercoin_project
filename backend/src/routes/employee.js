@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../services/mongoService');
 const { verifyToken } = require('../middleware/auth');
@@ -172,21 +173,23 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
       }
     };
 
-    if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri);
-    if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri);
+    if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri, { videoType: 'owner' });
+    if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri, { videoType: 'house' });
     if (Array.isArray(loan.videos)) {
       for (const v of loan.videos) {
         if (v && v.uri) {
           const vLabel = v.name || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
-          await addMediaUrl('video', vLabel, v.uri);
+          await addMediaUrl('video', vLabel, v.uri, { videoType: v.videoType || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
         }
       }
     }
     if (Array.isArray(loan.propertyPhotos)) {
-      for (const p of loan.propertyPhotos) {
+      for (let idx = 0; idx < loan.propertyPhotos.length; idx++) {
+        const p = loan.propertyPhotos[idx];
         if (p && p.uri) {
           const isVid = p.type === 'video' || (typeof p.uri === 'string' && (p.uri.toLowerCase().endsWith('.mp4') || p.uri.toLowerCase().includes('video')));
-          await addMediaUrl(isVid ? 'video' : 'photo', isVid ? 'House / Property Video' : 'Property Photo', p.uri);
+          const pLabel = p.name || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
+          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, p.uri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
         }
       }
     }
@@ -198,15 +201,20 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
                            (d.mimeType && d.mimeType.toLowerCase().includes('video')) ||
                            (typeof d.uri === 'string' && d.uri.toLowerCase().endsWith('.mp4'));
           if (isDocVid) {
-            await addMediaUrl('video', d.name || 'House / Property Video', d.uri);
+            await addMediaUrl('video', d.name || 'House / Property Video', d.uri, { videoType: 'house' });
           } else {
-            await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, { docType: d.docType, date: d.date });
+            await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, {
+              docType: d.docType,
+              date: d.date,
+              mimeType: d.mimeType,
+              id: d.id,
+            });
           }
         }
       }
     }
     if (loan.agreementUri) {
-      await addMediaUrl('document', 'Loan Agreement', loan.agreementUri);
+      await addMediaUrl('document', 'Loan Agreement', loan.agreementUri, { docType: 'Loan Agreement' });
     }
     res.json(urls);
   } catch (err) {
@@ -224,26 +232,37 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
-  const key = `loans/${loan.loanId}/registry_${Date.now()}`;
-  await uploadBuffer(key, req.file.buffer);
-  
-  const docType = req.body.docType || 'Custom Document';
-  const name = req.body.name || req.file.originalname;
-  const docDate = req.body.date || new Date().toISOString().split('T')[0];
+  const docType = req.query.docType || req.body.docType || 'Custom Document';
+  const name = req.query.name || req.body.name || req.file.originalname || 'Document';
+  const docDate = req.query.date || req.body.date || new Date().toISOString().split('T')[0];
 
-  const docs = loan.propertyDocs || [];
-  docs.push({
+  const ext = (req.file.originalname && path.extname(req.file.originalname)) || (req.file.mimetype === 'application/pdf' ? '.pdf' : '.jpg');
+  const key = `loans/${loan.loanId}/registry_${Date.now()}${ext}`;
+  await uploadBuffer(key, req.file.buffer);
+
+  // Reload fresh loan state right before updating to avoid overwriting concurrent uploads
+  const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
+  const existingDocs = Array.isArray(freshLoan.propertyDocs) ? [...freshLoan.propertyDocs] : [];
+
+  const newDocEntry = {
     id: Date.now().toString(),
     uri: key,
     docType,
     name,
     date: docDate,
     uploaded: true,
-    mimeType: req.file.mimetype
-  });
-  
-  await db.updateLoan(loan.loanId, { propertyDocs: docs });
-  res.json({ message: 'Document uploaded', key, doc: docs[docs.length - 1] });
+    mimeType: req.file.mimetype || 'application/octet-stream'
+  };
+
+  // If this docType is a standard doc, replace any prior entry of that standard docType, else append
+  const isStd = docType !== 'Custom Document';
+  const filtered = isStd
+    ? existingDocs.filter(d => (d.docType || '').toLowerCase() !== docType.toLowerCase() && (d.name || '').toLowerCase() !== docType.toLowerCase())
+    : existingDocs;
+  filtered.push(newDocEntry);
+
+  await db.updateLoan(loan.loanId, { propertyDocs: filtered });
+  res.json({ message: 'Document uploaded', key, doc: newDocEntry });
 });
 
 router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {
@@ -251,18 +270,28 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
 
-  const photos = loan.propertyPhotos || [];
+  const newItems = [];
   for (let i = 0; i < req.files.length; i++) {
     const file = req.files[i];
     const isVid = (file.mimetype || '').startsWith('video/') || (file.originalname || '').toLowerCase().endsWith('.mp4');
     const ext = isVid ? '.mp4' : '.jpg';
     const key = `loans/${loan.loanId}/photo_${Date.now()}_${i}${ext}`;
     await uploadBuffer(key, file.buffer);
-    photos.push({ uri: key, type: isVid ? 'video' : 'image' });
+    newItems.push({ uri: key, type: isVid ? 'video' : 'image', name: file.originalname || 'Property Photo' });
   }
-  
-  await db.updateLoan(loan.loanId, { propertyPhotos: photos });
-  res.json({ message: 'Photos uploaded', count: req.files.length });
+
+  // Reload fresh loan state right before updating to avoid overwriting concurrent uploads
+  const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
+  const existingPhotos = Array.isArray(freshLoan.propertyPhotos) ? [...freshLoan.propertyPhotos] : [];
+  const updatedPhotos = [...existingPhotos];
+  for (const item of newItems) {
+    if (!updatedPhotos.some(p => p.uri === item.uri)) {
+      updatedPhotos.push(item);
+    }
+  }
+
+  await db.updateLoan(loan.loanId, { propertyPhotos: updatedPhotos });
+  res.json({ message: 'Photos uploaded', count: req.files.length, photos: updatedPhotos });
 });
 
 router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, res) => {
@@ -272,21 +301,14 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
 
   const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase();
   const rawName = (req.query.name || req.body.name || req.file.originalname || '').toLowerCase();
-  const isHouse = rawType === 'house' || rawType.includes('property') || rawName.includes('house');
+  const isHouse = rawType === 'house' || rawType.includes('property') || rawType.includes('walkthrough') || rawName.includes('house') || rawName.includes('property');
   const videoType = isHouse ? 'house' : 'owner';
   const label = isHouse ? 'House / Property Video' : 'Owner Verification Video';
 
   const key = `loans/${loan.loanId}/${videoType}_video_${Date.now()}.mp4`;
   await uploadBuffer(key, req.file.buffer);
-  
-  const updates = {};
-  if (isHouse) {
-    updates.houseVideoUri = key;
-  } else {
-    updates.videoUri = key;
-  }
 
-  // Reload fresh loan state before updating videos array to prevent overwriting concurrent uploads
+  // Reload fresh loan state before updating to prevent overwriting concurrent uploads
   const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
   const existingVideos = Array.isArray(freshLoan.videos) ? [...freshLoan.videos] : [];
   const entry = {
@@ -299,7 +321,17 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   };
   const filtered = existingVideos.filter(v => v.videoType !== videoType);
   filtered.push(entry);
-  updates.videos = filtered;
+
+  const updates = {
+    videos: filtered,
+  };
+  if (isHouse) {
+    updates.houseVideoUri = key;
+    if (freshLoan.videoUri) updates.videoUri = freshLoan.videoUri;
+  } else {
+    updates.videoUri = key;
+    if (freshLoan.houseVideoUri) updates.houseVideoUri = freshLoan.houseVideoUri;
+  }
 
   await db.updateLoan(loan.loanId, updates);
   res.json({ message: 'Video uploaded', key, videoType, name: label });

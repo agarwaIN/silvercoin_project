@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Linking, BackHandler, Modal,
+  Image, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -206,6 +207,25 @@ function VideoSectionCard({
     </View>
   );
 }
+
+// Open Document handler with local file sharing support
+const openDoc = async (uri) => {
+  if (!uri) return;
+  try {
+    if (uri.startsWith('http://') || uri.startsWith('https://')) {
+      await Linking.openURL(uri);
+    } else {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(uri);
+      } else {
+        await Linking.openURL(uri);
+      }
+    }
+  } catch (err) {
+    Alert.alert('Error', 'Could not open document preview.');
+  }
+};
 
 // ─── STEP 1: Owner & Verification ─────────────────────────────────────────────
 function Step1({ data, setData, loanId }) {
@@ -560,24 +580,6 @@ function Step2({ data, setData, loanId }) {
     finally { setLocLoading(false); }
   };
 
-  // Open Document handler with local file sharing support
-  const openDoc = async (uri) => {
-    if (!uri) return;
-    try {
-      if (uri.startsWith('http://') || uri.startsWith('https://')) {
-        await Linking.openURL(uri);
-      } else {
-        const isAvailable = await Sharing.isAvailableAsync();
-        if (isAvailable) {
-          await Sharing.shareAsync(uri);
-        } else {
-          await Linking.openURL(uri);
-        }
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Could not open document preview.');
-    }
-  };
 
   const openUploadModal = (docType) => {
     setSelectedDocType(docType || 'Custom Document');
@@ -662,11 +664,19 @@ function Step2({ data, setData, loanId }) {
     setDocUploading(true);
     try {
       const fd = new FormData();
-      fd.append('document', { uri: pickedAsset.uri, name: pickedAsset.name || 'document', type: pickedAsset.mimeType || 'application/pdf' });
+      fd.append('document', {
+        uri: Platform.OS === 'android' ? pickedAsset.uri : pickedAsset.uri.replace('file://', ''),
+        name: pickedAsset.name || 'document',
+        type: pickedAsset.mimeType || 'application/pdf',
+      });
       fd.append('docType', selectedDocType);
       fd.append('name', finalName);
       fd.append('date', newDoc.date);
-      const res = await uploadRegistryDocument(loanId, fd);
+      const res = await uploadRegistryDocument(loanId, fd, {
+        docType: selectedDocType,
+        name: finalName,
+        date: newDoc.date,
+      });
       setData(d => ({
         ...d,
         propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true, uri: res?.key || d2.uri } : d2)
@@ -1134,18 +1144,70 @@ function Step3({ data, setData }) {
   );
 }
 
+// ─── MEDIA PREVIEW MODALS FOR STEP 4 ──────────────────────────────────────────
+function ReviewVideoModal({ visible, uri, title, onClose }) {
+  const player = useVideoPlayer(uri || null, p => {
+    if (visible && uri) p.play();
+  });
+
+  if (!visible || !uri) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={rv.modalBg}>
+        <View style={rv.modalHeader}>
+          <Text style={rv.modalTitle} numberOfLines={1}>{title}</Text>
+          <TouchableOpacity onPress={onClose} style={rv.modalCloseBtn}>
+            <Ionicons name="close" size={24} color={colors.white} />
+          </TouchableOpacity>
+        </View>
+        <VideoView style={rv.fullVideo} player={player} allowsFullscreen allowsPictureInPicture />
+      </View>
+    </Modal>
+  );
+}
+
+function ReviewImageModal({ visible, uri, onClose }) {
+  if (!visible || !uri) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={rv.modalBg}>
+        <View style={rv.modalHeader}>
+          <Text style={rv.modalTitle}>Property Photo Preview</Text>
+          <TouchableOpacity onPress={onClose} style={rv.modalCloseBtn}>
+            <Ionicons name="close" size={24} color={colors.white} />
+          </TouchableOpacity>
+        </View>
+        <Image source={{ uri }} style={rv.fullImage} resizeMode="contain" />
+      </View>
+    </Modal>
+  );
+}
+
 // ─── STEP 4: Review & Submit ───────────────────────────────────────────────────
 function Step4({ data }) {
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
+
   const Row = ({ label, value }) => (
     <View style={rv.row}>
       <Text style={rv.label}>{label}</Text>
       <Text style={rv.value}>{value || '—'}</Text>
     </View>
   );
+
+  const photos = data.propertyPhotos || [];
+  const docs = data.propertyDocs || [];
+
   return (
     <View style={{ paddingHorizontal: 16 }}>
       <SectionTitle title="Review & Submit" />
-      <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>Please verify all details before submitting.</Text>
+      <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>
+        Please verify all details and media attachments before submitting.
+      </Text>
+
+      {/* ── Owner Details Card ── */}
       <View style={rv.card}>
         <Text style={rv.section}>Owner Details</Text>
         <Row label="Owner Name" value={data.ownerName} />
@@ -1154,12 +1216,12 @@ function Step4({ data }) {
         <Row label="Aadhaar Number" value={data.aadhaar} />
         <Row label="Spouse Name" value={data.spouseName} />
         <Row label="Family Occupation" value={data.familyOccupation} />
-        <Row label="Monthly Income" value={data.monthlyIncome ? `₹${data.monthlyIncome}` : ''} />
+        <Row label="Monthly Income" value={data.monthlyIncome ? `₹${Number(data.monthlyIncome).toLocaleString('en-IN')}` : ''} />
         <Row label="Owner Address" value={data.ownerAddress} />
         <Row label="Owner Details Remark" value={data.ownerRemark} />
-        <Row label="Owner Video" value={data.videoUri ? '✓ Recorded' : 'Not recorded'} />
-        <Row label="House Video" value={data.houseVideoUri ? '✓ Recorded' : 'Not recorded'} />
       </View>
+
+      {/* ── Bank Details Card ── */}
       <View style={rv.card}>
         <Text style={rv.section}>Bank Details</Text>
         <Row label="IFSC Code" value={data.ifsc} />
@@ -1168,10 +1230,12 @@ function Step4({ data }) {
         <Row label="Account Number" value={data.accountNumber} />
         <Row label="Bank Details Remark" value={data.bankRemark} />
       </View>
+
+      {/* ── Property Details Card ── */}
       <View style={rv.card}>
         <Text style={rv.section}>Property Details</Text>
         <Row label="Property Area" value={data.propertyArea ? `${data.propertyArea} sq.m` : ''} />
-        <Row label="Market Value" value={data.marketValue ? `₹${data.marketValue}` : ''} />
+        <Row label="Market Value" value={data.marketValue ? `₹${Number(data.marketValue).toLocaleString('en-IN')}` : ''} />
         <Row label="Transferred To Descendant" value={data.descendantCount} />
         <Row label="Any Other Loan" value={data.otherLoan} />
         {data.otherLoan === 'Yes' && <Row label="Other Loan Remark" value={data.otherLoanDetails} />}
@@ -1180,26 +1244,200 @@ function Step4({ data }) {
         <Row label="Location / Area Name" value={data.geoLocName} />
         <Row label="District" value={data.geoDistrict} />
         <Row label="Property Address" value={data.geoAddress} />
-        <Row label="Property Photos" value={data.propertyPhotos?.length ? `${data.propertyPhotos.length} photo(s)` : ''} />
-        <Row label="Property Documents" value={data.propertyDocs?.length ? `${data.propertyDocs.length} doc(s)` : ''} />
         <Row label="Property Details Remark" value={data.propertyRemark} />
       </View>
+
+      {/* ── Loan Details Card ── */}
       <View style={rv.card}>
         <Text style={rv.section}>Loan Details</Text>
-        <Row label="Requested Loan Amount" value={data.loanAmount ? `₹${data.loanAmount}` : ''} />
+        <Row label="Requested Loan Amount" value={data.loanAmount ? `₹${Number(data.loanAmount).toLocaleString('en-IN')}` : ''} />
         <Row label="Purpose Of Loan" value={data.loanPurpose} />
         <Row label="Requested Loan Tenure" value={data.repaymentMonths ? `${data.repaymentMonths} months` : ''} />
         <Row label="Loan Details Remark" value={data.loanRemark || data.notes} />
       </View>
+
+      {/* ── Rich Media & Attached Documents Review Card ── */}
+      <View style={rv.card}>
+        <View style={rv.mediaHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="images-outline" size={18} color={colors.dark} />
+            <Text style={rv.section}>Media & Documents Review</Text>
+          </View>
+          <View style={rv.mediaCountBadge}>
+            <Text style={rv.mediaCountBadgeTxt}>
+              {(data.videoUri ? 1 : 0) + (data.houseVideoUri ? 1 : 0) + photos.length + docs.length} Items
+            </Text>
+          </View>
+        </View>
+
+        {/* Category A: Recorded Videos */}
+        <Text style={rv.subHeader}>Recorded Verification Videos</Text>
+        <View style={rv.videoGrid}>
+          {/* Owner Video */}
+          <TouchableOpacity
+            style={[rv.mediaTile, !data.videoUri && rv.mediaTileEmpty]}
+            onPress={() => data.videoUri && setSelectedVideo({ uri: data.videoUri, title: 'Owner Verification Video' })}
+            disabled={!data.videoUri}
+            activeOpacity={0.7}
+          >
+            <View style={rv.mediaTileIconBox}>
+              <Ionicons name="videocam" size={24} color={data.videoUri ? '#D97706' : colors.muted} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={rv.mediaTileTitle} numberOfLines={1}>Owner Verification</Text>
+              <Text style={[rv.mediaTileStatus, data.videoUri ? { color: colors.success } : { color: colors.muted }]}>
+                {data.videoUri ? '✓ Recorded (Tap to Watch)' : 'Not recorded'}
+              </Text>
+            </View>
+            {data.videoUri && (
+              <Ionicons name="play-circle" size={26} color="#D97706" />
+            )}
+          </TouchableOpacity>
+
+          {/* House Video */}
+          <TouchableOpacity
+            style={[rv.mediaTile, !data.houseVideoUri && rv.mediaTileEmpty]}
+            onPress={() => data.houseVideoUri && setSelectedVideo({ uri: data.houseVideoUri, title: 'House / Property Video' })}
+            disabled={!data.houseVideoUri}
+            activeOpacity={0.7}
+          >
+            <View style={rv.mediaTileIconBox}>
+              <Ionicons name="videocam" size={24} color={data.houseVideoUri ? '#D97706' : colors.muted} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={rv.mediaTileTitle} numberOfLines={1}>House / Property Walkthrough</Text>
+              <Text style={[rv.mediaTileStatus, data.houseVideoUri ? { color: colors.success } : { color: colors.muted }]}>
+                {data.houseVideoUri ? '✓ Recorded (Tap to Watch)' : 'Not recorded'}
+              </Text>
+            </View>
+            {data.houseVideoUri && (
+              <Ionicons name="play-circle" size={26} color="#D97706" />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Category B: Property Photos */}
+        <Text style={rv.subHeader}>
+          Property Photos {photos.length > 0 ? `(${photos.length})` : ''}
+        </Text>
+        {photos.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={rv.photoScroll}>
+            {photos.map((item, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={rv.photoThumbWrapper}
+                onPress={() => setSelectedImage(item.uri)}
+                activeOpacity={0.8}
+              >
+                <Image source={{ uri: item.uri }} style={rv.photoThumb} resizeMode="cover" />
+                <View style={rv.photoBadge}>
+                  <Text style={rv.photoBadgeTxt}>#{idx + 1}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <Text style={rv.emptyNotice}>No property photos attached</Text>
+        )}
+
+        {/* Category C: Property Documents */}
+        <Text style={rv.subHeader}>
+          Attached Documents {docs.length > 0 ? `(${docs.length})` : ''}
+        </Text>
+        {docs.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            {docs.map((d, idx) => {
+              const isImg = d.mimeType?.includes('image') || d.uri?.toLowerCase().endsWith('.jpg') || d.uri?.toLowerCase().endsWith('.png');
+              return (
+                <View key={d.id || idx} style={rv.docCard}>
+                  <Ionicons
+                    name={isImg ? 'image-outline' : 'document-text-outline'}
+                    size={22}
+                    color={colors.dark}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={rv.docName} numberOfLines={1}>{d.name || d.docType || 'Document'}</Text>
+                    <Text style={rv.docSub}>
+                      {d.docType || 'Custom Document'} {d.date ? `• ${d.date}` : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={rv.viewDocBtn}
+                    onPress={() => {
+                      if (isImg && !d.uri.startsWith('http')) {
+                        setSelectedImage(d.uri);
+                      } else {
+                        openDoc(d.uri);
+                      }
+                    }}
+                  >
+                    <Ionicons name="eye-outline" size={14} color={colors.primary} />
+                    <Text style={rv.viewDocTxt}>View</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={rv.emptyNotice}>No property documents attached</Text>
+        )}
+      </View>
+
+      {/* Video Preview Modal */}
+      {selectedVideo && (
+        <ReviewVideoModal
+          visible={!!selectedVideo}
+          uri={selectedVideo.uri}
+          title={selectedVideo.title}
+          onClose={() => setSelectedVideo(null)}
+        />
+      )}
+
+      {/* Image Preview Modal */}
+      {selectedImage && (
+        <ReviewImageModal
+          visible={!!selectedImage}
+          uri={selectedImage}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </View>
   );
 }
+
 const rv = StyleSheet.create({
   card: { backgroundColor: colors.white, borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
-  section: { fontSize: 13, fontWeight: '700', color: colors.dark, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  section: { fontSize: 13, fontWeight: '700', color: colors.dark, textTransform: 'uppercase', letterSpacing: 0.5 },
+  subHeader: { fontSize: 12, fontWeight: '700', color: colors.text, marginTop: 14, marginBottom: 8 },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: colors.inputBg },
   label: { fontSize: 13, color: colors.muted, flex: 1 },
   value: { fontSize: 13, color: colors.text, fontWeight: '500', flex: 1.5, textAlign: 'right' },
+  mediaHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  mediaCountBadge: { backgroundColor: '#E0F2FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  mediaCountBadgeTxt: { fontSize: 11, fontWeight: '700', color: colors.primary },
+  videoGrid: { gap: 8 },
+  mediaTile: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.inputBg, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border },
+  mediaTileEmpty: { opacity: 0.6 },
+  mediaTileIconBox: { width: 40, height: 40, borderRadius: 8, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  mediaTileTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
+  mediaTileStatus: { fontSize: 11, marginTop: 2, fontWeight: '600' },
+  photoScroll: { flexDirection: 'row', gap: 10, paddingVertical: 4 },
+  photoThumbWrapper: { position: 'relative', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  photoThumb: { width: 76, height: 76, borderRadius: 8, backgroundColor: colors.border },
+  photoBadge: { position: 'absolute', bottom: 3, right: 3, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
+  photoBadgeTxt: { fontSize: 10, color: colors.white, fontWeight: '700' },
+  docCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.inputBg, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: colors.border },
+  docName: { fontSize: 13, fontWeight: '600', color: colors.text },
+  docSub: { fontSize: 11, color: colors.muted, marginTop: 2 },
+  viewDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' },
+  viewDocTxt: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  emptyNotice: { fontSize: 12, color: colors.muted, fontStyle: 'italic', marginVertical: 4 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  modalHeader: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, zIndex: 10 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.white, flex: 1 },
+  modalCloseBtn: { padding: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20 },
+  fullVideo: { width: '100%', height: 350, borderRadius: 12 },
+  fullImage: { width: '100%', height: '80%', borderRadius: 12 },
 });
 
 // ─── INITIAL FORM DATA ────────────────────────────────────────────────────────
@@ -1449,8 +1687,13 @@ export default function NewLoanScreen({ route, navigation }) {
           try {
             const fd = new FormData();
             fd.append('videoType', 'owner');
-            fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
-            await uploadVideo(currentLoanId, fd, 'owner');
+            fd.append('name', 'Owner Verification Video');
+            fd.append('video', {
+              uri: Platform.OS === 'android' ? formData.videoUri : formData.videoUri.replace('file://', ''),
+              name: 'owner_video.mp4',
+              type: 'video/mp4'
+            });
+            await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
             setFormData(d => ({ ...d, videoUploaded: true }));
           } catch (vErr) {
             console.warn('Owner video upload error:', vErr);
@@ -1463,8 +1706,13 @@ export default function NewLoanScreen({ route, navigation }) {
           try {
             const fdHouse = new FormData();
             fdHouse.append('videoType', 'house');
-            fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
-            await uploadVideo(currentLoanId, fdHouse, 'house');
+            fdHouse.append('name', 'House / Property Video');
+            fdHouse.append('video', {
+              uri: Platform.OS === 'android' ? formData.houseVideoUri : formData.houseVideoUri.replace('file://', ''),
+              name: 'house_video.mp4',
+              type: 'video/mp4'
+            });
+            await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
             setFormData(d => ({ ...d, houseVideoUploaded: true }));
           } catch (hErr) {
             console.warn('House video upload error:', hErr);
@@ -1498,7 +1746,11 @@ export default function NewLoanScreen({ route, navigation }) {
           try {
             const fd = new FormData();
             unuploadedPhotos.forEach((item, i) => {
-              fd.append('photos', { uri: item.uri, name: `photo_${Date.now()}_${i}.jpg`, type: 'image/jpeg' });
+              fd.append('photos', {
+                uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
+                name: `photo_${Date.now()}_${i}.jpg`,
+                type: 'image/jpeg'
+              });
             });
             await uploadPropertyPhotos(currentLoanId, fd);
             setFormData(d => ({
@@ -1515,11 +1767,19 @@ export default function NewLoanScreen({ route, navigation }) {
         for (const uDoc of unuploadedDocs) {
           try {
             const fd = new FormData();
-            fd.append('document', { uri: uDoc.uri, name: uDoc.name || 'document', type: uDoc.mimeType || 'application/pdf' });
+            fd.append('document', {
+              uri: Platform.OS === 'android' ? uDoc.uri : uDoc.uri.replace('file://', ''),
+              name: uDoc.name || 'document',
+              type: uDoc.mimeType || 'application/pdf',
+            });
             fd.append('docType', uDoc.docType || 'Custom Document');
             fd.append('name', uDoc.name || 'Document');
             fd.append('date', uDoc.date || formatDate(new Date()));
-            const res = await uploadRegistryDocument(currentLoanId, fd);
+            const res = await uploadRegistryDocument(currentLoanId, fd, {
+              docType: uDoc.docType || 'Custom Document',
+              name: uDoc.name || 'Document',
+              date: uDoc.date || formatDate(new Date()),
+            });
             setFormData(d => ({
               ...d,
               propertyDocs: (d.propertyDocs || []).map(item => item.id === uDoc.id ? { ...item, uploaded: true, uri: res?.key || item.uri } : item)
@@ -1557,19 +1817,33 @@ export default function NewLoanScreen({ route, navigation }) {
         try {
           const fd = new FormData();
           fd.append('videoType', 'owner');
-          fd.append('video', { uri: formData.videoUri, name: 'owner_video.mp4', type: 'video/mp4' });
-          await uploadVideo(loanId, fd, 'owner');
+          fd.append('name', 'Owner Verification Video');
+          fd.append('video', {
+            uri: Platform.OS === 'android' ? formData.videoUri : formData.videoUri.replace('file://', ''),
+            name: 'owner_video.mp4',
+            type: 'video/mp4'
+          });
+          await uploadVideo(loanId, fd, 'owner', 'Owner Verification Video');
           setFormData(d => ({ ...d, videoUploaded: true }));
-        } catch {}
+        } catch (vErr) {
+          console.warn('Submit owner video upload error:', vErr);
+        }
       }
       if (formData.houseVideoUri && !formData.houseVideoUploaded && loanId) {
         try {
           const fdHouse = new FormData();
           fdHouse.append('videoType', 'house');
-          fdHouse.append('video', { uri: formData.houseVideoUri, name: 'house_video.mp4', type: 'video/mp4' });
-          await uploadVideo(loanId, fdHouse, 'house');
+          fdHouse.append('name', 'House / Property Video');
+          fdHouse.append('video', {
+            uri: Platform.OS === 'android' ? formData.houseVideoUri : formData.houseVideoUri.replace('file://', ''),
+            name: 'house_video.mp4',
+            type: 'video/mp4'
+          });
+          await uploadVideo(loanId, fdHouse, 'house', 'House / Property Video');
           setFormData(d => ({ ...d, houseVideoUploaded: true }));
-        } catch {}
+        } catch (hErr) {
+          console.warn('Submit house video upload error:', hErr);
+        }
       }
       // Ensure pending photos are uploaded before final submit
       const pendingPhotos = (formData.propertyPhotos || []).filter(p => !p.uploaded && p.uri);
@@ -1577,10 +1851,20 @@ export default function NewLoanScreen({ route, navigation }) {
         try {
           const fdPhotos = new FormData();
           pendingPhotos.forEach((item, i) => {
-            fdPhotos.append('photos', { uri: item.uri, name: `photo_${Date.now()}_${i}.jpg`, type: 'image/jpeg' });
+            fdPhotos.append('photos', {
+              uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
+              name: `photo_${Date.now()}_${i}.jpg`,
+              type: 'image/jpeg'
+            });
           });
           await uploadPropertyPhotos(loanId, fdPhotos);
-        } catch {}
+          setFormData(d => ({
+            ...d,
+            propertyPhotos: (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
+          }));
+        } catch (pErr) {
+          console.warn('Submit photos upload error:', pErr);
+        }
       }
       // Ensure pending documents are uploaded before final submit
       const pendingDocs = (formData.propertyDocs || []).filter(d => !d.uploaded && d.uri);
@@ -1588,12 +1872,26 @@ export default function NewLoanScreen({ route, navigation }) {
         for (const pDoc of pendingDocs) {
           try {
             const fdDoc = new FormData();
-            fdDoc.append('document', { uri: pDoc.uri, name: pDoc.name || 'document', type: pDoc.mimeType || 'application/pdf' });
+            fdDoc.append('document', {
+              uri: Platform.OS === 'android' ? pDoc.uri : pDoc.uri.replace('file://', ''),
+              name: pDoc.name || 'document',
+              type: pDoc.mimeType || 'application/pdf',
+            });
             fdDoc.append('docType', pDoc.docType || 'Custom Document');
             fdDoc.append('name', pDoc.name || 'Document');
             fdDoc.append('date', pDoc.date || formatDate(new Date()));
-            await uploadRegistryDocument(loanId, fdDoc);
-          } catch {}
+            await uploadRegistryDocument(loanId, fdDoc, {
+              docType: pDoc.docType || 'Custom Document',
+              name: pDoc.name || 'Document',
+              date: pDoc.date || formatDate(new Date()),
+            });
+            setFormData(d => ({
+              ...d,
+              propertyDocs: (d.propertyDocs || []).map(item => item.id === pDoc.id ? { ...item, uploaded: true } : item)
+            }));
+          } catch (dErr) {
+            console.warn('Submit doc upload error:', dErr);
+          }
         }
       }
       await submitLoan(loanId);

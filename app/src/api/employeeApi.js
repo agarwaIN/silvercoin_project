@@ -6,8 +6,14 @@ export const getLoans = () => api.get('/employee/loans').then((r) => r.data);
 export const getLoan = (loanId) => api.get(`/employee/loans/${loanId}`).then((r) => r.data);
 export const createLoan = () => api.post('/employee/loans').then((r) => r.data);
 export const updateLoan = (loanId, data) => api.patch(`/employee/loans/${loanId}`, data).then((r) => r.data);
-export const uploadRegistryDocument = (loanId, formData) =>
-  api.post(`/employee/loans/${loanId}/registry-document`, formData).then((r) => r.data);
+export const uploadRegistryDocument = (loanId, formData, meta = {}) => {
+  const params = [];
+  if (meta.docType) params.push(`docType=${encodeURIComponent(meta.docType)}`);
+  if (meta.name) params.push(`name=${encodeURIComponent(meta.name)}`);
+  if (meta.date) params.push(`date=${encodeURIComponent(meta.date)}`);
+  const qs = params.length > 0 ? `?${params.join('&')}` : '';
+  return api.post(`/employee/loans/${loanId}/registry-document${qs}`, formData).then((r) => r.data);
+};
 export const submitLoan = (loanId) => api.post(`/employee/loans/${loanId}/submit`).then((r) => r.data);
 export const getLoanPdf = (loanId) => api.get(`/employee/loans/${loanId}/pdf`).then((r) => r.data);
 
@@ -17,9 +23,12 @@ export const getLoanMediaPreview = (loanId) =>
 export const uploadPropertyPhotos = (loanId, formData) =>
   api.post(`/employee/loans/${loanId}/upload-photo`, formData).then((r) => r.data);
 
-export const uploadVideo = (loanId, formData, videoType) => {
-  const query = videoType ? `?videoType=${encodeURIComponent(videoType)}` : '';
-  return api.post(`/employee/loans/${loanId}/upload-video${query}`, formData).then((r) => r.data);
+export const uploadVideo = (loanId, formData, videoType, name) => {
+  const params = [];
+  if (videoType) params.push(`videoType=${encodeURIComponent(videoType)}`);
+  if (name) params.push(`name=${encodeURIComponent(name)}`);
+  const qs = params.length > 0 ? `?${params.join('&')}` : '';
+  return api.post(`/employee/loans/${loanId}/upload-video${qs}`, formData).then((r) => r.data);
 };
 
 export const submitAgreement = (loanId, formData) =>

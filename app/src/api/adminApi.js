@@ -10,8 +10,14 @@ export const getLoans = () => api.get('/admin/loans').then((r) => r.data);
 export const getLoan = (loanId) => api.get(`/admin/loans/${loanId}`).then((r) => r.data);
 export const getLoanMediaPreview = (loanId) =>
   api.get(`/admin/loans/${loanId}/media-preview`).then((r) => r.data);
-export const uploadRegistryDocument = (loanId, formData) =>
-  api.post(`/admin/loans/${loanId}/registry-document`, formData).then((r) => r.data);
+export const uploadRegistryDocument = (loanId, formData, meta = {}) => {
+  const params = [];
+  if (meta.docType) params.push(`docType=${encodeURIComponent(meta.docType)}`);
+  if (meta.name) params.push(`name=${encodeURIComponent(meta.name)}`);
+  if (meta.date) params.push(`date=${encodeURIComponent(meta.date)}`);
+  const qs = params.length > 0 ? `?${params.join('&')}` : '';
+  return api.post(`/admin/loans/${loanId}/registry-document${qs}`, formData).then((r) => r.data);
+};
 export const initialApproveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/initial-approve`, data).then((r) => r.data);
 export const approveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/approve`, data).then((r) => r.data);
 export const rejectLoan = (loanId, reason) => api.post(`/admin/loans/${loanId}/reject`, { reason }).then((r) => r.data);

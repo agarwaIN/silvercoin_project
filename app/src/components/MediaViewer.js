@@ -273,7 +273,11 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       formData.append('date', docDate);
 
       const uploader = user?.role === 'admin' ? uploadAdminDoc : uploadEmpDoc;
-      await uploader(loanId, formData);
+      await uploader(loanId, formData, {
+        docType: selectedDocType,
+        name: docName,
+        date: docDate,
+      });
 
       showAlert('Success', `${docName} uploaded successfully!`);
       setUploadModalVisible(false);
@@ -305,14 +309,56 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const photos = media.filter((m) => m.type === 'photo' || m.type === 'image');
   const docs = media.filter((m) => m.type === 'document');
 
-  // Standard property docs checklist state mapping
+  // Standard property docs checklist state mapping with comprehensive match keys
   const standardDocsList = [
-    { title: 'Property Registry - 1', matchKeys: ['property registry - 1', 'property registery - 1', 'registry - 1', 'registery - 1'], subtitle: 'Primary Property Registry' },
-    { title: 'Property Registry - 2', matchKeys: ['property registry - 2', 'property registery - 2', 'registry - 2', 'registery - 2'], subtitle: 'Secondary Property Registry' },
-    { title: 'Property Registry - 3', matchKeys: ['property registry - 3', 'property registery - 3', 'registry - 3', 'registery - 3'], subtitle: 'Tertiary Property Registry' },
-    { title: 'Gift Deed', matchKeys: ['gift deed'], subtitle: 'Property Transfer / Gift Deed' },
-    { title: 'Khasara / Khatoni', matchKeys: ['khasara', 'khatoni'], subtitle: 'Land Record Document' },
-    { title: 'Farat', matchKeys: ['farat'], subtitle: 'Land Rights Document' },
+    {
+      title: 'Property Registry - 1',
+      matchKeys: [
+        'property registry - 1', 'property registery - 1',
+        'registry - 1', 'registery - 1',
+        'registry 1', 'registery 1',
+        'registry_1', 'registry-1', 'registry1',
+        'primary property registry', 'primary registry',
+      ],
+      subtitle: 'Primary Property Registry',
+    },
+    {
+      title: 'Property Registry - 2',
+      matchKeys: [
+        'property registry - 2', 'property registery - 2',
+        'registry - 2', 'registery - 2',
+        'registry 2', 'registery 2',
+        'registry_2', 'registry-2', 'registry2',
+        'secondary property registry', 'secondary registry',
+      ],
+      subtitle: 'Secondary Property Registry',
+    },
+    {
+      title: 'Property Registry - 3',
+      matchKeys: [
+        'property registry - 3', 'property registery - 3',
+        'registry - 3', 'registery - 3',
+        'registry 3', 'registery 3',
+        'registry_3', 'registry-3', 'registry3',
+        'tertiary property registry', 'tertiary registry',
+      ],
+      subtitle: 'Tertiary Property Registry',
+    },
+    {
+      title: 'Gift Deed',
+      matchKeys: ['gift deed', 'gift_deed', 'giftdeed', 'gift', 'property transfer'],
+      subtitle: 'Property Transfer / Gift Deed',
+    },
+    {
+      title: 'Khasara / Khatoni',
+      matchKeys: ['khasara', 'khatoni', 'khasra', 'khatauni', 'land record'],
+      subtitle: 'Land Record Document',
+    },
+    {
+      title: 'Farat',
+      matchKeys: ['farat', 'fard', 'fardh', 'land rights'],
+      subtitle: 'Land Rights Document',
+    },
   ];
 
   // Map uploaded docs to standard docs or custom docs
@@ -324,7 +370,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
     const matchedStd = standardDocsList.find((s) =>
       s.matchKeys.some((k) => docIdentifier.includes(k))
     );
-    if (matchedStd) {
+    if (matchedStd && !uploadedStandardMap[matchedStd.title]) {
       uploadedStandardMap[matchedStd.title] = d;
     } else {
       customDocsList.push(d);
