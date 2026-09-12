@@ -365,11 +365,28 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const uploadedStandardMap = {};
   const customDocsList = [];
 
+  const normStr = (str) =>
+    (str || '')
+      .toLowerCase()
+      .replace(/[\u2010-\u2015\u2212_/-]/g, ' ')
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   docs.forEach((d) => {
-    const docIdentifier = `${d.docType || ''} ${d.name || ''}`.toLowerCase();
-    const matchedStd = standardDocsList.find((s) =>
-      s.matchKeys.some((k) => docIdentifier.includes(k))
-    );
+    const rawId = `${d.docType || ''} ${d.name || ''}`;
+    const cleanId = normStr(rawId);
+    const matchedStd = standardDocsList.find((s) => {
+      const cleanTitle = normStr(s.title);
+      return (
+        cleanId.includes(cleanTitle) ||
+        cleanTitle.includes(cleanId) ||
+        s.matchKeys.some((k) => {
+          const cleanKey = normStr(k);
+          return cleanId.includes(cleanKey) || cleanKey.includes(cleanId);
+        })
+      );
+    });
     if (matchedStd && !uploadedStandardMap[matchedStd.title]) {
       uploadedStandardMap[matchedStd.title] = d;
     } else {
