@@ -84,7 +84,12 @@ const fl = StyleSheet.create({
   optional: { color: colors.muted, fontWeight: '400', fontSize: 11 },
 });
 
-function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline, editable = true, loading }) {
+function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline, editable = true, loading, autoCapitalize }) {
+  const isEmailOrPhone = keyboardType === 'email-address' || keyboardType === 'phone-pad' || keyboardType === 'numeric' || keyboardType === 'decimal-pad';
+  const autoCap = autoCapitalize !== undefined
+    ? autoCapitalize
+    : (isEmailOrPhone ? 'none' : (multiline ? 'sentences' : 'words'));
+
   return (
     <View>
       <TextInput
@@ -96,6 +101,7 @@ function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline
         keyboardType={keyboardType || 'default'}
         multiline={multiline}
         editable={editable && !loading}
+        autoCapitalize={autoCap}
       />
       {loading && (
         <ActivityIndicator size="small" color={colors.dark} style={si.spinner} />
@@ -312,26 +318,26 @@ function Step1({ data, setData, loanId }) {
       <SectionTitle title="Owner Details" />
 
       <FieldLabel text="Owner Name" required />
-      <StyledInput value={data.ownerName} onChangeText={v => setData(d => ({ ...d, ownerName: v }))} placeholder="Full name" />
+      <StyledInput value={data.ownerName} onChangeText={v => setData(d => ({ ...d, ownerName: v }))} placeholder="Enter Full Name" />
 
       <FieldLabel text="Owner Mobile" required />
-      <StyledInput value={data.ownerMobile} onChangeText={v => setData(d => ({ ...d, ownerMobile: v }))} placeholder="9876543210" keyboardType="phone-pad" />
+      <StyledInput value={data.ownerMobile} onChangeText={v => setData(d => ({ ...d, ownerMobile: v }))} placeholder="Enter 10-Digit Mobile Number" keyboardType="phone-pad" />
 
       <FieldLabel text="Owner Email" />
-      <StyledInput value={data.ownerEmail} onChangeText={v => setData(d => ({ ...d, ownerEmail: v }))} placeholder="owner@email.com" keyboardType="email-address" />
+      <StyledInput value={data.ownerEmail} onChangeText={v => setData(d => ({ ...d, ownerEmail: v }))} placeholder="Enter Email Address (Optional)" keyboardType="email-address" />
 
       <FieldLabel text="Owner Aadhaar Number" required />
-      <StyledInput value={data.aadhaar} onChangeText={v => setData(d => ({ ...d, aadhaar: v }))} placeholder="12-digit Aadhaar" keyboardType="numeric" />
+      <StyledInput value={data.aadhaar} onChangeText={v => setData(d => ({ ...d, aadhaar: v }))} placeholder="Enter 12-Digit Aadhaar Number" keyboardType="numeric" />
 
       <FieldLabel text="Spouse Name (Husband/Wife)" required />
-      <StyledInput value={data.spouseName} onChangeText={v => setData(d => ({ ...d, spouseName: v }))} placeholder="Full name of spouse" />
+      <StyledInput value={data.spouseName} onChangeText={v => setData(d => ({ ...d, spouseName: v }))} placeholder="Enter Spouse Full Name" />
       <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>Required — same as on KYC / bank records.</Text>
 
       <FieldLabel text="Family Occupation" required />
-      <StyledInput value={data.familyOccupation} onChangeText={v => setData(d => ({ ...d, familyOccupation: v }))} placeholder="e.g. Farming, Business, Service" />
+      <StyledInput value={data.familyOccupation} onChangeText={v => setData(d => ({ ...d, familyOccupation: v }))} placeholder="Enter Family Occupation" />
 
       <FieldLabel text="Monthly Income (₹)" required />
-      <StyledInput value={data.monthlyIncome} onChangeText={v => setData(d => ({ ...d, monthlyIncome: v }))} placeholder="e.g. 60000" keyboardType="numeric" />
+      <StyledInput value={data.monthlyIncome} onChangeText={v => setData(d => ({ ...d, monthlyIncome: v }))} placeholder="Enter Monthly Income (₹)" keyboardType="numeric" />
 
       {/* Bank Details */}
       <View style={{ backgroundColor: colors.inputBg, borderRadius: 12, padding: 14, marginTop: 18, borderWidth: 1, borderColor: colors.border }}>
@@ -346,23 +352,41 @@ function Step1({ data, setData, loanId }) {
             setData(d => ({ ...d, ifsc: val }));
             fetchBankFromIFSC(val);
           }}
-          placeholder="e.g. HDFC0000003"
+          placeholder="Enter 11-Character IFSC Code"
         />
 
         <FieldLabel text="Bank Name" required />
-        <StyledInput value={data.bankName} onChangeText={v => setData(d => ({ ...d, bankName: v }))} placeholder="Auto-filled from IFSC" editable={!ifscLoading} loading={ifscLoading} />
+        <StyledInput value={data.bankName} onChangeText={v => setData(d => ({ ...d, bankName: v }))} placeholder="Auto-Filled From IFSC" editable={!ifscLoading} loading={ifscLoading} />
         {ifscLoading && <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>Fetching bank details...</Text>}
         {data.bankName && !ifscLoading && <Text style={{ fontSize: 11, color: colors.success, marginTop: 3 }}>✓ Bank details fetched</Text>}
 
         <FieldLabel text="Account Holder Name" required />
-        <StyledInput value={data.accountHolder} onChangeText={v => setData(d => ({ ...d, accountHolder: v }))} placeholder="As per bank records" />
+        <StyledInput value={data.accountHolder} onChangeText={v => setData(d => ({ ...d, accountHolder: v }))} placeholder="Enter Account Holder Name" />
 
         <FieldLabel text="Account Number" required />
-        <StyledInput value={data.accountNumber} onChangeText={v => setData(d => ({ ...d, accountNumber: v }))} placeholder="Account number" keyboardType="numeric" />
+        <StyledInput value={data.accountNumber} onChangeText={v => setData(d => ({ ...d, accountNumber: v }))} placeholder="Enter Bank Account Number" keyboardType="numeric" />
+
+        {/* Bank Details Remark */}
+        <FieldLabel text="Bank Details Remark" />
+        <StyledInput
+          value={data.bankRemark}
+          onChangeText={v => setData(d => ({ ...d, bankRemark: v }))}
+          placeholder="Enter Remarks For Bank Details (Optional)"
+          multiline
+        />
       </View>
 
-      <FieldLabel text="Owner Address" required />
-      <StyledInput value={data.ownerAddress} onChangeText={v => setData(d => ({ ...d, ownerAddress: v }))} placeholder="Full residential address" multiline />
+      <FieldLabel text="Owner Residential Address" required />
+      <StyledInput value={data.ownerAddress} onChangeText={v => setData(d => ({ ...d, ownerAddress: v }))} placeholder="Enter Full Residential Address" multiline />
+
+      {/* Owner Details Remark */}
+      <FieldLabel text="Owner Details Remark" />
+      <StyledInput
+        value={data.ownerRemark}
+        onChangeText={v => setData(d => ({ ...d, ownerRemark: v }))}
+        placeholder="Enter Remarks For Owner Details (Optional)"
+        multiline
+      />
 
       {/* Video 1: Owner Verification Video */}
       <VideoSectionCard
@@ -375,7 +399,7 @@ function Step1({ data, setData, loanId }) {
         onRecordOrPick={() => pickVideo('owner')}
         onRemove={() => removeVideo('owner')}
         uploading={ownerUploading}
-        uploadLabel={data.videoUri ? 'Re-record / replace owner video' : 'Record owner verification video'}
+        uploadLabel={data.videoUri ? 'Re-Record / Replace Owner Video' : 'Record Owner Verification Video'}
       />
 
       {/* Video 2: House / Property Video */}
@@ -389,7 +413,7 @@ function Step1({ data, setData, loanId }) {
         onRecordOrPick={() => pickVideo('house')}
         onRemove={() => removeVideo('house')}
         uploading={houseUploading}
-        uploadLabel={data.houseVideoUri ? 'Re-record / replace house video' : 'Record house walkthrough video'}
+        uploadLabel={data.houseVideoUri ? 'Re-Record / Replace House Video' : 'Record House Walkthrough Video'}
       />
     </View>
   );
@@ -416,9 +440,9 @@ const vid = StyleSheet.create({
 
 // ─── STANDARD PROPERTY DOCS LIST ─────────────────────────────────────────────
 const STANDARD_PROPERTY_DOCS = [
-  { id: 'registry_1', type: 'Property Registery - 1', title: 'Property Registery - 1', subtitle: 'Primary Property Registry' },
-  { id: 'registry_2', type: 'Registery - 2', title: 'Registery - 2', subtitle: 'Secondary Property Registry' },
-  { id: 'registry_3', type: 'Registery - 3', title: 'Registery - 3', subtitle: 'Tertiary Property Registry' },
+  { id: 'registry_1', type: 'Property Registry - 1', title: 'Property Registry - 1', subtitle: 'Primary Property Registry' },
+  { id: 'registry_2', type: 'Property Registry - 2', title: 'Property Registry - 2', subtitle: 'Secondary Property Registry' },
+  { id: 'registry_3', type: 'Property Registry - 3', title: 'Property Registry - 3', subtitle: 'Tertiary Property Registry' },
   { id: 'gift_deed', type: 'Gift Deed', title: 'Gift Deed', subtitle: 'Property Transfer / Gift Deed' },
   { id: 'khasara', type: 'Khasara / Khatoni', title: 'Khasara / Khatoni', subtitle: 'Land Record Document' },
   { id: 'farat', type: 'Farat', title: 'Farat', subtitle: 'Land Rights Document' },
@@ -432,7 +456,7 @@ function Step2({ data, setData, loanId }) {
 
   // Document upload modal state
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedDocType, setSelectedDocType] = useState('Property Registery - 1');
+  const [selectedDocType, setSelectedDocType] = useState('Property Registry - 1');
   const [docNameInput, setDocNameInput] = useState('');
   const [pickedAsset, setPickedAsset] = useState(null);
 
@@ -443,22 +467,22 @@ function Step2({ data, setData, loanId }) {
   // ActionSheet — Cancel / Photo Library / Camera
   const showPhotoOptions = () => {
     Alert.alert(
-      'Property photos',
+      'Property Photos',
       'Take a new photo or choose from your library (you can select several).',
       [
-        { text: 'CANCEL', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'PHOTO LIBRARY',
+          text: 'Photo Library',
           onPress: async () => {
             const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') { Alert.alert('Permission needed'); return; }
+            if (status !== 'granted') { Alert.alert('Permission Needed', 'Allow gallery access to select photos.'); return; }
             const result = await ImagePicker.launchImageLibraryAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.All,
               allowsMultipleSelection: true,
               quality: 0.8,
             });
             if (result.canceled || !result.assets?.length) return;
-            const newItems = result.assets.map(a => ({ uri: a.uri, type: a.type || 'image' }));
+            const newItems = result.assets.map(a => ({ uri: a.uri, type: a.type || 'image', uploaded: false }));
             const allPhotos = [...(data.propertyPhotos || []), ...newItems].slice(0, 15);
             setData(d => ({ ...d, propertyPhotos: allPhotos }));
             if (!loanId) return;
@@ -467,24 +491,42 @@ function Step2({ data, setData, loanId }) {
               const fd = new FormData();
               newItems.forEach((item, i) => fd.append('photos', { uri: item.uri, name: `photo_${Date.now()}_${i}.jpg`, type: 'image/jpeg' }));
               await uploadPropertyPhotos(loanId, fd);
+              setData(d => ({
+                ...d,
+                propertyPhotos: (d.propertyPhotos || []).map(p => newItems.some(ni => ni.uri === p.uri) ? { ...p, uploaded: true } : p)
+              }));
             } catch {
-              Alert.alert('Upload notice', 'Photos saved locally. Will retry on submit.');
+              Alert.alert('Upload Notice', 'Photos saved locally. Will retry on submit.');
             } finally { setPhotoUploading(false); }
           }
         },
         {
-          text: 'CAMERA',
+          text: 'Camera',
           onPress: async () => {
             const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') { Alert.alert('Permission needed'); return; }
+            if (status !== 'granted') { Alert.alert('Permission Needed', 'Allow camera access to take photo.'); return; }
             const result = await ImagePicker.launchCameraAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.All,
               quality: 0.8,
               videoMaxDuration: 120,
             });
             if (result.canceled || !result.assets?.[0]) return;
-            const newItem = { uri: result.assets[0].uri, type: result.assets[0].type || 'image' };
-            setData(d => ({ ...d, propertyPhotos: [...(d.propertyPhotos || []), newItem].slice(0, 15) }));
+            const newItem = { uri: result.assets[0].uri, type: result.assets[0].type || 'image', uploaded: false };
+            const updated = [...(data.propertyPhotos || []), newItem].slice(0, 15);
+            setData(d => ({ ...d, propertyPhotos: updated }));
+            if (!loanId) return;
+            setPhotoUploading(true);
+            try {
+              const fd = new FormData();
+              fd.append('photos', { uri: newItem.uri, name: `photo_${Date.now()}.jpg`, type: 'image/jpeg' });
+              await uploadPropertyPhotos(loanId, fd);
+              setData(d => ({
+                ...d,
+                propertyPhotos: (d.propertyPhotos || []).map(p => p.uri === newItem.uri ? { ...p, uploaded: true } : p)
+              }));
+            } catch {
+              console.warn('Camera photo upload deferred to submit');
+            } finally { setPhotoUploading(false); }
           }
         },
       ]
@@ -544,19 +586,27 @@ function Step2({ data, setData, loanId }) {
     setModalVisible(true);
   };
 
-  const chooseFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    setPickedAsset(asset);
-    if (!docNameInput.trim()) {
-      setDocNameInput(asset.name || selectedDocType);
+  const chooseFile = async (preferredType = 'application/pdf') => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: preferredType,
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setPickedAsset(asset);
+      if (!docNameInput.trim()) {
+        setDocNameInput(asset.name || selectedDocType);
+      }
+    } catch (err) {
+      Alert.alert('Document Error', 'Could not open document picker.');
     }
   };
 
   const handleModalUpload = async () => {
     if (!pickedAsset) {
-      Alert.alert('Required', 'Please pick a file to upload.');
+      Alert.alert('Required', 'Please select a document file to upload.');
       return;
     }
     const finalName = docNameInput.trim() || pickedAsset.name || selectedDocType;
@@ -589,13 +639,13 @@ function Step2({ data, setData, loanId }) {
       fd.append('docType', selectedDocType);
       fd.append('name', finalName);
       fd.append('date', newDoc.date);
-      await uploadRegistryDocument(loanId, fd);
+      const res = await uploadRegistryDocument(loanId, fd);
       setData(d => ({
         ...d,
-        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true } : d2)
+        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true, uri: res?.key || d2.uri } : d2)
       }));
     } catch {
-      Alert.alert('Upload notice', 'Document saved locally. Will retry on submit.');
+      Alert.alert('Upload Notice', 'Document saved locally. Will retry on submit.');
     } finally {
       setDocUploading(false);
     }
@@ -608,7 +658,7 @@ function Step2({ data, setData, loanId }) {
       <SectionTitle title="Property Details" />
 
       {/* ── Property Photos ── */}
-      <FieldLabel text="Property photos" required />
+      <FieldLabel text="Property Photos" required />
       <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 6 }}>
         Add multiple angles of the property (max 15 total).
       </Text>
@@ -626,7 +676,7 @@ function Step2({ data, setData, loanId }) {
       {/* Main Add Button */}
       <TouchableOpacity style={ph.addBox} onPress={showPhotoOptions}>
         <Ionicons name="images-outline" size={28} color={colors.dark} />
-        <Text style={ph.addText}>Add property photos{'\n'}(camera or library)</Text>
+        <Text style={ph.addText}>Add Property Photos{'\n'}(Camera or Library)</Text>
       </TouchableOpacity>
 
       {/* Thumbnails + Add More */}
@@ -657,7 +707,7 @@ function Step2({ data, setData, loanId }) {
       {photoUploading && <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>Uploading...</Text>}
 
       {/* ── Standard Property Documents (Non-essential/Optional) ── */}
-      <FieldLabel text="Standard Property Documents — optional" />
+      <FieldLabel text="Standard Property Documents (Optional)" />
       <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>
         Upload any available property documents. All items below are non-essential.
       </Text>
@@ -709,7 +759,7 @@ function Step2({ data, setData, loanId }) {
       </View>
 
       {/* ── Custom / Additional Property Documents ── */}
-      <FieldLabel text="Additional Documents — optional" />
+      <FieldLabel text="Additional Documents (Optional)" />
       <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}>
         Upload electricity bill, tax receipts, or custom papers.
       </Text>
@@ -742,7 +792,7 @@ function Step2({ data, setData, loanId }) {
       ))}
 
       {/* ── Property Area ── */}
-      <FieldLabel text="Property Area (sq. m)" required />
+      <FieldLabel text="Property Area (Sq. M)" required />
       <StyledInput value={data.propertyArea} onChangeText={v => setData(d => ({ ...d, propertyArea: v }))} placeholder="e.g. 250" keyboardType="numeric" />
 
       {/* ── Market Value ── */}
@@ -750,11 +800,11 @@ function Step2({ data, setData, loanId }) {
       <StyledInput value={data.marketValue} onChangeText={v => setData(d => ({ ...d, marketValue: v }))} placeholder="e.g. 1000000" keyboardType="numeric" />
 
       {/* ── Descendants ── */}
-      <FieldLabel text="Transferred to Descendant (Count)" required />
+      <FieldLabel text="Transferred To Descendant (Count)" required />
       <StyledInput value={data.descendantCount} onChangeText={v => setData(d => ({ ...d, descendantCount: v }))} placeholder="e.g. 2" keyboardType="numeric" />
 
       {/* ── Other Loan ── */}
-      <FieldLabel text="Any Other Loan on This Property?" required />
+      <FieldLabel text="Any Other Loan On This Property?" required />
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
         {['Yes', 'No'].map(opt => (
           <TouchableOpacity key={opt} style={[tog.btn, data.otherLoan === opt && tog.active]} onPress={() => setData(d => ({ ...d, otherLoan: opt }))}>
@@ -764,7 +814,7 @@ function Step2({ data, setData, loanId }) {
       </View>
       {data.otherLoan === 'Yes' && (
         <>
-          <FieldLabel text="Remark" required />
+          <FieldLabel text="Other Loan Remark" required />
           <StyledInput value={data.otherLoanDetails} onChangeText={v => setData(d => ({ ...d, otherLoanDetails: v }))} placeholder="Bank name, outstanding amount, EMI etc." multiline />
         </>
       )}
@@ -775,7 +825,7 @@ function Step2({ data, setData, loanId }) {
       <StyledInput value={data.geoAddress || ''} onChangeText={v => setData(d => ({ ...d, geoAddress: v }))} placeholder="Will be filled after geo capture" multiline />
 
       {/* ── Possession Status ── */}
-      <FieldLabel text="Possession Status — optional" />
+      <FieldLabel text="Possession Status (Optional)" />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         {['Self Occupied', 'Tenant Occupied', 'Vacant', 'Under Construction'].map(opt => (
           <TouchableOpacity key={opt} style={[chip.btn, data.possessionStatus === opt && chip.active]} onPress={() => setData(d => ({ ...d, possessionStatus: opt }))}>
@@ -785,7 +835,7 @@ function Step2({ data, setData, loanId }) {
       </View>
 
       {/* ── Geo Location ── */}
-      <FieldLabel text="Geo location" required />
+      <FieldLabel text="Geo Location" required />
       {data.geoLat ? (
         <View style={geo.box}>
           <Ionicons name="location" size={18} color={colors.dark} />
@@ -794,7 +844,7 @@ function Step2({ data, setData, loanId }) {
             <Text style={geo.date}>{data.geoDate || 'Coordinates captured'}</Text>
           </View>
           <TouchableOpacity onPress={captureLocation}>
-            <Text style={{ fontSize: 12, color: colors.dark, fontWeight: '600' }}>Re-capture</Text>
+            <Text style={{ fontSize: 12, color: colors.dark, fontWeight: '600' }}>Re-Capture</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -810,14 +860,23 @@ function Step2({ data, setData, loanId }) {
       <StyledInput
         value={data.geoLocName}
         onChangeText={v => setData(d => ({ ...d, geoLocName: v }))}
-        placeholder="Auto-filled from GPS or enter location name"
+        placeholder="Auto-Filled From GPS Or Enter Location Name"
       />
 
       <FieldLabel text="District" required />
       <StyledInput
         value={data.geoDistrict}
         onChangeText={v => setData(d => ({ ...d, geoDistrict: v }))}
-        placeholder="Auto-filled from GPS or enter district"
+        placeholder="Auto-Filled From GPS Or Enter District"
+      />
+
+      {/* ── Property Details Remark ── */}
+      <FieldLabel text="Property Details Remark" />
+      <StyledInput
+        value={data.propertyRemark}
+        onChangeText={v => setData(d => ({ ...d, propertyRemark: v }))}
+        placeholder="Enter Remarks For Property Details (Optional)"
+        multiline
       />
 
       {/* ── Document Upload Modal with Naming Field ── */}
@@ -845,11 +904,30 @@ function Step2({ data, setData, loanId }) {
               placeholderTextColor={colors.muted}
             />
 
-            <Text style={stdS.modalLabel}>Select File (PDF or Image):</Text>
-            <TouchableOpacity style={stdS.filePickerBtn} onPress={chooseFile}>
-              <Ionicons name="attach" size={20} color={colors.dark} />
-              <Text style={stdS.filePickerTxt} numberOfLines={1}>
-                {pickedAsset ? pickedAsset.name : 'Tap to choose file from device'}
+            <Text style={stdS.modalLabel}>Select Document File:</Text>
+            {/* Primary Action: Direct to Latest Downloaded PDF */}
+            <TouchableOpacity
+              style={[stdS.filePickerBtn, { marginBottom: 8, backgroundColor: '#EFF6FF', borderColor: colors.primary }]}
+              onPress={() => chooseFile('application/pdf')}
+            >
+              <Ionicons name="document-text" size={20} color={colors.primary} />
+              <Text style={[stdS.filePickerTxt, { color: colors.primary, fontWeight: '700' }]} numberOfLines={1}>
+                {pickedAsset && (pickedAsset.mimeType?.includes('pdf') || pickedAsset.name?.toLowerCase().endsWith('.pdf'))
+                  ? `Selected: ${pickedAsset.name}`
+                  : 'Choose Latest Downloaded PDF'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Secondary Action: Image or Other File */}
+            <TouchableOpacity
+              style={[stdS.filePickerBtn, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+              onPress={() => chooseFile('*/*')}
+            >
+              <Ionicons name="images-outline" size={18} color={colors.muted} />
+              <Text style={[stdS.filePickerTxt, { color: colors.text }]} numberOfLines={1}>
+                {pickedAsset && !(pickedAsset.mimeType?.includes('pdf') || pickedAsset.name?.toLowerCase().endsWith('.pdf'))
+                  ? `Selected: ${pickedAsset.name}`
+                  : 'Choose Image / Other Document File'}
               </Text>
             </TouchableOpacity>
 
@@ -981,7 +1059,7 @@ function Step3({ data, setData }) {
         keyboardType="numeric"
       />
 
-      <FieldLabel text="Requested Loan Tenure (months)" />
+      <FieldLabel text="Requested Loan Tenure (Months)" />
       <StyledInput
         value={data.repaymentMonths}
         onChangeText={v => setData(d => ({ ...d, repaymentMonths: v }))}
@@ -989,11 +1067,20 @@ function Step3({ data, setData }) {
         keyboardType="numeric"
       />
 
-      <FieldLabel text="Purpose of Loan" />
+      <FieldLabel text="Purpose Of Loan" />
       <StyledInput
         value={data.loanPurpose}
         onChangeText={v => setData(d => ({ ...d, loanPurpose: v }))}
-        placeholder="e.g. Home renovation, Agriculture, Business"
+        placeholder="e.g. Home Renovation, Agriculture, Business"
+        multiline
+      />
+
+      {/* Loan Details Remark */}
+      <FieldLabel text="Loan Details Remark" />
+      <StyledInput
+        value={data.loanRemark}
+        onChangeText={v => setData(d => ({ ...d, loanRemark: v }))}
+        placeholder="Enter Remarks For Loan Details (Optional)"
         multiline
       />
 
@@ -1021,45 +1108,48 @@ function Step4({ data }) {
       <Text style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>Please verify all details before submitting.</Text>
       <View style={rv.card}>
         <Text style={rv.section}>Owner Details</Text>
-        <Row label="Name" value={data.ownerName} />
-        <Row label="Mobile" value={data.ownerMobile} />
-        <Row label="Email" value={data.ownerEmail} />
-        <Row label="Aadhaar" value={data.aadhaar} />
-        <Row label="Spouse" value={data.spouseName} />
-        <Row label="Occupation" value={data.familyOccupation} />
+        <Row label="Owner Name" value={data.ownerName} />
+        <Row label="Mobile Number" value={data.ownerMobile} />
+        <Row label="Email Address" value={data.ownerEmail} />
+        <Row label="Aadhaar Number" value={data.aadhaar} />
+        <Row label="Spouse Name" value={data.spouseName} />
+        <Row label="Family Occupation" value={data.familyOccupation} />
         <Row label="Monthly Income" value={data.monthlyIncome ? `₹${data.monthlyIncome}` : ''} />
-        <Row label="Address" value={data.ownerAddress} />
+        <Row label="Owner Address" value={data.ownerAddress} />
+        <Row label="Owner Details Remark" value={data.ownerRemark} />
         <Row label="Owner Video" value={data.videoUri ? '✓ Recorded' : 'Not recorded'} />
         <Row label="House Video" value={data.houseVideoUri ? '✓ Recorded' : 'Not recorded'} />
       </View>
       <View style={rv.card}>
         <Text style={rv.section}>Bank Details</Text>
-        <Row label="IFSC" value={data.ifsc} />
-        <Row label="Bank" value={data.bankName} />
+        <Row label="IFSC Code" value={data.ifsc} />
+        <Row label="Bank Name" value={data.bankName} />
         <Row label="Account Holder" value={data.accountHolder} />
-        <Row label="Account No." value={data.accountNumber} />
+        <Row label="Account Number" value={data.accountNumber} />
+        <Row label="Bank Details Remark" value={data.bankRemark} />
       </View>
       <View style={rv.card}>
         <Text style={rv.section}>Property Details</Text>
-        <Row label="Area" value={data.propertyArea ? `${data.propertyArea} sq.m` : ''} />
+        <Row label="Property Area" value={data.propertyArea ? `${data.propertyArea} sq.m` : ''} />
         <Row label="Market Value" value={data.marketValue ? `₹${data.marketValue}` : ''} />
-        <Row label="Descendants" value={data.descendantCount} />
-        <Row label="Other Loan" value={data.otherLoan} />
-        {data.otherLoan === 'Yes' && <Row label="Loan Details" value={data.otherLoanDetails} />}
-        <Row label="Possession" value={data.possessionStatus} />
-        <Row label="Geo Location" value={data.geoLat ? `${data.geoLat}, ${data.geoLng}` : ''} />
-        <Row label="Location Name" value={data.geoLocName} />
+        <Row label="Transferred To Descendant" value={data.descendantCount} />
+        <Row label="Any Other Loan" value={data.otherLoan} />
+        {data.otherLoan === 'Yes' && <Row label="Other Loan Remark" value={data.otherLoanDetails} />}
+        <Row label="Possession Status" value={data.possessionStatus} />
+        <Row label="Geo Coordinates" value={data.geoLat ? `${data.geoLat}, ${data.geoLng}` : ''} />
+        <Row label="Location / Area Name" value={data.geoLocName} />
         <Row label="District" value={data.geoDistrict} />
         <Row label="Property Address" value={data.geoAddress} />
-        <Row label="Photos" value={data.propertyPhotos?.length ? `${data.propertyPhotos.length} photo(s)` : ''} />
-        <Row label="Documents" value={data.propertyDocs?.length ? `${data.propertyDocs.length} doc(s)` : ''} />
+        <Row label="Property Photos" value={data.propertyPhotos?.length ? `${data.propertyPhotos.length} photo(s)` : ''} />
+        <Row label="Property Documents" value={data.propertyDocs?.length ? `${data.propertyDocs.length} doc(s)` : ''} />
+        <Row label="Property Details Remark" value={data.propertyRemark} />
       </View>
       <View style={rv.card}>
         <Text style={rv.section}>Loan Details</Text>
-        <Row label="Amount" value={data.loanAmount ? `₹${data.loanAmount}` : ''} />
-        <Row label="Purpose" value={data.loanPurpose} />
-        <Row label="Repayment" value={data.repaymentMonths ? `${data.repaymentMonths} months` : ''} />
-        <Row label="Notes" value={data.notes} />
+        <Row label="Requested Loan Amount" value={data.loanAmount ? `₹${data.loanAmount}` : ''} />
+        <Row label="Purpose Of Loan" value={data.loanPurpose} />
+        <Row label="Requested Loan Tenure" value={data.repaymentMonths ? `${data.repaymentMonths} months` : ''} />
+        <Row label="Loan Details Remark" value={data.loanRemark || data.notes} />
       </View>
     </View>
   );
@@ -1081,11 +1171,13 @@ const initialFormData = {
   spouseName: '',
   familyOccupation: '',
   monthlyIncome: '',
+  ownerAddress: '',
+  ownerRemark: '',
   ifsc: '',
   bankName: '',
   accountHolder: '',
   accountNumber: '',
-  ownerAddress: '',
+  bankRemark: '',
   videoUri: null,
   videoUploaded: false,
   houseVideoUri: null,
@@ -1104,9 +1196,11 @@ const initialFormData = {
   geoAddress: '',
   possessionStatus: '',
   propertyDocs: [],
+  propertyRemark: '',
   loanAmount: '',
   loanPurpose: '',
   repaymentMonths: '',
+  loanRemark: '',
   notes: '',
 };
 
@@ -1129,11 +1223,13 @@ export default function NewLoanScreen({ route, navigation }) {
     spouseName: existingLoan?.spouseName || '', 
     familyOccupation: existingLoan?.familyOccupation || '', 
     monthlyIncome: existingLoan?.monthlyIncome?.toString() || '',
+    ownerAddress: existingLoan?.ownerAddress || '',
+    ownerRemark: existingLoan?.ownerRemark || existingLoan?.remarks?.owner || '',
     ifsc: existingLoan?.bankDetails?.ifsc || '', 
     bankName: existingLoan?.bankDetails?.bankName || '', 
     accountHolder: existingLoan?.bankDetails?.accountHolder || '', 
     accountNumber: existingLoan?.bankDetails?.accountNumber || '',
-    ownerAddress: existingLoan?.ownerAddress || '', 
+    bankRemark: existingLoan?.bankRemark || existingLoan?.bankDetails?.remark || existingLoan?.remarks?.bank || '',
     videoUri: existingLoan?.videoUri || null, 
     videoUploaded: !!existingLoan?.videoUri,
     houseVideoUri: existingLoan?.houseVideoUri || null,
@@ -1152,9 +1248,11 @@ export default function NewLoanScreen({ route, navigation }) {
     geoAddress: existingLoan?.propertyAddress || '',
     possessionStatus: existingLoan?.possessionStatus || '', 
     propertyDocs: existingLoan?.propertyDocs || [],
+    propertyRemark: existingLoan?.propertyRemark || existingLoan?.remarks?.property || '',
     loanAmount: existingLoan?.loanAmount?.toString() || '', 
     loanPurpose: existingLoan?.loanPurpose || '', 
     repaymentMonths: existingLoan?.repaymentMonths?.toString() || '', 
+    loanRemark: existingLoan?.loanRemark || existingLoan?.remarks?.loan || existingLoan?.notes || '',
     notes: existingLoan?.notes || '',
   });
 
@@ -1249,10 +1347,10 @@ export default function NewLoanScreen({ route, navigation }) {
 
     if (stepIndex === 1) {
       if (!data.propertyPhotos || data.propertyPhotos.length === 0) return 'Please upload at least one Property Photo.';
-      if (!data.propertyArea || Number(data.propertyArea) <= 0) return 'Please enter Property Area (sq. m).';
+      if (!data.propertyArea || Number(data.propertyArea) <= 0) return 'Please enter Property Area (Sq. M).';
       if (!data.marketValue || Number(data.marketValue) <= 0) return 'Please enter Market Value of the property.';
       if (data.descendantCount === '' || data.descendantCount === null || isNaN(Number(data.descendantCount))) {
-        return 'Please enter Transferred to Descendant count (enter 0 if none).';
+        return 'Please enter Transferred To Descendant count (enter 0 if none).';
       }
       if (data.otherLoan === 'Yes' && !data.otherLoanDetails?.trim()) {
         return 'Please provide remark/details for the existing loan on this property.';
@@ -1294,13 +1392,16 @@ export default function NewLoanScreen({ route, navigation }) {
           spouseName: formData.spouseName?.trim(),
           familyOccupation: formData.familyOccupation?.trim(),
           monthlyIncome: Number(formData.monthlyIncome),
+          ownerAddress: formData.ownerAddress?.trim(),
+          ownerRemark: formData.ownerRemark?.trim() || '',
           bankDetails: {
             ifsc: formData.ifsc?.trim(),
             bankName: formData.bankName?.trim(),
             accountHolder: formData.accountHolder?.trim(),
             accountNumber: formData.accountNumber?.trim(),
+            remark: formData.bankRemark?.trim() || '',
           },
-          ownerAddress: formData.ownerAddress?.trim(),
+          bankRemark: formData.bankRemark?.trim() || '',
         });
 
         // Upload Owner Video if pending
@@ -1348,14 +1449,53 @@ export default function NewLoanScreen({ route, navigation }) {
           propertyDistrict: formData.geoDistrict?.trim() || '',
           propertyAddress: formData.geoAddress?.trim() || '',
           possessionStatus: formData.possessionStatus,
+          propertyRemark: formData.propertyRemark?.trim() || '',
         });
+
+        // Upload any pending property photos
+        const unuploadedPhotos = (formData.propertyPhotos || []).filter(p => !p.uploaded && p.uri);
+        if (unuploadedPhotos.length > 0) {
+          try {
+            const fd = new FormData();
+            unuploadedPhotos.forEach((item, i) => {
+              fd.append('photos', { uri: item.uri, name: `photo_${Date.now()}_${i}.jpg`, type: 'image/jpeg' });
+            });
+            await uploadPropertyPhotos(currentLoanId, fd);
+            setFormData(d => ({
+              ...d,
+              propertyPhotos: (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
+            }));
+          } catch (pErr) {
+            console.warn('Property photos upload error:', pErr);
+          }
+        }
+
+        // Upload any pending property documents
+        const unuploadedDocs = (formData.propertyDocs || []).filter(doc => !doc.uploaded && doc.uri);
+        for (const uDoc of unuploadedDocs) {
+          try {
+            const fd = new FormData();
+            fd.append('document', { uri: uDoc.uri, name: uDoc.name || 'document', type: uDoc.mimeType || 'application/pdf' });
+            fd.append('docType', uDoc.docType || 'Custom Document');
+            fd.append('name', uDoc.name || 'Document');
+            fd.append('date', uDoc.date || formatDate(new Date()));
+            const res = await uploadRegistryDocument(currentLoanId, fd);
+            setFormData(d => ({
+              ...d,
+              propertyDocs: (d.propertyDocs || []).map(item => item.id === uDoc.id ? { ...item, uploaded: true, uri: res?.key || item.uri } : item)
+            }));
+          } catch (dErr) {
+            console.warn('Property doc upload error:', dErr);
+          }
+        }
       }
       if (step === 2) {
         await updateLoan(currentLoanId, {
           loanAmount: Number(formData.loanAmount),
           loanPurpose: formData.loanPurpose?.trim() || '',
           repaymentMonths: formData.repaymentMonths ? Number(formData.repaymentMonths) : null,
-          notes: formData.notes?.trim() || '',
+          loanRemark: formData.loanRemark?.trim() || '',
+          notes: formData.loanRemark?.trim() || formData.notes?.trim() || '',
         });
       }
       setStep(s => s + 1);
@@ -1390,6 +1530,31 @@ export default function NewLoanScreen({ route, navigation }) {
           await uploadVideo(loanId, fdHouse);
           setFormData(d => ({ ...d, houseVideoUploaded: true }));
         } catch {}
+      }
+      // Ensure pending photos are uploaded before final submit
+      const pendingPhotos = (formData.propertyPhotos || []).filter(p => !p.uploaded && p.uri);
+      if (pendingPhotos.length > 0 && loanId) {
+        try {
+          const fdPhotos = new FormData();
+          pendingPhotos.forEach((item, i) => {
+            fdPhotos.append('photos', { uri: item.uri, name: `photo_${Date.now()}_${i}.jpg`, type: 'image/jpeg' });
+          });
+          await uploadPropertyPhotos(loanId, fdPhotos);
+        } catch {}
+      }
+      // Ensure pending documents are uploaded before final submit
+      const pendingDocs = (formData.propertyDocs || []).filter(d => !d.uploaded && d.uri);
+      if (pendingDocs.length > 0 && loanId) {
+        for (const pDoc of pendingDocs) {
+          try {
+            const fdDoc = new FormData();
+            fdDoc.append('document', { uri: pDoc.uri, name: pDoc.name || 'document', type: pDoc.mimeType || 'application/pdf' });
+            fdDoc.append('docType', pDoc.docType || 'Custom Document');
+            fdDoc.append('name', pDoc.name || 'Document');
+            fdDoc.append('date', pDoc.date || formatDate(new Date()));
+            await uploadRegistryDocument(loanId, fdDoc);
+          } catch {}
+        }
       }
       await submitLoan(loanId);
       showAlert('Submitted!', 'Loan application submitted successfully.');

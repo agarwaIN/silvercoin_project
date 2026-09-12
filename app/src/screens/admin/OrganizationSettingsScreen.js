@@ -36,7 +36,7 @@ export default function OrganizationSettingsScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <Header title="Organization" />
       <View style={styles.body}>
-        <Input label="Display name" value={name} onChangeText={setName} />
+        <Input label="Display Name" value={name} onChangeText={setName} />
         <Button title="Save" onPress={onSave} loading={loading} />
       </View>
     </SafeAreaView>

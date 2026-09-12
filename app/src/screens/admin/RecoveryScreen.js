@@ -251,7 +251,7 @@ export default function RecoveryScreen({ navigation }) {
           <Ionicons name="search" size={18} color={colors.muted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search borrower, mobile, loan ID..."
+            placeholder="Search Borrower, Mobile, Loan ID..."
             placeholderTextColor={colors.muted}
             value={search}
             onChangeText={setSearch}
@@ -546,7 +546,7 @@ export default function RecoveryScreen({ navigation }) {
             ) : (
               <View style={styles.empty}>
                 <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.muted} />
-                <Text style={styles.emptyTxt}>No active recoveries found</Text>
+                <Text style={styles.emptyTxt}>No Active Recoveries Found</Text>
               </View>
             )
           }
@@ -625,7 +625,7 @@ export default function RecoveryScreen({ navigation }) {
               value={payAmount}
               onChangeText={setPayAmount}
               keyboardType="numeric"
-              placeholder="Enter collected amount"
+              placeholder="Enter Collected Amount"
             />
 
             <Text style={styles.fieldLabel}>Payment Mode *</Text>
@@ -653,8 +653,8 @@ export default function RecoveryScreen({ navigation }) {
               onChangeText={setTxnRef}
               placeholder={
                 ['UPI', 'Bank'].includes(payMode)
-                  ? 'Enter mandatory UTR / Bank Reference No.'
-                  : 'Optional receipt / slip number'
+                  ? 'Enter Mandatory UTR / Bank Reference No.'
+                  : 'Optional Receipt / Slip Number'
               }
             />
 

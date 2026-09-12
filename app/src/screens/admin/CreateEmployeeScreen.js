@@ -80,7 +80,7 @@ export default function CreateEmployeeScreen({ navigation }) {
         </Text>
         <Input label="Full Name" value={name} onChangeText={setName} placeholder="John Doe" error={errors.name} />
         <Input label="Email Address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="employee@company.com" error={errors.email} />
-        <Input label="Mobile number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="9876543210" error={errors.mobile} />
+        <Input label="Mobile Number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="9876543210" error={errors.mobile} />
 
         <Text style={styles.sectionTitle}>Employee Access Rights & Duties</Text>
         <Text style={styles.sectionSub}>Select what actions this employee can perform:</Text>

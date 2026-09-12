@@ -25,9 +25,9 @@ import { WebView } from 'react-native-webview';
 import { formatDate } from '../utils/date';
 
 const STANDARD_DOC_TYPES = [
-  'Property Registery - 1',
-  'Registery - 2',
-  'Registery - 3',
+  'Property Registry - 1',
+  'Property Registry - 2',
+  'Property Registry - 3',
   'Gift Deed',
   'Khasara / Khatoni',
   'Farat',
@@ -59,17 +59,36 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
 
   // Custom Upload Modal State
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
-  const [selectedDocType, setSelectedDocType] = useState('Property Registery - 1');
+  const [selectedDocType, setSelectedDocType] = useState('Property Registry - 1');
   const [customDocName, setCustomDocName] = useState('');
   const [docDate, setDocDate] = useState(formatDate(new Date()));
   const [pickedFile, setPickedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  const normalizeMediaUrl = (url) => {
+    if (!url) return '';
+    let fixed = url;
+    if (fixed.startsWith('http://13.200.237.51/api/')) {
+      fixed = fixed.replace('http://13.200.237.51/api/', 'http://13.200.237.51:5000/api/');
+    } else if (fixed.startsWith('/api/')) {
+      fixed = `http://13.200.237.51:5000${fixed}`;
+    }
+    return fixed;
+  };
+
   const load = async () => {
     setLoading(true);
     try {
       const data = await fetchMedia();
-      setMedia(data);
+      if (Array.isArray(data)) {
+        const normalized = data.map((item) => ({
+          ...item,
+          url: normalizeMediaUrl(item.url),
+        }));
+        setMedia(normalized);
+      } else {
+        setMedia(data);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -86,7 +105,8 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
     if (!mediaItem || !mediaItem.url) return false;
     const url = mediaItem.url.toLowerCase();
     const mime = (mediaItem.mimeType || '').toLowerCase();
-    return url.endsWith('.pdf') || mime.includes('pdf');
+    const name = (mediaItem.name || '').toLowerCase();
+    return url.endsWith('.pdf') || mime.includes('pdf') || name.endsWith('.pdf');
   };
 
   const handlePress = (m) => {
@@ -95,24 +115,25 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   };
 
   const openUploadModal = (defaultType) => {
-    setSelectedDocType(defaultType || 'Property Registery - 1');
+    setSelectedDocType(defaultType || 'Property Registry - 1');
     setCustomDocName('');
     setDocDate(formatDate(new Date()));
     setPickedFile(null);
     setUploadModalVisible(true);
   };
 
-  const handlePickDocument = async () => {
+  const handlePickDocument = async (preferredType = 'application/pdf') => {
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*', 'video/*'],
+        type: preferredType,
         copyToCacheDirectory: true,
+        multiple: false,
       });
       if (!res.canceled && res.assets && res.assets.length > 0) {
         setPickedFile(res.assets[0]);
       }
     } catch (err) {
-      showAlert('Error', 'Failed to pick file.');
+      showAlert('Error', 'Failed to pick file from device.');
     }
   };
 
@@ -178,12 +199,12 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
 
   // Standard property docs checklist state mapping
   const standardDocsList = [
-    { title: 'Property Registery - 1', subtitle: 'Primary Property Registry' },
-    { title: 'Registery - 2', subtitle: 'Secondary Property Registry' },
-    { title: 'Registery - 3', subtitle: 'Tertiary Property Registry' },
-    { title: 'Gift Deed', subtitle: 'Property Transfer / Gift Deed' },
-    { title: 'Khasara / Khatoni', subtitle: 'Land Record Document' },
-    { title: 'Farat', subtitle: 'Land Rights Document' },
+    { title: 'Property Registry - 1', matchKeys: ['property registry - 1', 'property registery - 1', 'registry - 1', 'registery - 1'], subtitle: 'Primary Property Registry' },
+    { title: 'Property Registry - 2', matchKeys: ['property registry - 2', 'property registery - 2', 'registry - 2', 'registery - 2'], subtitle: 'Secondary Property Registry' },
+    { title: 'Property Registry - 3', matchKeys: ['property registry - 3', 'property registery - 3', 'registry - 3', 'registery - 3'], subtitle: 'Tertiary Property Registry' },
+    { title: 'Gift Deed', matchKeys: ['gift deed'], subtitle: 'Property Transfer / Gift Deed' },
+    { title: 'Khasara / Khatoni', matchKeys: ['khasara', 'khatoni'], subtitle: 'Land Record Document' },
+    { title: 'Farat', matchKeys: ['farat'], subtitle: 'Land Rights Document' },
   ];
 
   // Map uploaded docs to standard docs or custom docs
@@ -191,10 +212,9 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const customDocsList = [];
 
   docs.forEach((d) => {
-    const matchedStd = standardDocsList.find(
-      (s) =>
-        s.title.toLowerCase() === (d.docType || d.name || '').toLowerCase() ||
-        (d.name || '').toLowerCase().includes(s.title.toLowerCase()),
+    const docIdentifier = `${d.docType || ''} ${d.name || ''}`.toLowerCase();
+    const matchedStd = standardDocsList.find((s) =>
+      s.matchKeys.some((k) => docIdentifier.includes(k))
     );
     if (matchedStd) {
       uploadedStandardMap[matchedStd.title] = d;
@@ -216,7 +236,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       </View>
 
       {/* Category 1: Videos */}
-      <Text style={styles.sectionHeader}>🎥 Property & Owner Video</Text>
+      <Text style={styles.sectionHeader}>Property & Owner Videos</Text>
       {videos.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           {videos.map((m, i) => (
@@ -234,7 +254,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       )}
 
       {/* Category 2: Photos / Images */}
-      <Text style={styles.sectionHeader}>🖼️ Property & Owner Pictures</Text>
+      <Text style={styles.sectionHeader}>Property & Owner Pictures</Text>
       {photos.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           {photos.map((m, i) => (
@@ -252,7 +272,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       )}
 
       {/* Category 3: Standard Property Documents Checklist */}
-      <Text style={styles.sectionHeader}>📑 Standard Property Documents</Text>
+      <Text style={styles.sectionHeader}>Standard Property Documents</Text>
       <View style={styles.checklistContainer}>
         {standardDocsList.map((stdItem) => {
           const docItem = uploadedStandardMap[stdItem.title];
@@ -295,7 +315,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       </View>
 
       {/* Category 4: Custom / Rest Documents */}
-      <Text style={styles.sectionHeader}>📁 Rest Documents / Custom Attachments</Text>
+      <Text style={styles.sectionHeader}>Additional Documents / Custom Attachments</Text>
       {customDocsList.length > 0 ? (
         <View style={styles.checklistContainer}>
           {customDocsList.map((cDoc, idx) => (
@@ -333,16 +353,22 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
 
             <View style={styles.previewContainer}>
               {isPdf(selectedMedia) ? (
-                <WebView
-                  source={{
-                    uri: selectedMedia.url?.startsWith('http')
-                      ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(selectedMedia.url)}`
-                      : selectedMedia.url
-                  }}
-                  style={{ flex: 1, backgroundColor: colors.white }}
-                  startInLoadingState
-                  renderLoading={() => <ActivityIndicator color={colors.primary} size="large" style={StyleSheet.absoluteFill} />}
-                />
+                <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+                  <Ionicons name="document-text" size={72} color={colors.primary} style={{ marginBottom: 16 }} />
+                  <Text style={{ fontSize: 17, color: colors.white, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>
+                    {selectedMedia.name || 'PDF Document'}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: 24 }}>
+                    Tap the button below to open directly in your device's PDF viewer.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.externalBtn}
+                    onPress={() => Linking.openURL(selectedMedia.url).catch(() => showAlert('Notice', 'Cannot open PDF directly.'))}
+                  >
+                    <Ionicons name="open-outline" size={18} color={colors.white} />
+                    <Text style={styles.externalBtnTxt}>Open In PDF Reader</Text>
+                  </TouchableOpacity>
+                </View>
               ) : (
                 <Image
                   source={{ uri: selectedMedia.url }}
@@ -392,6 +418,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                   placeholderTextColor={colors.muted}
                   value={customDocName}
                   onChangeText={setCustomDocName}
+                  autoCapitalize="words"
                 />
               </View>
             )}
@@ -405,10 +432,31 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
               onChangeText={setDocDate}
             />
 
-            <TouchableOpacity style={styles.pickFileBtn} onPress={handlePickDocument}>
-              <Ionicons name={pickedFile ? 'document-attach' : 'cloud-upload'} size={20} color={colors.dark} />
-              <Text style={styles.pickFileTxt}>
-                {pickedFile ? pickedFile.name : 'Choose PDF or Image File'}
+            <Text style={[styles.inputLabel, { marginTop: 12 }]}>Select Document File</Text>
+
+            {/* Primary Option: Choose Latest Downloaded PDF */}
+            <TouchableOpacity
+              style={[styles.pickFileBtn, { backgroundColor: '#EFF6FF', borderColor: colors.primary, marginBottom: 8 }]}
+              onPress={() => handlePickDocument('application/pdf')}
+            >
+              <Ionicons name="document-text" size={20} color={colors.primary} />
+              <Text style={[styles.pickFileTxt, { color: colors.primary, fontWeight: '700' }]} numberOfLines={1}>
+                {pickedFile && (pickedFile.mimeType?.includes('pdf') || pickedFile.name?.toLowerCase().endsWith('.pdf'))
+                  ? `Selected: ${pickedFile.name}`
+                  : 'Choose Latest Downloaded PDF'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Secondary Option: Choose Image / Photo File */}
+            <TouchableOpacity
+              style={styles.pickFileBtn}
+              onPress={() => handlePickDocument('*/*')}
+            >
+              <Ionicons name="images-outline" size={18} color={colors.muted} />
+              <Text style={[styles.pickFileTxt, { color: colors.text }]} numberOfLines={1}>
+                {pickedFile && !(pickedFile.mimeType?.includes('pdf') || pickedFile.name?.toLowerCase().endsWith('.pdf'))
+                  ? `Selected: ${pickedFile.name}`
+                  : 'Choose Image / Photo File'}
               </Text>
             </TouchableOpacity>
 

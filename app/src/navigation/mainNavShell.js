@@ -28,9 +28,9 @@ export function MainShell({ children, routeNames, activeRouteName, extraMenuItem
 
   const onLogout = useCallback(() => {
     setMenuOpen(false);
-    showAlert('Log out', 'Are you sure you want to log out?', [
+    showAlert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Log out', style: 'destructive', onPress: () => void signOut() },
+      { text: 'Log Out', style: 'destructive', onPress: () => void signOut() },
     ]);
   }, [showAlert, signOut]);
 

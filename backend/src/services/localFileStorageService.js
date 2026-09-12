@@ -66,7 +66,10 @@ async function getPresignedUrl(key, expiresIn = 3600) {
       { expiresIn }
     );
 
-    const host = process.env.PUBLIC_ORIGIN || process.env.APP_PUBLIC_ORIGIN || 'http://13.200.237.51';
+    let host = process.env.PUBLIC_ORIGIN || process.env.APP_PUBLIC_ORIGIN || 'http://13.200.237.51:5000';
+    if (host.includes('13.200.237.51') && !host.includes(':5000') && !host.startsWith('https://')) {
+      host = `${host}:5000`;
+    }
     return `${host.replace(/\/+$/, '')}/api/files/download?key=${encodeURIComponent(key)}&token=${token}`;
   } catch (err) {
     console.error('Error generating presigned URL:', err);

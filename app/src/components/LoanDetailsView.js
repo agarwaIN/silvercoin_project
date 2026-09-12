@@ -59,10 +59,10 @@ export default function LoanDetailsView({ loan }) {
 
       <View style={rv.card}>
         <View style={rv.headerRow}>
-          <Ionicons name="person" size={18} color={colors.dark} />
+          <Ionicons name="information-circle" size={18} color={colors.dark} />
           <Text style={rv.section}>Application Details</Text>
         </View>
-        <Row label="Application No" value={loan.applicationNumber || loan.loanId} />
+        <Row label="Application Number" value={loan.applicationNumber || loan.loanId} />
         <Row label="Loan ID" value={loan.displayLoanId || loan.officialLoanId || 'Pending Disbursement'} />
         {loan.internalRemarks && <Row label="Internal Remarks" value={loan.internalRemarks} />}
         {loan.riskAssessment && <Row label="Risk Assessment" value={loan.riskAssessment} />}
@@ -73,15 +73,16 @@ export default function LoanDetailsView({ loan }) {
           <Ionicons name="person" size={18} color={colors.dark} />
           <Text style={rv.section}>Owner Details</Text>
         </View>
-        <Row label="Name" value={loan.ownerName} fieldKey="ownerName" />
-        <Row label="Mobile" value={loan.ownerMobile} fieldKey="ownerMobile" />
-        <Row label="Email" value={loan.ownerEmail} fieldKey="ownerEmail" />
-        <Row label="Aadhaar" value={loan.aadhaar} fieldKey="aadhaar" />
-        <Row label="Spouse" value={loan.spouseName} fieldKey="spouseName" />
-        <Row label="Occupation" value={loan.familyOccupation} fieldKey="familyOccupation" />
+        <Row label="Owner Name" value={loan.ownerName} fieldKey="ownerName" />
+        <Row label="Mobile Number" value={loan.ownerMobile} fieldKey="ownerMobile" />
+        <Row label="Email Address" value={loan.ownerEmail} fieldKey="ownerEmail" />
+        <Row label="Aadhaar Number" value={loan.aadhaar} fieldKey="aadhaar" />
+        <Row label="Spouse Name" value={loan.spouseName} fieldKey="spouseName" />
+        <Row label="Family Occupation" value={loan.familyOccupation} fieldKey="familyOccupation" />
         <Row label="Monthly Income" value={loan.monthlyIncome ? `₹${loan.monthlyIncome.toLocaleString('en-IN')}` : ''} fieldKey="monthlyIncome" />
-        <Row label="Address" value={loan.ownerAddress} fieldKey="ownerAddress" />
-        <Row label="Verification Video" value={loan.videoUri ? '✓ Recorded' : 'Not recorded'} fieldKey="videoUri" />
+        <Row label="Residential Address" value={loan.ownerAddress} fieldKey="ownerAddress" />
+        <Row label="Owner Details Remark" value={loan.ownerRemark || loan.remarks?.owner} fieldKey="ownerRemark" />
+        <Row label="Owner Verification Video" value={loan.videoUri ? '✓ Recorded' : 'Not recorded'} fieldKey="videoUri" />
       </View>
 
       <View style={rv.card}>
@@ -91,8 +92,9 @@ export default function LoanDetailsView({ loan }) {
         </View>
         <Row label="IFSC Code" value={loan.bankDetails?.ifsc} fieldKey="bankDetails" />
         <Row label="Bank Name" value={loan.bankDetails?.bankName} fieldKey="bankDetails" />
-        <Row label="Account Holder" value={loan.bankDetails?.accountHolder} fieldKey="bankDetails" />
+        <Row label="Account Holder Name" value={loan.bankDetails?.accountHolder} fieldKey="bankDetails" />
         <Row label="Account Number" value={loan.bankDetails?.accountNumber} fieldKey="bankDetails" />
+        <Row label="Bank Details Remark" value={loan.bankRemark || loan.bankDetails?.remark || loan.remarks?.bank} fieldKey="bankRemark" />
       </View>
 
       <View style={rv.card}>
@@ -100,18 +102,19 @@ export default function LoanDetailsView({ loan }) {
           <Ionicons name="home" size={18} color={colors.dark} />
           <Text style={rv.section}>Property Details</Text>
         </View>
-        <Row label="Area" value={loan.propertyArea ? `${loan.propertyArea} sq.m` : ''} fieldKey="propertyArea" />
+        <Row label="Property Area" value={loan.propertyArea ? `${loan.propertyArea} sq.m` : ''} fieldKey="propertyArea" />
         <Row label="Market Value" value={loan.marketValue ? `₹${loan.marketValue.toLocaleString('en-IN')}` : ''} fieldKey="marketValue" />
-        <Row label="Descendants" value={loan.descendantCount} fieldKey="descendantCount" />
-        <Row label="Other Loan" value={loan.otherLoan ? 'Yes' : 'No'} fieldKey="otherLoan" />
-        {loan.otherLoan && <Row label="Loan Details" value={loan.otherLoanDetails} fieldKey="otherLoanDetails" /> }
-        <Row label="Possession" value={loan.possessionStatus} fieldKey="possessionStatus" />
-        <Row label="Geo Location" value={loan.geoLocation?.lat ? `${loan.geoLocation.lat}, ${loan.geoLocation.lng}` : ''} fieldKey="geoLocation" />
-        <Row label="Location Name" value={loan.geoLocation?.locationName || loan.locationName || resolvedLocName} fieldKey="geoLocationName" />
+        <Row label="Transferred To Descendant" value={loan.descendantCount} fieldKey="descendantCount" />
+        <Row label="Any Other Loan" value={loan.otherLoan ? 'Yes' : 'No'} fieldKey="otherLoan" />
+        {loan.otherLoan && <Row label="Other Loan Remark" value={loan.otherLoanDetails} fieldKey="otherLoanDetails" /> }
+        <Row label="Possession Status" value={loan.possessionStatus} fieldKey="possessionStatus" />
+        <Row label="Geo Coordinates" value={loan.geoLocation?.lat ? `${loan.geoLocation.lat}, ${loan.geoLocation.lng}` : ''} fieldKey="geoLocation" />
+        <Row label="Location / Area Name" value={loan.geoLocation?.locationName || loan.locationName || resolvedLocName} fieldKey="geoLocationName" />
         <Row label="District" value={loan.geoLocation?.district || loan.propertyDistrict || loan.district || resolvedDistrict} fieldKey="propertyDistrict" />
-        <Row label="House Video" value={loan.houseVideoUri ? '✓ Recorded' : (loan.propertyPhotos?.some(p => p.type === 'video') ? '✓ Recorded' : 'Not recorded')} fieldKey="houseVideoUri" />
+        <Row label="Property Details Remark" value={loan.propertyRemark || loan.remarks?.property} fieldKey="propertyRemark" />
+        <Row label="House / Property Video" value={loan.houseVideoUri ? '✓ Recorded' : (loan.propertyPhotos?.some(p => p.type === 'video') ? '✓ Recorded' : 'Not recorded')} fieldKey="houseVideoUri" />
         <Row label="Photos Uploaded" value={loan.propertyPhotos?.length ? `${loan.propertyPhotos.length} item(s)` : ''} fieldKey="propertyPhotos" />
-        <Row label="Docs Uploaded" value={loan.propertyDocs?.length ? `${loan.propertyDocs.length} doc(s)` : ''} fieldKey="propertyDocs" />
+        <Row label="Documents Uploaded" value={loan.propertyDocs?.length ? `${loan.propertyDocs.length} doc(s)` : ''} fieldKey="propertyDocs" />
       </View>
 
       <View style={rv.card}>
@@ -119,10 +122,13 @@ export default function LoanDetailsView({ loan }) {
           <Ionicons name="cash" size={18} color={colors.dark} />
           <Text style={rv.section}>Loan Request</Text>
         </View>
-        <Row label="Requested Amount" value={loan.loanAmount ? `₹${loan.loanAmount.toLocaleString('en-IN')}` : ''} fieldKey="loanAmount" />
-        <Row label="Purpose" value={loan.loanPurpose} fieldKey="loanPurpose" />
-        <Row label="Repayment Tenure" value={loan.repaymentMonths ? `${loan.repaymentMonths} months` : ''} fieldKey="repaymentMonths" />
-        <Row label="Additional Notes" value={loan.notes} fieldKey="notes" />
+        <Row label="Requested Loan Amount" value={loan.loanAmount ? `₹${loan.loanAmount.toLocaleString('en-IN')}` : ''} fieldKey="loanAmount" />
+        <Row label="Purpose Of Loan" value={loan.loanPurpose} fieldKey="loanPurpose" />
+        <Row label="Requested Loan Tenure" value={loan.repaymentMonths ? `${loan.repaymentMonths} months` : ''} fieldKey="repaymentMonths" />
+        <Row label="Loan Details Remark" value={loan.loanRemark || loan.remarks?.loan || loan.notes} fieldKey="loanRemark" />
+        {loan.notes && loan.notes !== loan.loanRemark && (
+          <Row label="Additional Notes" value={loan.notes} fieldKey="notes" />
+        )}
       </View>
 
       {['approved', 'active', 'completed'].includes(loan.status) && (

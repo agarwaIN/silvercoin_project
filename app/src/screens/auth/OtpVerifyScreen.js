@@ -104,20 +104,20 @@ export default function OtpVerifyScreen({ route, navigation }) {
     <View style={{flex:1}}>
       <StatusBar barStyle={'light-content'} translucent={true} backgroundColor={"green"} />
     {/* <SafeAreaView style={styles.safe}> */}
-      <Header title="Verify code" onBack={() => navigation.goBack()} hideDrawerMenu />
+      <Header title="Verify Code" onBack={() => navigation.goBack()} hideDrawerMenu />
       <KeyboardFormWrapper contentContainerStyle={styles.scroll}>
-        <Text style={styles.heading}>{emailOtpDelivered ? 'Check your mobile & email' : 'Check your mobile'}</Text>
+        <Text style={styles.heading}>{emailOtpDelivered ? 'Check Your Mobile & Email' : 'Check Your Mobile'}</Text>
         <Text style={styles.subheading}>{otpHint()}</Text>
 
         {devOtp ? (
           <View style={styles.devBanner}>
-            <Text style={styles.devBannerLabel}>Your verification code</Text>
+            <Text style={styles.devBannerLabel}>Your Verification Code</Text>
             <Text style={styles.devBannerCode}>{devOtp}</Text>
           </View>
         ) : null}
 
         <Input
-          label="One-time code"
+          label="One-Time Code"
           value={otp}
           onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
           keyboardType="number-pad"
@@ -128,11 +128,11 @@ export default function OtpVerifyScreen({ route, navigation }) {
           maxLength={6}
         />
 
-        <Button title="Verify & sign in" onPress={handleVerify} loading={loading} style={styles.btn} />
+        <Button title="Verify & Sign In" onPress={handleVerify} loading={loading} style={styles.btn} />
 
         <TouchableOpacity onPress={handleResend} disabled={resending} style={styles.resend}>
           <Text style={styles.resendText}>
-            {resending ? 'Sending…' : "Didn't get it? Resend code"}
+            {resending ? 'Sending…' : "Didn't receive code? Resend Code"}
           </Text>
         </TouchableOpacity>
       </KeyboardFormWrapper>

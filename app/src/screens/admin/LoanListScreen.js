@@ -63,7 +63,7 @@ export default function AdminLoanListScreen({ navigation }) {
         <Ionicons name="search-outline" size={20} color={colors.muted} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search owner name or loan ID"
+          placeholder="Search Owner Name Or Loan ID"
           placeholderTextColor={colors.muted}
           value={search}
           onChangeText={setSearch}
@@ -155,7 +155,7 @@ export default function AdminLoanListScreen({ navigation }) {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="document-outline" size={48} color={colors.border} />
-            <Text style={styles.emptyText}>No loans match your filters</Text>
+            <Text style={styles.emptyText}>No Loans Match Your Filters</Text>
           </View>
         }
       />

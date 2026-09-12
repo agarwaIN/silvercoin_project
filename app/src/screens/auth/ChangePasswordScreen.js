@@ -177,7 +177,7 @@ export default function ChangePasswordScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.safe}>
       {fromSettings ? (
-        <Header title="Change password" onBack={() => navigation.goBack()} hideDrawerMenu />
+        <Header title="Change Password" onBack={() => navigation.goBack()} hideDrawerMenu />
       ) : null}
       <KeyboardFormWrapper contentContainerStyle={styles.scroll}>
         <View style={styles.hero}>
@@ -200,12 +200,12 @@ export default function ChangePasswordScreen({ navigation, route }) {
               <>
                 {devOtp ? (
                   <View style={styles.devBanner}>
-                    <Text style={styles.devBannerLabel}>Your verification code</Text>
+                    <Text style={styles.devBannerLabel}>Your Verification Code</Text>
                     <Text style={styles.devBannerCode}>{devOtp}</Text>
                   </View>
                 ) : null}
                 <Input
-                  label="Mobile verification code"
+                  label="Mobile Verification Code"
                   value={otp}
                   onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
                   keyboardType="number-pad"
@@ -220,7 +220,7 @@ export default function ChangePasswordScreen({ navigation, route }) {
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
-              placeholder="6–32 characters"
+              placeholder="Enter 6–32 Characters"
               error={errors.newPassword}
             />
             <Input
@@ -228,7 +228,7 @@ export default function ChangePasswordScreen({ navigation, route }) {
               value={confirm}
               onChangeText={setConfirm}
               secureTextEntry
-              placeholder="Re-enter password"
+              placeholder="Re-Enter Password"
               error={errors.confirm}
             />
             <Button
@@ -239,7 +239,7 @@ export default function ChangePasswordScreen({ navigation, route }) {
             />
             {!isFirstLogin ? (
               <TouchableOpacity onPress={handleResend} disabled={resending} style={styles.resend}>
-                <Text style={styles.resendText}>{resending ? 'Sending…' : 'Resend mobile code'}</Text>
+                <Text style={styles.resendText}>{resending ? 'Sending…' : 'Resend Mobile Code'}</Text>
               </TouchableOpacity>
             ) : null}
           </View>

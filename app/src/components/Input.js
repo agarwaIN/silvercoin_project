@@ -8,6 +8,11 @@ export default function Input({ label, error, secureTextEntry, multiline, style,
   const [visible, setVisible] = useState(false);
   const isPassword = secureTextEntry !== undefined;
 
+  const isEmailOrPhone = props.keyboardType === 'email-address' || props.keyboardType === 'phone-pad' || props.keyboardType === 'numeric';
+  const autoCap = props.autoCapitalize !== undefined
+    ? props.autoCapitalize
+    : (isPassword || isEmailOrPhone ? 'none' : (multiline ? 'sentences' : 'words'));
+
   return (
     <View style={[styles.wrapper, style]}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
@@ -18,6 +23,7 @@ export default function Input({ label, error, secureTextEntry, multiline, style,
           secureTextEntry={isPassword && !visible}
           multiline={multiline}
           textAlignVertical={multiline ? 'top' : 'auto'}
+          autoCapitalize={autoCap}
           {...props}
         />
         {isPassword && (

@@ -130,12 +130,12 @@ export default function RightMenuModal({
             style={styles.logoutRow}
             onPress={onLogout}
             activeOpacity={0.65}
-            accessibilityLabel="Log out"
+            accessibilityLabel="Log Out"
           >
             <View style={styles.logoutIconWrap}>
               <Ionicons name="log-out-outline" size={18} color={colors.error} />
             </View>
-            <Text style={styles.logoutLabel}>Log out</Text>
+            <Text style={styles.logoutLabel}>Log Out</Text>
           </TouchableOpacity>
         </View>
       </View>

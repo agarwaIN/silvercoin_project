@@ -55,7 +55,7 @@ export default function CreateAdminScreen({ navigation }) {
           </Text>
           <Input label="Full Name" value={name} onChangeText={setName} placeholder="Admin Name" error={errors.name} />
           <Input label="Email Address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="admin@company.com" error={errors.email} />
-          <Input label="Mobile number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="9876543210" error={errors.mobile} />
+          <Input label="Mobile Number" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="9876543210" error={errors.mobile} />
           <Button title="Create Admin" onPress={handle} loading={loading} style={styles.btn} />
       </KeyboardFormWrapper>
     </View>

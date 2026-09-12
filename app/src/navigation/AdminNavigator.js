@@ -65,7 +65,7 @@ function AdminMainLayout() {
       },
       {
         key: 'password',
-        label: 'Change password',
+        label: 'Change Password',
         icon: 'key-outline',
         onPress: () => navigation.navigate('ChangePassword', { fromSettings: true }),
       },

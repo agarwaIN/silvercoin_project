@@ -314,52 +314,52 @@ router.post('/create-recovery-agent', (req, res) => {
 });
 
 router.get('/loans/:loanId/media-preview', async (req, res) => {
-  const loan = await db.getLoanById(req.params.loanId);
-  if (!loan) return res.status(404).json({ message: 'Loan not found' });
-  
-  const urls = [];
-  const seenKeys = new Set();
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    
+    const urls = [];
+    const seenKeys = new Set();
 
-  if (loan.videoUri) {
-    urls.push({ type: 'video', name: 'Owner Verification Video', url: await getPresignedUrl(loan.videoUri) });
-    seenKeys.add(loan.videoUri);
-  }
-  if (loan.houseVideoUri && !seenKeys.has(loan.houseVideoUri)) {
-    urls.push({ type: 'video', name: 'House Video', url: await getPresignedUrl(loan.houseVideoUri) });
-    seenKeys.add(loan.houseVideoUri);
-  }
-  if (Array.isArray(loan.videos)) {
-    for (const v of loan.videos) {
-      if (v.uri && !seenKeys.has(v.uri)) {
-        urls.push({ type: 'video', name: v.name || 'Property / Verification Video', url: await getPresignedUrl(v.uri) });
-        seenKeys.add(v.uri);
+    const addMediaUrl = async (type, name, uri, extra = {}) => {
+      if (!uri || seenKeys.has(uri)) return;
+      try {
+        const url = await getPresignedUrl(uri);
+        if (url) {
+          urls.push({ type, name, url, ...extra });
+          seenKeys.add(uri);
+        }
+      } catch (e) {
+        console.warn('Failed to generate presigned URL for', uri, e.message);
+      }
+    };
+
+    if (loan.videoUri) await addMediaUrl('video', 'Owner Verification Video', loan.videoUri);
+    if (loan.houseVideoUri) await addMediaUrl('video', 'House Video', loan.houseVideoUri);
+    if (Array.isArray(loan.videos)) {
+      for (const v of loan.videos) {
+        if (v && v.uri) await addMediaUrl('video', v.name || 'Property / Verification Video', v.uri);
       }
     }
-  }
-  if (loan.propertyPhotos) {
-    for (const p of loan.propertyPhotos) {
-      if (p.uri && !seenKeys.has(p.uri)) {
-        const isVid = p.type === 'video' || (typeof p.uri === 'string' && p.uri.toLowerCase().endsWith('.mp4'));
-        urls.push({
-          type: isVid ? 'video' : 'photo',
-          name: isVid ? 'House / Property Video' : 'Property Photo',
-          url: await getPresignedUrl(p.uri),
-        });
-        seenKeys.add(p.uri);
+    if (Array.isArray(loan.propertyPhotos)) {
+      for (const p of loan.propertyPhotos) {
+        if (p && p.uri) {
+          const isVid = p.type === 'video' || (typeof p.uri === 'string' && p.uri.toLowerCase().endsWith('.mp4'));
+          await addMediaUrl(isVid ? 'video' : 'photo', isVid ? 'House / Property Video' : 'Property Photo', p.uri);
+        }
       }
     }
-  }
-  if (loan.propertyDocs) {
-    for (const d of loan.propertyDocs) {
-      if (d.uri) {
-        urls.push({ type: 'document', name: d.name || 'Property Document', docType: d.docType, date: d.date, url: await getPresignedUrl(d.uri) });
+    if (Array.isArray(loan.propertyDocs)) {
+      for (const d of loan.propertyDocs) {
+        if (d && d.uri) await addMediaUrl('document', d.name || 'Property Document', d.uri, { docType: d.docType, date: d.date });
       }
     }
+    if (loan.agreementUri) await addMediaUrl('document', 'Loan Agreement', loan.agreementUri);
+    res.json(urls);
+  } catch (err) {
+    console.error('Error in /admin/loans/:loanId/media-preview:', err);
+    res.json([]);
   }
-  if (loan.agreementUri) {
-    urls.push({ type: 'document', name: 'Loan Agreement', url: await getPresignedUrl(loan.agreementUri) });
-  }
-  res.json(urls);
 });
 
 router.post('/loans/:loanId/initial-approve', async (req, res) => {

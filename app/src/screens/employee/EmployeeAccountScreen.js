@@ -88,8 +88,8 @@ export default function EmployeeAccountScreen({ navigation }) {
             </>
           ) : null}
 
-          <Text style={styles.section}>Your name</Text>
-          <Input label="Display name" value={name} onChangeText={setName} placeholder="Your name" error={errors.name} />
+          <Text style={styles.section}>Your Name</Text>
+          <Input label="Display Name" value={name} onChangeText={setName} placeholder="Your Name" error={errors.name} />
           <Button title="Save" onPress={save} loading={saving} style={styles.btn} />
 
           <Text style={[styles.section, styles.sectionSpaced]}>Account</Text>
@@ -100,7 +100,7 @@ export default function EmployeeAccountScreen({ navigation }) {
           <Text style={styles.lockNote}>Email and mobile cannot be changed here.</Text>
 
           <Button
-            title="Change password"
+            title="Change Password"
             onPress={() => navigation.navigate('ChangePassword', { fromSettings: true })}
             style={styles.btnSpaced}
           />

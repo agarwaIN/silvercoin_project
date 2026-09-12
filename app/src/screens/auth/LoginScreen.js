@@ -122,7 +122,7 @@ export default function LoginScreen({ navigation }) {
 
           <View style={styles.form}>
             <Text style={styles.heading}>Welcome Back</Text>
-            <Text style={styles.subheading}>Sign in to your account</Text>
+            <Text style={styles.subheading}>Sign In To Your Account</Text>
 
             <View style={styles.roleTabs}>
               {['superadmin', 'admin', 'employee'].map((r) => (
@@ -153,17 +153,17 @@ export default function LoginScreen({ navigation }) {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              placeholder="Enter your password"
+              placeholder="Enter Your Password"
               error={errors.password}
             />
 
-            <Button title="Sign in" onPress={handleLogin} loading={loading} style={styles.btn} />
+            <Button title="Sign In" onPress={handleLogin} loading={loading} style={styles.btn} />
 
             <TouchableOpacity
               onPress={() => navigation.navigate('ForgotPassword')}
               style={styles.forgot}
             >
-              <Text style={styles.forgotText}>Forgot password?</Text>
+              <Text style={styles.forgotText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
       </KeyboardFormWrapper>

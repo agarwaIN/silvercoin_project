@@ -13,7 +13,7 @@ router.get('/download', async (req, res) => {
 
   let decoded;
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
+    decoded = jwt.verify(token, process.env.JWT_SECRET || 'silvercoin_secret_key_default');
   } catch {
     return res.status(401).json({ message: 'Invalid or expired token' });
   }

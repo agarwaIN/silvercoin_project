@@ -91,7 +91,7 @@ export default function ForgotPasswordScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <Header
-        title="Forgot password"
+        title="Forgot Password"
         onBack={() => navigation.goBack()}
         hideDrawerMenu
         hideBrandLogo
@@ -101,7 +101,7 @@ export default function ForgotPasswordScreen({ navigation }) {
       <KeyboardFormWrapper contentContainerStyle={styles.scroll}>
         {step === 1 ? (
           <View style={styles.form}>
-            <Text style={styles.heading}>Reset your password</Text>
+            <Text style={styles.heading}>Reset Your Password</Text>
             <Text style={styles.subheading}>
               Enter your registered mobile number. We will send a verification code by SMS.
             </Text>
@@ -114,11 +114,11 @@ export default function ForgotPasswordScreen({ navigation }) {
               placeholder="9876543210"
               error={errors.mobile}
             />
-            <Button title="Send verification code" onPress={handleRequestOtp} loading={loading} />
+            <Button title="Send Verification Code" onPress={handleRequestOtp} loading={loading} />
           </View>
         ) : (
           <View style={styles.form}>
-            <Text style={styles.heading}>Verify mobile</Text>
+            <Text style={styles.heading}>Verify Mobile</Text>
             <Text style={styles.subheading}>
               {devOtp
                 ? 'Local development: use the code shown below.'
@@ -126,12 +126,12 @@ export default function ForgotPasswordScreen({ navigation }) {
             </Text>
             {devOtp ? (
               <View style={styles.devBanner}>
-                <Text style={styles.devBannerLabel}>Your verification code</Text>
+                <Text style={styles.devBannerLabel}>Your Verification Code</Text>
                 <Text style={styles.devBannerCode}>{devOtp}</Text>
               </View>
             ) : null}
             <Input
-              label="Verification code"
+              label="Verification Code"
               value={otp}
               onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
               keyboardType="number-pad"
@@ -144,7 +144,7 @@ export default function ForgotPasswordScreen({ navigation }) {
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
-              placeholder="6–32 characters"
+              placeholder="Enter 6–32 Characters"
               error={errors.newPassword}
             />
             <Input
@@ -152,12 +152,12 @@ export default function ForgotPasswordScreen({ navigation }) {
               value={confirm}
               onChangeText={setConfirm}
               secureTextEntry
-              placeholder="Re-enter password"
+              placeholder="Re-Enter Password"
               error={errors.confirm}
             />
-            <Button title="Reset password" onPress={handleReset} loading={loading} style={{ marginTop: 8 }} />
+            <Button title="Reset Password" onPress={handleReset} loading={loading} style={{ marginTop: 8 }} />
             <TouchableOpacity onPress={handleResend} disabled={resending} style={styles.resend}>
-              <Text style={styles.resendText}>{resending ? 'Sending…' : 'Resend code'}</Text>
+              <Text style={styles.resendText}>{resending ? 'Sending…' : 'Resend Code'}</Text>
             </TouchableOpacity>
           </View>
         )}
