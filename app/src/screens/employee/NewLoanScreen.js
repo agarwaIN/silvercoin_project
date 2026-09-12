@@ -241,7 +241,7 @@ const openDoc = async (uri) => {
 };
 
 // ─── STEP 1: Owner & Verification ─────────────────────────────────────────────
-function Step1({ data, setData, loanId, setLoanId }) {
+function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
   const [ifscLoading, setIfscLoading] = useState(false);
   const [ownerUploading, setOwnerUploading] = useState(false);
   const [houseUploading, setHouseUploading] = useState(false);
@@ -313,11 +313,12 @@ function Step1({ data, setData, loanId, setLoanId }) {
       setData(d => ({ ...d, videoUri: uri, videoUploaded: false }));
     }
 
-    let activeLoanId = loanId;
+    let activeLoanId = loanIdRef?.current || loanId;
     if (!activeLoanId && setLoanId) {
       try {
         const created = await createLoan();
         activeLoanId = created.loanId;
+        if (loanIdRef) loanIdRef.current = activeLoanId;
         setLoanId(activeLoanId);
       } catch (cErr) {
         console.warn('Auto createLoan on video capture failed:', cErr);
@@ -494,7 +495,7 @@ const STANDARD_PROPERTY_DOCS = [
 ];
 
 // ─── STEP 2: Property Details ──────────────────────────────────────────────────
-function Step2({ data, setData, loanId, setLoanId }) {
+function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
   const [locLoading, setLocLoading] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
@@ -536,11 +537,12 @@ function Step2({ data, setData, loanId, setLoanId }) {
             const allPhotos = [...(data.propertyPhotos || []), ...newItems].slice(0, 15);
             setData(d => ({ ...d, propertyPhotos: allPhotos }));
 
-            let activeLoanId = loanId;
+            let activeLoanId = loanIdRef?.current || loanId;
             if (!activeLoanId && setLoanId) {
               try {
                 const created = await createLoan();
                 activeLoanId = created.loanId;
+                if (loanIdRef) loanIdRef.current = activeLoanId;
                 setLoanId(activeLoanId);
               } catch (cErr) {
                 console.warn('Auto createLoan on photo upload failed:', cErr);
@@ -590,11 +592,12 @@ function Step2({ data, setData, loanId, setLoanId }) {
             const updated = [...(data.propertyPhotos || []), newItem].slice(0, 15);
             setData(d => ({ ...d, propertyPhotos: updated }));
 
-            let activeLoanId = loanId;
+            let activeLoanId = loanIdRef?.current || loanId;
             if (!activeLoanId && setLoanId) {
               try {
                 const created = await createLoan();
                 activeLoanId = created.loanId;
+                if (loanIdRef) loanIdRef.current = activeLoanId;
                 setLoanId(activeLoanId);
               } catch (cErr) {
                 console.warn('Auto createLoan on camera photo failed:', cErr);
@@ -724,22 +727,37 @@ function Step2({ data, setData, loanId, setLoanId }) {
       mimeType: pickedAsset.mimeType || 'application/pdf',
     };
 
-    // Filter existing matching standard doc or append new doc
+    // Smart appending: advance to next registry slot if previous slot already exists!
     setData(d => {
       const existingDocs = d.propertyDocs || [];
-      const updated = effectiveDocType === 'Custom Document'
-        ? [...existingDocs, newDoc]
-        : [...existingDocs.filter(doc => doc.docType !== effectiveDocType && doc.name !== effectiveDocType && getStandardDocTitle(doc) !== effectiveDocType), newDoc];
+      let docTypeToAssign = effectiveDocType;
+      if (docTypeToAssign === 'Property Registry - 1' && existingDocs.some(doc => doc.docType === 'Property Registry - 1')) {
+        if (!existingDocs.some(doc => doc.docType === 'Property Registry - 2')) {
+          docTypeToAssign = 'Property Registry - 2';
+        } else if (!existingDocs.some(doc => doc.docType === 'Property Registry - 3')) {
+          docTypeToAssign = 'Property Registry - 3';
+        }
+      } else if (docTypeToAssign === 'Property Registry - 2' && existingDocs.some(doc => doc.docType === 'Property Registry - 2')) {
+        if (!existingDocs.some(doc => doc.docType === 'Property Registry - 3')) {
+          docTypeToAssign = 'Property Registry - 3';
+        }
+      }
+      newDoc.docType = docTypeToAssign;
+      const isIntentionalStdReplace = selectedDocType !== 'Custom Document' && existingDocs.some(doc => doc.docType === docTypeToAssign);
+      const updated = isIntentionalStdReplace
+        ? [...existingDocs.filter(doc => doc.docType !== docTypeToAssign), newDoc]
+        : [...existingDocs, newDoc];
       return { ...d, propertyDocs: updated };
     });
 
     setModalVisible(false);
 
-    let activeLoanId = loanId;
+    let activeLoanId = loanIdRef?.current || loanId;
     if (!activeLoanId && setLoanId) {
       try {
         const created = await createLoan();
         activeLoanId = created.loanId;
+        if (loanIdRef) loanIdRef.current = activeLoanId;
         setLoanId(activeLoanId);
       } catch (cErr) {
         console.warn('Auto createLoan on doc upload failed:', cErr);
@@ -1605,6 +1623,12 @@ export default function NewLoanScreen({ route, navigation }) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loanId, setLoanId] = useState(existingLoan?.loanId || null);
+  const loanIdRef = useRef(existingLoan?.loanId || null);
+
+  const setLoanIdSynced = (id) => {
+    loanIdRef.current = id;
+    setLoanId(id);
+  };
   const scrollRef = useRef(null);
 
   const [formData, setFormData] = useState({
@@ -1770,10 +1794,11 @@ export default function NewLoanScreen({ route, navigation }) {
 
     setLoading(true);
     try {
-      let currentLoanId = loanId;
+      let currentLoanId = loanIdRef.current || loanId;
       if (!currentLoanId) {
         const loan = await createLoan();
         currentLoanId = loan.loanId;
+        loanIdRef.current = currentLoanId;
         setLoanId(currentLoanId);
       }
       if (step === 0) {
@@ -1930,8 +1955,16 @@ export default function NewLoanScreen({ route, navigation }) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      let currentLoanId = loanIdRef.current || loanId;
+      if (!currentLoanId) {
+        const created = await createLoan();
+        currentLoanId = created.loanId;
+        loanIdRef.current = currentLoanId;
+        setLoanId(currentLoanId);
+      }
+
       // Ensure pending videos are uploaded before final submit
-      if (formData.videoUri && !formData.videoUploaded && loanId) {
+      if (formData.videoUri && !formData.videoUploaded && currentLoanId) {
         try {
           const fd = new FormData();
           fd.append('videoType', 'owner');
@@ -1941,13 +1974,13 @@ export default function NewLoanScreen({ route, navigation }) {
             name: 'owner_video.mp4',
             type: 'video/mp4'
           });
-          await uploadVideo(loanId, fd, 'owner', 'Owner Verification Video');
+          await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
           setFormData(d => ({ ...d, videoUploaded: true }));
         } catch (vErr) {
           console.warn('Submit owner video upload error:', vErr);
         }
       }
-      if (formData.houseVideoUri && !formData.houseVideoUploaded && loanId) {
+      if (formData.houseVideoUri && !formData.houseVideoUploaded && currentLoanId) {
         try {
           const fdHouse = new FormData();
           fdHouse.append('videoType', 'house');
@@ -1957,7 +1990,7 @@ export default function NewLoanScreen({ route, navigation }) {
             name: 'house_video.mp4',
             type: 'video/mp4'
           });
-          await uploadVideo(loanId, fdHouse, 'house', 'House / Property Video');
+          await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
           setFormData(d => ({ ...d, houseVideoUploaded: true }));
         } catch (hErr) {
           console.warn('Submit house video upload error:', hErr);
@@ -1965,7 +1998,7 @@ export default function NewLoanScreen({ route, navigation }) {
       }
       // Ensure pending photos are uploaded before final submit
       const pendingPhotos = (formData.propertyPhotos || []).filter(p => !p.uploaded && p.uri);
-      if (pendingPhotos.length > 0 && loanId) {
+      if (pendingPhotos.length > 0 && currentLoanId) {
         try {
           const fdPhotos = new FormData();
           pendingPhotos.forEach((item, i) => {
@@ -1976,7 +2009,7 @@ export default function NewLoanScreen({ route, navigation }) {
               type: isVid ? 'video/mp4' : 'image/jpeg'
             });
           });
-          await uploadPropertyPhotos(loanId, fdPhotos);
+          await uploadPropertyPhotos(currentLoanId, fdPhotos);
           setFormData(d => ({
             ...d,
             propertyPhotos: (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
@@ -1987,7 +2020,7 @@ export default function NewLoanScreen({ route, navigation }) {
       }
       // Ensure pending documents are uploaded before final submit
       const pendingDocs = (formData.propertyDocs || []).filter(d => !d.uploaded && d.uri);
-      if (pendingDocs.length > 0 && loanId) {
+      if (pendingDocs.length > 0 && currentLoanId) {
         for (const pDoc of pendingDocs) {
           try {
             const fdDoc = new FormData();
@@ -2001,7 +2034,7 @@ export default function NewLoanScreen({ route, navigation }) {
             fdDoc.append('docType', effectiveDocType);
             fdDoc.append('name', pDoc.name || 'Document');
             fdDoc.append('date', pDoc.date || formatDate(new Date()));
-            await uploadRegistryDocument(loanId, fdDoc, {
+            await uploadRegistryDocument(currentLoanId, fdDoc, {
               docType: effectiveDocType,
               name: pDoc.name || 'Document',
               date: pDoc.date || formatDate(new Date()),
@@ -2015,7 +2048,12 @@ export default function NewLoanScreen({ route, navigation }) {
           }
         }
       }
-      await submitLoan(loanId);
+      // Final submit with full media payload
+      await submitLoan(currentLoanId, {
+        videoUri: formData.videoUri,
+        houseVideoUri: formData.houseVideoUri,
+        propertyDocs: formData.propertyDocs,
+      });
       showAlert('Submitted!', 'Loan application submitted successfully.');
       navigation.goBack();
     } catch (err) {
@@ -2048,10 +2086,10 @@ export default function NewLoanScreen({ route, navigation }) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 40 }}
       >
-        {step === 0 && <Step1 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanId} />}
-        {step === 1 && <Step2 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanId} />}
+        {step === 0 && <Step1 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanIdSynced} loanIdRef={loanIdRef} />}
+        {step === 1 && <Step2 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanIdSynced} loanIdRef={loanIdRef} />}
         {step === 2 && <Step3 data={formData} setData={setFormData} />}
-        {step === 3 && <Step4 data={formData} loanId={loanId} />}
+        {step === 3 && <Step4 data={formData} loanId={loanIdRef.current || loanId} />}
       </ScrollView>
 
       {/* Footer — Back + Next/Submit side by side with Android navigation safe area */}

@@ -14,7 +14,7 @@ export const uploadRegistryDocument = (loanId, formData, meta = {}) => {
   const qs = params.length > 0 ? `?${params.join('&')}` : '';
   return api.post(`/employee/loans/${loanId}/registry-document${qs}`, formData).then((r) => r.data);
 };
-export const submitLoan = (loanId) => api.post(`/employee/loans/${loanId}/submit`).then((r) => r.data);
+export const submitLoan = (loanId, payload = {}) => api.post(`/employee/loans/${loanId}/submit`, payload).then((r) => r.data);
 export const getLoanPdf = (loanId) => api.get(`/employee/loans/${loanId}/pdf`).then((r) => r.data);
 
 export const getLoanMediaPreview = (loanId) =>

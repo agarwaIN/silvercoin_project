@@ -101,7 +101,44 @@ router.post('/loans/:loanId/submit', async (req, res) => {
   if (!loan || !isEmp) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  await db.updateLoan(loan.loanId, { status: 'submitted', updatedAt: new Date().toISOString() });
+
+  const updates = { status: 'submitted', updatedAt: new Date().toISOString() };
+
+  // Safety merge: if body provides any media or document records that are missing in DB, merge them in!
+  if (req.body) {
+    const isValidKey = (u) => typeof u === 'string' && u.trim() && !u.startsWith('file:') && !u.startsWith('content:');
+    if (req.body.videoUri && !loan.videoUri && isValidKey(req.body.videoUri)) updates.videoUri = req.body.videoUri;
+    if (req.body.houseVideoUri && !loan.houseVideoUri && isValidKey(req.body.houseVideoUri)) updates.houseVideoUri = req.body.houseVideoUri;
+    if (Array.isArray(req.body.videos) && req.body.videos.length > 0) {
+      const existingVids = Array.isArray(loan.videos) ? [...loan.videos] : [];
+      for (const v of req.body.videos) {
+        if (v && isValidKey(v.uri) && !existingVids.some(ev => ev.uri === v.uri || ev.videoType === v.videoType)) {
+          existingVids.push(v);
+        }
+      }
+      updates.videos = existingVids;
+    }
+    if (Array.isArray(req.body.propertyDocs) && req.body.propertyDocs.length > 0) {
+      const existingDocs = Array.isArray(loan.propertyDocs) ? [...loan.propertyDocs] : [];
+      for (const d of req.body.propertyDocs) {
+        const docUri = d.serverKey || (isValidKey(d.uri) ? d.uri : null);
+        if (docUri && !existingDocs.some(ed => ed.uri === docUri)) {
+          existingDocs.push({
+            id: d.id || Date.now().toString(),
+            uri: docUri,
+            docType: d.docType || 'Custom Document',
+            name: d.name || 'Document',
+            date: d.date || new Date().toISOString().split('T')[0],
+            uploaded: true,
+            mimeType: d.mimeType || 'application/pdf',
+          });
+        }
+      }
+      updates.propertyDocs = existingDocs;
+    }
+  }
+
+  await db.updateLoan(loan.loanId, updates);
   res.json(await db.getLoanById(loan.loanId));
 });
 
@@ -260,11 +297,26 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
     mimeType: req.file.mimetype || 'application/octet-stream'
   };
 
-  // If this docType is a standard doc, replace only prior entry with identical standard docType, else append
-  const isStd = docType && docType !== 'Custom Document';
-  const filtered = isStd
-    ? existingDocs.filter(d => (d.docType || '').trim().toLowerCase() !== docType.trim().toLowerCase())
-    : existingDocs;
+  // Smart slotting & deduplication:
+  // If the same standard docType already exists (e.g. two "Property Registry - 1"),
+  // automatically advance to "Property Registry - 2" (or "Property Registry - 3") so no uploaded document is ever overwritten or lost!
+  let assignedDocType = docType;
+  if (docType === 'Property Registry - 1' && existingDocs.some(d => d.docType === 'Property Registry - 1')) {
+    if (!existingDocs.some(d => d.docType === 'Property Registry - 2')) {
+      assignedDocType = 'Property Registry - 2';
+    } else if (!existingDocs.some(d => d.docType === 'Property Registry - 3')) {
+      assignedDocType = 'Property Registry - 3';
+    }
+  } else if (docType === 'Property Registry - 2' && existingDocs.some(d => d.docType === 'Property Registry - 2')) {
+    if (!existingDocs.some(d => d.docType === 'Property Registry - 3')) {
+      assignedDocType = 'Property Registry - 3';
+    }
+  }
+
+  newDocEntry.docType = assignedDocType;
+
+  // Append new document without deleting any other document!
+  const filtered = existingDocs.filter(d => d.uri !== key);
   filtered.push(newDocEntry);
 
   await db.updateLoan(loan.loanId, { propertyDocs: filtered });
@@ -307,10 +359,18 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
 
-  const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase();
-  const rawName = (req.query.name || req.body.name || req.file.originalname || '').toLowerCase();
-  const isHouse = rawType === 'house' || rawType.includes('property') || rawType.includes('walkthrough') || rawName.includes('house') || rawName.includes('property');
-  const videoType = isHouse ? 'house' : 'owner';
+  const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase().trim();
+  const rawName = (req.query.name || req.body.name || req.file.originalname || '').toLowerCase().trim();
+  
+  let videoType = 'owner';
+  if (rawType === 'house' || rawType === 'property') {
+    videoType = 'house';
+  } else if (rawType === 'owner') {
+    videoType = 'owner';
+  } else if (rawType.includes('house') || rawType.includes('walkthrough') || rawName.includes('house') || (rawName.includes('property') && !rawName.includes('owner'))) {
+    videoType = 'house';
+  }
+  const isHouse = videoType === 'house';
   const label = isHouse ? 'House / Property Video' : 'Owner Verification Video';
 
   const key = `loans/${loan.loanId}/${videoType}_video_${Date.now()}.mp4`;
@@ -335,8 +395,10 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   };
   if (isHouse) {
     updates.houseVideoUri = key;
+    if (freshLoan.videoUri) updates.videoUri = freshLoan.videoUri;
   } else {
     updates.videoUri = key;
+    if (freshLoan.houseVideoUri) updates.houseVideoUri = freshLoan.houseVideoUri;
   }
 
   await db.updateLoan(loan.loanId, updates);

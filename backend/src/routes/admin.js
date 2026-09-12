@@ -579,11 +579,26 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
     mimeType: req.file.mimetype || 'application/octet-stream'
   };
 
-  // If this docType is a standard doc, replace only prior entry with identical standard docType, else append
-  const isStd = docType && docType !== 'Custom Document';
-  const filtered = isStd
-    ? existingDocs.filter(d => (d.docType || '').trim().toLowerCase() !== docType.trim().toLowerCase())
-    : existingDocs;
+  // Smart slotting & deduplication:
+  // If the same standard docType already exists (e.g. two "Property Registry - 1"),
+  // automatically advance to "Property Registry - 2" (or "Property Registry - 3") so no uploaded document is ever overwritten or lost!
+  let assignedDocType = docType;
+  if (docType === 'Property Registry - 1' && existingDocs.some(d => d.docType === 'Property Registry - 1')) {
+    if (!existingDocs.some(d => d.docType === 'Property Registry - 2')) {
+      assignedDocType = 'Property Registry - 2';
+    } else if (!existingDocs.some(d => d.docType === 'Property Registry - 3')) {
+      assignedDocType = 'Property Registry - 3';
+    }
+  } else if (docType === 'Property Registry - 2' && existingDocs.some(d => d.docType === 'Property Registry - 2')) {
+    if (!existingDocs.some(d => d.docType === 'Property Registry - 3')) {
+      assignedDocType = 'Property Registry - 3';
+    }
+  }
+
+  newDocEntry.docType = assignedDocType;
+
+  // Append new document without deleting any other document!
+  const filtered = existingDocs.filter(d => d.uri !== key);
   filtered.push(newDocEntry);
 
   await db.updateLoan(loan.loanId, { propertyDocs: filtered });
