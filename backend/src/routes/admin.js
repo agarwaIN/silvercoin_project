@@ -323,12 +323,12 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     const seenKeys = new Set();
 
     const addMediaUrl = async (type, name, uri, extra = {}) => {
-      if (!uri || seenKeys.has(uri)) return;
+      if (!uri || seenKeys.has(`${type}_${uri}`)) return;
       try {
         const url = await getPresignedUrl(uri);
         if (url) {
           urls.push({ type, name, url, ...extra });
-          seenKeys.add(uri);
+          seenKeys.add(`${type}_${uri}`);
         }
       } catch (e) {
         console.warn('Failed to generate presigned URL for', uri, e.message);
@@ -358,20 +358,12 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     if (Array.isArray(loan.propertyDocs)) {
       for (const d of loan.propertyDocs) {
         if (d && d.uri) {
-          const isDocVid = (d.docType && d.docType.toLowerCase().includes('video')) ||
-                           (d.name && d.name.toLowerCase().includes('video')) ||
-                           (d.mimeType && d.mimeType.toLowerCase().includes('video')) ||
-                           (typeof d.uri === 'string' && d.uri.toLowerCase().endsWith('.mp4'));
-          if (isDocVid) {
-            await addMediaUrl('video', d.name || 'House / Property Video', d.uri, { videoType: 'house' });
-          } else {
-            await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, {
-              docType: d.docType,
-              date: d.date,
-              mimeType: d.mimeType,
-              id: d.id,
-            });
-          }
+          await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, {
+            docType: d.docType,
+            date: d.date,
+            mimeType: d.mimeType,
+            id: d.id,
+          });
         }
       }
     }
