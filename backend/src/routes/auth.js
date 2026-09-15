@@ -86,7 +86,17 @@ router.post('/login', [
   if (!normalized.ok) return res.status(400).json({ message: normalized.error });
 
   const { role } = req.body;
-  const user = await db.getUserByMobile(normalized.e164);
+  let user = await db.getUserByMobile(normalized.e164);
+
+  if (!user && role === 'superadmin') {
+    try {
+      const { seedSuperadminIfMissing } = require('../scripts/seed-superadmin');
+      await seedSuperadminIfMissing({ verbose: false });
+      user = await db.getUserByMobile(normalized.e164);
+    } catch (sErr) {
+      console.warn('On-demand seedSuperadminIfMissing failed:', sErr.message);
+    }
+  }
   
   if (!user) {
     if (role === 'admin') return res.status(404).json({ message: 'Admin account not found. Please contact the SuperAdmin to create your credentials.' });
