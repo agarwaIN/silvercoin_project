@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FAFAFA"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.silvercoin.loanapp",
@@ -25,7 +20,6 @@
       }
     },
     "android": {
-      "usesCleartextTraffic": true,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -67,7 +61,14 @@
       ],
       "expo-video",
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FAFAFA"
+        }
+      ],
       "expo-status-bar",
       "./plugins/withNetworkSecurity.js"
     ],
