@@ -262,8 +262,11 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
   const [ownerUploading, setOwnerUploading] = useState(false);
   const [houseUploading, setHouseUploading] = useState(false);
 
-  const ownerPlayer = useVideoPlayer(data.videoUri || null, p => { p.loop = false; });
-  const housePlayer = useVideoPlayer(data.houseVideoUri || null, p => { p.loop = false; });
+  const ownerSource = (data.localVideoUri || data.videoUri) ? resolveMediaUri(data.localVideoUri || data.videoUri) : null;
+  const houseSource = (data.localHouseVideoUri || data.houseVideoUri) ? resolveMediaUri(data.localHouseVideoUri || data.houseVideoUri) : null;
+
+  const ownerPlayer = useVideoPlayer(ownerSource, p => { p.loop = false; });
+  const housePlayer = useVideoPlayer(houseSource, p => { p.loop = false; });
 
   const fetchBankFromIFSC = async (ifsc) => {
     if (ifsc.length !== 11) { setData(d => ({ ...d, bankName: '' })); return; }
@@ -325,9 +328,9 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
     const isHouse = videoType === 'house';
     const uri = await ensureLocalFileUri(rawUri, '.mp4');
     if (isHouse) {
-      setData(d => ({ ...d, houseVideoUri: uri, houseVideoUploaded: false }));
+      setData(d => ({ ...d, houseVideoUri: uri, localHouseVideoUri: uri, houseVideoUploaded: false }));
     } else {
-      setData(d => ({ ...d, videoUri: uri, videoUploaded: false }));
+      setData(d => ({ ...d, videoUri: uri, localVideoUri: uri, videoUploaded: false }));
     }
 
     let activeLoanId = loanIdRef?.current || loanId;
@@ -357,9 +360,9 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
       });
       const res = await uploadVideo(activeLoanId, fd, videoType, isHouse ? 'House / Property Video' : 'Owner Verification Video');
       if (isHouse) {
-        setData(d => ({ ...d, houseVideoUri: res?.key || uri, houseVideoUploaded: true }));
+        setData(d => ({ ...d, houseVideoUri: res?.key || uri, localHouseVideoUri: uri, houseVideoUploaded: true }));
       } else {
-        setData(d => ({ ...d, videoUri: res?.key || uri, videoUploaded: true }));
+        setData(d => ({ ...d, videoUri: res?.key || uri, localVideoUri: uri, videoUploaded: true }));
       }
     } catch (err) {
       console.warn('Video upload error:', err);
@@ -371,9 +374,9 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
 
   const removeVideo = (videoType) => {
     if (videoType === 'house') {
-      setData(d => ({ ...d, houseVideoUri: null, houseVideoUploaded: false }));
+      setData(d => ({ ...d, houseVideoUri: null, localHouseVideoUri: null, houseVideoUploaded: false }));
     } else {
-      setData(d => ({ ...d, videoUri: null, videoUploaded: false }));
+      setData(d => ({ ...d, videoUri: null, localVideoUri: null, videoUploaded: false }));
     }
   };
 
@@ -457,13 +460,13 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
         title="Owner Verification Video"
         required
         description="Record the owner stating their name, property details, and loan purpose. Max 60 seconds."
-        videoUri={data.videoUri}
+        videoUri={data.localVideoUri || data.videoUri}
         videoUploaded={data.videoUploaded}
         player={ownerPlayer}
         onRecordOrPick={() => pickVideo('owner')}
         onRemove={() => removeVideo('owner')}
         uploading={ownerUploading}
-        uploadLabel={data.videoUri ? 'Re-Record / Replace Owner Video' : 'Record Owner Verification Video'}
+        uploadLabel={(data.localVideoUri || data.videoUri) ? 'Re-Record / Replace Owner Video' : 'Record Owner Verification Video'}
       />
 
       {/* Video 2: House / Property Video */}
@@ -471,13 +474,13 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
         title="House / Property Video"
         required
         description="Record or upload a video walkthrough of the house / property (exterior & interior). Max 60 seconds."
-        videoUri={data.houseVideoUri}
+        videoUri={data.localHouseVideoUri || data.houseVideoUri}
         videoUploaded={data.houseVideoUploaded}
         player={housePlayer}
         onRecordOrPick={() => pickVideo('house')}
         onRemove={() => removeVideo('house')}
         uploading={houseUploading}
-        uploadLabel={data.houseVideoUri ? 'Re-Record / Replace House Video' : 'Record House Walkthrough Video'}
+        uploadLabel={(data.localHouseVideoUri || data.houseVideoUri) ? 'Re-Record / Replace House Video' : 'Record House Walkthrough Video'}
       />
     </View>
   );
@@ -1633,8 +1636,10 @@ const initialFormData = {
   accountNumber: '',
   bankRemark: '',
   videoUri: null,
+  localVideoUri: null,
   videoUploaded: false,
   houseVideoUri: null,
+  localHouseVideoUri: null,
   houseVideoUploaded: false,
   propertyPhotos: [],
   propertyArea: '',
@@ -1691,8 +1696,10 @@ export default function NewLoanScreen({ route, navigation }) {
     accountNumber: existingLoan?.bankDetails?.accountNumber || '',
     bankRemark: existingLoan?.bankRemark || existingLoan?.bankDetails?.remark || existingLoan?.remarks?.bank || '',
     videoUri: existingLoan?.videoUri || null, 
+    localVideoUri: null,
     videoUploaded: !!existingLoan?.videoUri,
     houseVideoUri: existingLoan?.houseVideoUri || null,
+    localHouseVideoUri: null,
     houseVideoUploaded: !!existingLoan?.houseVideoUri,
     propertyPhotos: existingLoan?.propertyPhotos || [], 
     propertyArea: existingLoan?.propertyArea?.toString() || '', 

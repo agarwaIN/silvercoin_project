@@ -117,6 +117,12 @@ export default function LoanListScreen({ navigation }) {
                   <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
                 </View>
               </View>
+              {item.employeeName ? (
+                <View style={styles.submittedByRow}>
+                  <Ionicons name="person" size={12} color="#047857" />
+                  <Text style={styles.submittedByText}>Submitted / Filled By: <Text style={styles.submittedByName}>{item.employeeName}</Text></Text>
+                </View>
+              ) : null}
             </Card>
           </TouchableOpacity>
         )}
@@ -165,6 +171,25 @@ const styles = StyleSheet.create({
   owner: { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.text, marginTop: 2 },
   amount: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: colors.success, marginTop: 2 },
   date: { fontFamily: fonts.regular, fontSize: fontSize.xs, color: colors.muted, marginTop: 4 },
+  submittedByRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  submittedByText: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  submittedByName: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.dark,
+  },
   empty: { alignItems: 'center', marginTop: 80 },
   emptyText: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.muted, marginTop: 12 },
 });

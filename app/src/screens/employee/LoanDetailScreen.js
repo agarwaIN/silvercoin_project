@@ -108,7 +108,19 @@ export default function LoanDetailScreen({ route, navigation }) {
           <Text style={styles.label}>Status</Text>
           <StatusBadge status={loan.status} />
         </View>
-        
+
+        {['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
+          <TouchableOpacity 
+            style={styles.continueCardBtn} 
+            onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="arrow-forward-circle" size={24} color={colors.white} />
+            <Text style={styles.continueCardBtnText}>Continue Filling Application</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.white} />
+          </TouchableOpacity>
+        )}
+
         <LoanDetailsView loan={loan} />
         <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
 
@@ -138,13 +150,13 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {['saved', 'returned'].includes(loan.status) && (
+        {['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
           <TouchableOpacity 
             style={styles.editBtn} 
             onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
           >
             <Ionicons name="create-outline" size={20} color={colors.white} />
-            <Text style={styles.editBtnText}>Edit Application</Text>
+            <Text style={styles.editBtnText}>Continue Filling Application</Text>
           </TouchableOpacity>
         )}
 
@@ -212,6 +224,27 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1, padding: 16 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  continueCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#047857',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 10,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  continueCardBtnText: {
+    flex: 1,
+    fontFamily: fonts.bold,
+    fontSize: fontSize.base,
+    color: colors.white,
+  },
   label: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text },
   field: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.text, marginBottom: 8 },
   note: { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.muted, marginTop: 16 },

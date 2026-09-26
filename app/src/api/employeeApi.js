@@ -1,4 +1,4 @@
- b  import api from './index';
+import api from './index';
 
 export const getProfile = () => api.get('/employee/profile').then((r) => r.data);
 export const patchProfile = (body) => api.patch('/employee/profile', body).then((r) => r.data);

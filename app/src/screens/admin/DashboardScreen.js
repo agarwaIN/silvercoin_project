@@ -126,6 +126,13 @@ export default function AdminDashboard({ navigation }) {
                   <StatusBadge status={loan.status} />
                 </View>
 
+                {loan.employeeName ? (
+                  <View style={styles.submittedByRow}>
+                    <Ionicons name="person" size={12} color="#047857" />
+                    <Text style={styles.submittedByText}>Submitted / Filled By: <Text style={styles.submittedByName}>{loan.employeeName}</Text></Text>
+                  </View>
+                ) : null}
+
                 {hasPendingEmi && (() => {
                   const req = loan.emiChangeRequest;
                   const fields = [
@@ -273,6 +280,25 @@ const styles = StyleSheet.create({
   loanId: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: colors.dark },
   ownerName: { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.text, marginTop: 2 },
   amount: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: colors.success, marginTop: 2 },
+  submittedByRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  submittedByText: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  submittedByName: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.dark,
+  },
   emptyCard: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.muted, marginTop: 12 },
   activeBadge: { fontFamily: fonts.medium, fontSize: 10, color: colors.white, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
