@@ -46,3 +46,5 @@ export const processLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/pr
 export const returnLoan = (loanId, reason) => api.post(`/admin/loans/${loanId}/return`, { reason }).then((r) => r.data);
 export const disburseLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/disburse`, data).then((r) => r.data);
 export const approveForeclosure = (loanId) => api.post(`/admin/loans/${loanId}/approve-foreclosure`).then((r) => r.data);
+export const updateLoanDates = (loanId, data) => api.post(`/admin/loans/${loanId}/update-dates`, data).then((r) => r.data);
+

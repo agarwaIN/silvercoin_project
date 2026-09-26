@@ -23,4 +23,6 @@ export const activateUser = (userId) => api.patch(`/superadmin/users/${userId}/a
 export const deleteUser = (userId) => api.delete(`/superadmin/users/${userId}`).then((r) => r.data);
 
 export const getMediaPreview = (loanId) => api.get(`/superadmin/loans/${loanId}/media-preview`).then((r) => r.data);
+export const updateLoanDates = (loanId, data) => api.post(`/superadmin/loans/${loanId}/update-dates`, data).then((r) => r.data);
+
 

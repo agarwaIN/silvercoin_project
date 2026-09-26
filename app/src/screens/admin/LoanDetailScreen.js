@@ -6,7 +6,7 @@ import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange, processLoan, returnLoan, disburseLoan, approveForeclosure } from '../../api/adminApi';
+import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange, processLoan, returnLoan, disburseLoan, approveForeclosure, updateLoanDates } from '../../api/adminApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
@@ -34,6 +34,9 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [disburseData, setDisburseData] = useState({ date: formatDate(new Date()), amount: '', bankName: '', transactionNumber: '' });
   const [payEmiModalVisible, setPayEmiModalVisible] = useState(false);
   const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0, paymentMode: 'Cash', txnRef: '' });
+  const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
+  const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
+
 
   const load = useCallback(async () => {
     if (!loanId) {
@@ -203,6 +206,31 @@ export default function LoanDetailScreen({ route, navigation }) {
     }
   };
 
+  const handleSaveDates = async () => {
+    if (!datesData.disbursementDate && !datesData.emiStartDate) {
+      showAlert('Error', 'Please enter at least one valid date.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await updateLoanDates(loanId, datesData);
+      setEditDatesModalVisible(false);
+      await load();
+      showAlert('Success', 'Disbursement Date and EMI Start Date updated successfully.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to update dates.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleOpenEditDates = () => {
+    const defaultDisbDate = loan.disbursements?.[0]?.date || loan.disbursementDate || formatDate(new Date());
+    const defaultEmiDate = loan.emiStartDate || loan.loanStartDate || formatDate(new Date());
+    setDatesData({ disbursementDate: defaultDisbDate, emiStartDate: defaultEmiDate });
+    setEditDatesModalVisible(true);
+  };
+
   if (!loan) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
@@ -239,7 +267,8 @@ export default function LoanDetailScreen({ route, navigation }) {
           <Text style={styles.label}>Status</Text>
           <StatusBadge status={loan.status} />
         </View>
-        <LoanDetailsView loan={loan} />
+        <LoanDetailsView loan={loan} onEditDates={handleOpenEditDates} />
+
         <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
 
         {loan.status === 'submitted' && (
@@ -586,7 +615,48 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={editDatesModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Loan Dates</Text>
+            <Text style={styles.modalSubtitle}>Update Disbursement Date and EMI Schedule Start Date</Text>
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+              Disbursement Date (DD/MM/YYYY or YYYY-MM-DD)
+            </Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="e.g. 2026-10-01"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={datesData.disbursementDate}
+              onChangeText={t => setDatesData({ ...datesData, disbursementDate: t })}
+            />
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 8, marginBottom: 6 }}>
+              EMI Start Date (DD/MM/YYYY or YYYY-MM-DD)
+            </Text>
+            <TextInput
+              style={[styles.modalInputSmall, { marginBottom: 20 }]}
+              placeholder="e.g. 2026-11-01"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={datesData.emiStartDate}
+              onChangeText={t => setDatesData({ ...datesData, emiStartDate: t })}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setEditDatesModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleSaveDates} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Save Dates</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+
   );
 }
 

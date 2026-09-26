@@ -91,6 +91,31 @@ async function ensureEmiSchedule(loan) {
   }
 }
 
+/**
+ * Updates due dates of unpaid EMIs when EMI start date is changed.
+ * @param {string} loanId 
+ * @param {string} newEmiStartDate YYYY-MM-DD
+ */
+async function updateEmiScheduleDates(loanId, newEmiStartDate) {
+  if (!loanId || !newEmiStartDate) return;
+  try {
+    const currentEmis = await db.listEmiByLoan(loanId);
+    if (!currentEmis || currentEmis.length === 0) return;
+
+    const paidEmis = currentEmis.filter(e => e.status === 'paid');
+    const unpaidEmis = currentEmis.filter(e => e.status !== 'paid');
+
+    for (let i = 0; i < unpaidEmis.length; i++) {
+      const emi = unpaidEmis[i];
+      const monthOffset = paidEmis.length === 0 ? i : (paidEmis.length + i);
+      const newDueDate = monthOffset === 0 ? newEmiStartDate : addMonths(newEmiStartDate, monthOffset);
+      await db.updateEmiPayment(emi.paymentId, { dueDate: newDueDate });
+    }
+  } catch (err) {
+    console.error('Error updating EMI schedule dates:', err);
+  }
+}
+
 
 /**
  * Reschedules remaining unpaid EMIs when an EMI change is approved.
@@ -438,6 +463,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
 module.exports = {
   addMonths,
   ensureEmiSchedule,
+  updateEmiScheduleDates,
   rescheduleEmis,
   closeEmisForForeclosure,
   buildLoanRecoveryItems,

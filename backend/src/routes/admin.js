@@ -12,7 +12,22 @@ const { mobileField } = require('../utils/phoneValidator');
 const { sendCredentials } = require('../services/emailService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
-const { ensureEmiSchedule, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment } = require('../services/emiService');
+const { ensureEmiSchedule, updateEmiScheduleDates, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment } = require('../services/emiService');
+
+async function enrichLoanWithEmployeeName(loan) {
+  if (!loan) return loan;
+  let employeeName = loan.employeeName || loan.submittedByEmployeeName;
+  if (!employeeName && loan.employeeId) {
+    try {
+      const emp = await db.getUserById(loan.employeeId);
+      if (emp) {
+        employeeName = emp.name || emp.email;
+      }
+    } catch (e) {}
+  }
+  return { ...loan, employeeName: employeeName || null };
+}
+
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -105,7 +120,8 @@ router.delete('/employees/:userId', async (req, res) => {
 router.get('/loans', async (req, res) => {
   try {
     const loans = await db.listLoansByAdmin(req.user.userId);
-    res.json(loans || []);
+    const enriched = await Promise.all((loans || []).map(l => enrichLoanWithEmployeeName(l)));
+    res.json(enriched);
   } catch (err) {
     console.error('Error fetching admin loans:', err);
     res.status(500).json({ message: 'Failed to fetch loans' });
@@ -119,7 +135,8 @@ router.get('/loans/:loanId', async (req, res) => {
       return res.status(404).json({ message: 'Loan not found' });
     }
     const emis = await ensureEmiSchedule(loan);
-    res.json({ ...loan, emis });
+    const enriched = await enrichLoanWithEmployeeName(loan);
+    res.json({ ...enriched, emis });
   } catch (err) {
     console.error('Error fetching loan details in /admin/loans/:loanId:', err);
     res.status(500).json({ message: err.message || 'Failed to fetch loan details' });
@@ -323,15 +340,25 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     const seenKeys = new Set();
 
     const addMediaUrl = async (type, name, uri, extra = {}) => {
-      if (!uri || seenKeys.has(`${type}_${uri}`)) return;
+      let rawUri = uri;
+      if (typeof uri === 'object' && uri !== null) {
+        rawUri = uri.uri || uri.url || uri.key || '';
+      }
+      if (!rawUri || typeof rawUri !== 'string') return;
+      const cleanUri = rawUri.trim();
+      if (!cleanUri || cleanUri.startsWith('file:') || cleanUri.startsWith('content:') || cleanUri.startsWith('blob:')) return;
+
+      const dedupeKey = `${type}_${cleanUri}`;
+      if (seenKeys.has(dedupeKey)) return;
+
       try {
-        const url = await getPresignedUrl(uri);
+        const url = await getPresignedUrl(cleanUri);
         if (url) {
           urls.push({ type, name, url, ...extra });
-          seenKeys.add(`${type}_${uri}`);
+          seenKeys.add(dedupeKey);
         }
       } catch (e) {
-        console.warn('Failed to generate presigned URL for', uri, e.message);
+        console.warn('Failed to generate presigned URL for', cleanUri, e.message);
       }
     };
 
@@ -339,30 +366,33 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri, { videoType: 'house' });
     if (Array.isArray(loan.videos)) {
       for (const v of loan.videos) {
-        if (v && v.uri) {
-          const vLabel = v.name || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
-          await addMediaUrl('video', vLabel, v.uri, { videoType: v.videoType || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
+        if (v) {
+          const vUri = typeof v === 'string' ? v : (v.uri || v.url || v.key);
+          const vLabel = (typeof v === 'object' && v.name) || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
+          await addMediaUrl('video', vLabel, vUri, { videoType: (typeof v === 'object' && v.videoType) || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
         }
       }
     }
     if (Array.isArray(loan.propertyPhotos)) {
       for (let idx = 0; idx < loan.propertyPhotos.length; idx++) {
         const p = loan.propertyPhotos[idx];
-        if (p && p.uri) {
-          const isVid = p.type === 'video' || (typeof p.uri === 'string' && (p.uri.toLowerCase().endsWith('.mp4') || p.uri.toLowerCase().includes('video')));
-          const pLabel = p.name || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
-          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, p.uri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
+        if (p) {
+          const pUri = typeof p === 'string' ? p : (p.uri || p.url || p.key);
+          const isVid = (typeof p === 'object' && p.type === 'video') || (typeof pUri === 'string' && (pUri.toLowerCase().endsWith('.mp4') || pUri.toLowerCase().includes('video')));
+          const pLabel = (typeof p === 'object' && p.name) || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
+          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, pUri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
         }
       }
     }
     if (Array.isArray(loan.propertyDocs)) {
       for (const d of loan.propertyDocs) {
-        if (d && d.uri) {
-          await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, {
-            docType: d.docType,
-            date: d.date,
-            mimeType: d.mimeType,
-            id: d.id,
+        if (d) {
+          const dUri = typeof d === 'string' ? d : (d.uri || d.url || d.key);
+          await addMediaUrl('document', (typeof d === 'object' && (d.name || d.docType)) || 'Property Document', dUri, {
+            docType: typeof d === 'object' ? d.docType : 'Document',
+            date: typeof d === 'object' ? d.date : null,
+            mimeType: typeof d === 'object' ? d.mimeType : null,
+            id: typeof d === 'object' ? d.id : null,
           });
         }
       }
@@ -374,6 +404,55 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     res.json([]);
   }
 });
+
+router.post('/loans/:loanId/update-dates', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    if (loan.adminId && loan.adminId !== req.user.userId) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { disbursementDate, emiStartDate } = req.body;
+    const updates = {};
+
+    if (disbursementDate) {
+      updates.disbursementDate = disbursementDate;
+      const disbursements = Array.isArray(loan.disbursements) ? [...loan.disbursements] : [];
+      if (disbursements.length > 0) {
+        disbursements[0] = { ...disbursements[0], date: disbursementDate };
+      } else {
+        disbursements.push({
+          date: disbursementDate,
+          amount: loan.approvedAmount || loan.loanAmount || 0,
+          bankName: 'N/A',
+          transactionNumber: 'N/A',
+        });
+      }
+      updates.disbursements = disbursements;
+    }
+
+    if (emiStartDate) {
+      updates.emiStartDate = emiStartDate;
+      updates.loanStartDate = emiStartDate;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await db.updateLoan(loan.loanId, updates);
+      if (emiStartDate) {
+        await updateEmiScheduleDates(loan.loanId, emiStartDate);
+      }
+    }
+
+    const updatedLoan = await db.getLoanById(loan.loanId);
+    const enriched = await enrichLoanWithEmployeeName(updatedLoan);
+    res.json({ message: 'Dates updated successfully', loan: enriched });
+  } catch (err) {
+    console.error('Error in /admin/loans/:loanId/update-dates:', err);
+    res.status(500).json({ message: err.message || 'Failed to update dates' });
+  }
+});
+
 
 router.post('/loans/:loanId/initial-approve', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);

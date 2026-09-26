@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { formatDate } from '../utils/date';
 import * as Location from 'expo-location';
 
-export default function LoanDetailsView({ loan }) {
+export default function LoanDetailsView({ loan, onEditDates }) {
   if (!loan) return null;
 
   const changedFields = loan.changedFields || [];
@@ -64,6 +64,7 @@ export default function LoanDetailsView({ loan }) {
         </View>
         <Row label="Application Number" value={loan.applicationNumber || loan.loanId} />
         <Row label="Loan ID" value={loan.displayLoanId || loan.officialLoanId || 'Pending Disbursement'} />
+        <Row label="Submitted / Filled By" value={loan.employeeName || loan.submittedByEmployeeName || '—'} />
         {loan.internalRemarks && <Row label="Internal Remarks" value={loan.internalRemarks} />}
         {loan.riskAssessment && <Row label="Risk Assessment" value={loan.riskAssessment} />}
       </View>
@@ -135,20 +136,35 @@ export default function LoanDetailsView({ loan }) {
         <View style={[rv.card, { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' }]}>
           <View style={[rv.headerRow, { borderBottomColor: '#D1FAE5' }]}>
             <Ionicons name="checkmark-done-circle" size={18} color="#059669" />
-            <Text style={[rv.section, { color: '#065F46' }]}>Approved Terms</Text>
+            <Text style={[rv.section, { color: '#065F46' }]}>Approved Terms & Schedule</Text>
           </View>
           <Row label="Principal Amount" value={`₹${Number(loan.approvedAmount || 0).toLocaleString('en-IN')}`} />
           <Row label="Tenure" value={`${loan.tenureMonths || 0} months`} />
           <Row label="Interest Rate" value={`${loan.interestRate || 0}% per month`} />
           <Row label="Penalty Rate" value={`${loan.penaltyRate || 0}% per day`} />
+          <Row label="Disbursement Date" value={formatDate(loan.disbursements?.[0]?.date || loan.disbursementDate) || '—'} />
+          <Row label="EMI Start Date" value={formatDate(loan.emiStartDate || loan.loanStartDate) || '—'} />
           <Row label="Total Interest" value={`₹${Number(loan.totalInterest || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`} />
           <Row label="Total Repayable" value={`₹${Number(loan.totalRepayable || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`} />
-          <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#D1FAE5', flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 14, color: '#065F46', fontWeight: 'bold' }}>Final EMI</Text>
-            <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
+          
+          <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#D1FAE5', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={{ fontSize: 12, color: '#065F46', fontWeight: 'bold' }}>Final EMI</Text>
+              <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
+            </View>
+            {onEditDates && (
+              <TouchableOpacity 
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#059669', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, gap: 4 }} 
+                onPress={onEditDates}
+              >
+                <Ionicons name="pencil" size={14} color="#FFFFFF" />
+                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Edit Dates</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       )}
+
 
       {loan.disbursements && loan.disbursements.length > 0 && (
         <View style={rv.card}>

@@ -1,4 +1,4 @@
-import api from './index';
+ b  import api from './index';
 
 export const getProfile = () => api.get('/employee/profile').then((r) => r.data);
 export const patchProfile = (body) => api.patch('/employee/profile', body).then((r) => r.data);
@@ -18,7 +18,7 @@ export const submitLoan = (loanId, payload = {}) => api.post(`/employee/loans/${
 export const getLoanPdf = (loanId) => api.get(`/employee/loans/${loanId}/pdf`).then((r) => r.data);
 
 export const getLoanMediaPreview = (loanId) =>
-  api.get(`/employee/loans/${loanId}/media-preview`).then((r) => r.data);
+  api.get(`/employee/loans/${loanId}/media-preview`).then((r) => r.data);   
 
 export const uploadPropertyPhotos = (loanId, formData) =>
   api.post(`/employee/loans/${loanId}/upload-photo`, formData).then((r) => r.data);

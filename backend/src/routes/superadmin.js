@@ -202,11 +202,25 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     const seenKeys = new Set();
 
     const addMediaUrl = async (type, name, uri, extra = {}) => {
-      if (!uri || seenKeys.has(`${type}_${uri}`)) return;
-      const url = await getPresignedUrl(uri);
-      if (url) {
-        urls.push({ type, name, url, ...extra });
-        seenKeys.add(`${type}_${uri}`);
+      let rawUri = uri;
+      if (typeof uri === 'object' && uri !== null) {
+        rawUri = uri.uri || uri.url || uri.key || '';
+      }
+      if (!rawUri || typeof rawUri !== 'string') return;
+      const cleanUri = rawUri.trim();
+      if (!cleanUri || cleanUri.startsWith('file:') || cleanUri.startsWith('content:') || cleanUri.startsWith('blob:')) return;
+
+      const dedupeKey = `${type}_${cleanUri}`;
+      if (seenKeys.has(dedupeKey)) return;
+
+      try {
+        const url = await getPresignedUrl(cleanUri);
+        if (url) {
+          urls.push({ type, name, url, ...extra });
+          seenKeys.add(dedupeKey);
+        }
+      } catch (e) {
+        console.warn('Failed to generate presigned URL for', cleanUri, e.message);
       }
     };
 
@@ -214,30 +228,33 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri, { videoType: 'house' });
     if (Array.isArray(loan.videos)) {
       for (const v of loan.videos) {
-        if (v && v.uri) {
-          const vLabel = v.name || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
-          await addMediaUrl('video', vLabel, v.uri, { videoType: v.videoType || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
+        if (v) {
+          const vUri = typeof v === 'string' ? v : (v.uri || v.url || v.key);
+          const vLabel = (typeof v === 'object' && v.name) || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
+          await addMediaUrl('video', vLabel, vUri, { videoType: (typeof v === 'object' && v.videoType) || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
         }
       }
     }
     if (Array.isArray(loan.propertyPhotos)) {
       for (let idx = 0; idx < loan.propertyPhotos.length; idx++) {
         const p = loan.propertyPhotos[idx];
-        if (p && p.uri) {
-          const isVid = p.type === 'video' || (typeof p.uri === 'string' && (p.uri.toLowerCase().endsWith('.mp4') || p.uri.toLowerCase().includes('video')));
-          const pLabel = p.name || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
-          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, p.uri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
+        if (p) {
+          const pUri = typeof p === 'string' ? p : (p.uri || p.url || p.key);
+          const isVid = (typeof p === 'object' && p.type === 'video') || (typeof pUri === 'string' && (pUri.toLowerCase().endsWith('.mp4') || pUri.toLowerCase().includes('video')));
+          const pLabel = (typeof p === 'object' && p.name) || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
+          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, pUri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
         }
       }
     }
     if (Array.isArray(loan.propertyDocs)) {
       for (const d of loan.propertyDocs) {
-        if (d && d.uri) {
-          await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, {
-            docType: d.docType,
-            date: d.date,
-            mimeType: d.mimeType,
-            id: d.id,
+        if (d) {
+          const dUri = typeof d === 'string' ? d : (d.uri || d.url || d.key);
+          await addMediaUrl('document', (typeof d === 'object' && (d.name || d.docType)) || 'Property Document', dUri, {
+            docType: typeof d === 'object' ? d.docType : 'Document',
+            date: typeof d === 'object' ? d.date : null,
+            mimeType: typeof d === 'object' ? d.mimeType : null,
+            id: typeof d === 'object' ? d.id : null,
           });
         }
       }
@@ -250,5 +267,51 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
   }
 });
 
+router.post('/loans/:loanId/update-dates', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+    const { disbursementDate, emiStartDate } = req.body;
+    const updates = {};
+
+    if (disbursementDate) {
+      updates.disbursementDate = disbursementDate;
+      const disbursements = Array.isArray(loan.disbursements) ? [...loan.disbursements] : [];
+      if (disbursements.length > 0) {
+        disbursements[0] = { ...disbursements[0], date: disbursementDate };
+      } else {
+        disbursements.push({
+          date: disbursementDate,
+          amount: loan.approvedAmount || loan.loanAmount || 0,
+          bankName: 'N/A',
+          transactionNumber: 'N/A',
+        });
+      }
+      updates.disbursements = disbursements;
+    }
+
+    if (emiStartDate) {
+      updates.emiStartDate = emiStartDate;
+      updates.loanStartDate = emiStartDate;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await db.updateLoan(loan.loanId, updates);
+      if (emiStartDate) {
+        const { updateEmiScheduleDates } = require('../services/emiService');
+        await updateEmiScheduleDates(loan.loanId, emiStartDate);
+      }
+    }
+
+    const updatedLoan = await db.getLoanById(loan.loanId);
+    res.json({ message: 'Dates updated successfully', loan: updatedLoan });
+  } catch (err) {
+    console.error('Error in /superadmin/loans/:loanId/update-dates:', err);
+    res.status(500).json({ message: err.message || 'Failed to update dates' });
+  }
+});
+
 module.exports = router;
+
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Modal, TextInput } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +9,7 @@ import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { getLoan, getMediaPreview } from '../../api/superadminApi';
+import { getLoan, getMediaPreview, updateLoanDates } from '../../api/superadminApi';
 import { formatDate } from '../../utils/date';
 
 export default function LoanDetailScreen({ route }) {
@@ -19,7 +19,11 @@ export default function LoanDetailScreen({ route }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
+  const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
   const navigation = useNavigation();
+
 
   const load = useCallback(async () => {
     if (!loanId) {
@@ -47,6 +51,29 @@ export default function LoanDetailScreen({ route }) {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const handleSaveDates = async () => {
+    if (!datesData.disbursementDate && !datesData.emiStartDate) {
+      return;
+    }
+    setProcessing(true);
+    try {
+      await updateLoanDates(loanId, datesData);
+      setEditDatesModalVisible(false);
+      await load();
+    } catch (error) {
+      console.error('Failed to update dates:', error);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleOpenEditDates = () => {
+    const defaultDisbDate = loan?.disbursements?.[0]?.date || loan?.disbursementDate || formatDate(new Date());
+    const defaultEmiDate = loan?.emiStartDate || loan?.loanStartDate || formatDate(new Date());
+    setDatesData({ disbursementDate: defaultDisbDate, emiStartDate: defaultEmiDate });
+    setEditDatesModalVisible(true);
   };
 
   if (!loan) {
@@ -112,7 +139,7 @@ export default function LoanDetailScreen({ route }) {
         </View>
 
         {/* Full Loan Details Component */}
-        <LoanDetailsView loan={loan} />
+        <LoanDetailsView loan={loan} onEditDates={handleOpenEditDates} />
 
         {/* Media & Documents Gallery Component */}
         <MediaViewer fetchMedia={() => getMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
@@ -152,7 +179,48 @@ export default function LoanDetailScreen({ route }) {
           </View>
         )}
       </ScrollView>
+
+      <Modal visible={editDatesModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Loan Dates</Text>
+            <Text style={styles.modalSubtitle}>Update Disbursement Date and EMI Schedule Start Date</Text>
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+              Disbursement Date (DD/MM/YYYY or YYYY-MM-DD)
+            </Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="e.g. 2026-10-01"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={datesData.disbursementDate}
+              onChangeText={t => setDatesData({ ...datesData, disbursementDate: t })}
+            />
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 8, marginBottom: 6 }}>
+              EMI Start Date (DD/MM/YYYY or YYYY-MM-DD)
+            </Text>
+            <TextInput
+              style={[styles.modalInputSmall, { marginBottom: 20 }]}
+              placeholder="e.g. 2026-11-01"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={datesData.emiStartDate}
+              onChangeText={t => setDatesData({ ...datesData, emiStartDate: t })}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setEditDatesModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleSaveDates} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Save Dates</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+
   );
 }
 
@@ -199,4 +267,15 @@ const styles = StyleSheet.create({
   statusStateSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: 20 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   retryBtnText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: colors.white, borderRadius: 16, padding: 20 },
+  modalTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginBottom: 8 },
+  modalSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 16 },
+  modalInputSmall: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, marginBottom: 12 },
+  modalActions: { flexDirection: 'row', gap: 12 },
+  modalCancel: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  modalCancelText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.text },
+  modalSubmit: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: colors.primary },
+  modalSubmitText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
 });
+

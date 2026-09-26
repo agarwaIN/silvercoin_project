@@ -579,10 +579,18 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
                   type: isVid ? 'video/mp4' : 'image/jpeg',
                 });
               });
-              await uploadPropertyPhotos(activeLoanId, fd);
+              const res = await uploadPropertyPhotos(activeLoanId, fd);
+              const serverPhotos = res?.photos || [];
               setData(d => ({
                 ...d,
-                propertyPhotos: (d.propertyPhotos || []).map(p => newItems.some(ni => ni.uri === p.uri) ? { ...p, uploaded: true } : p)
+                propertyPhotos: (d.propertyPhotos || []).map(p => {
+                  if (newItems.some(ni => ni.uri === p.uri || ni.localUri === p.localUri)) {
+                    const match = serverPhotos.find(sp => sp.name === p.name || sp.uri === p.uri) || serverPhotos[serverPhotos.length - 1];
+                    const sKey = match?.uri || match?.key || p.serverKey || p.uri;
+                    return { ...p, uri: sKey, serverKey: sKey, uploaded: true };
+                  }
+                  return p;
+                })
               }));
             } catch {
               Alert.alert('Upload Notice', 'Photos saved locally. Will retry on submit.');
@@ -631,10 +639,18 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
                 name: isVid ? `photo_vid_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`,
                 type: isVid ? 'video/mp4' : 'image/jpeg',
               });
-              await uploadPropertyPhotos(activeLoanId, fd);
+              const res = await uploadPropertyPhotos(activeLoanId, fd);
+              const serverPhotos = res?.photos || [];
+              const lastServerPhoto = serverPhotos[serverPhotos.length - 1];
+              const sKey = lastServerPhoto?.uri || lastServerPhoto?.key;
               setData(d => ({
                 ...d,
-                propertyPhotos: (d.propertyPhotos || []).map(p => p.uri === newItem.uri ? { ...p, uploaded: true } : p)
+                propertyPhotos: (d.propertyPhotos || []).map(p => (p.uri === newItem.uri || p.localUri === newItem.localUri) ? {
+                  ...p,
+                  uri: sKey || p.uri,
+                  serverKey: sKey || p.serverKey || p.uri,
+                  uploaded: true
+                } : p)
               }));
             } catch {
               console.warn('Camera photo upload deferred to submit');
@@ -809,8 +825,9 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
       });
       setData(d => ({
         ...d,
-        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true, serverKey: res?.key, uri: d2.localUri || d2.uri } : d2)
+        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true, serverKey: res?.key || d2.serverKey, uri: res?.key || d2.serverKey || d2.localUri || d2.uri } : d2)
       }));
+
     } catch {
       Alert.alert('Upload Notice', 'Document saved locally. Will retry on submit.');
     } finally {
@@ -1925,10 +1942,10 @@ export default function NewLoanScreen({ route, navigation }) {
                 type: isVid ? 'video/mp4' : 'image/jpeg'
               });
             });
-            await uploadPropertyPhotos(currentLoanId, fd);
+            const pRes = await uploadPropertyPhotos(currentLoanId, fd);
             setFormData(d => ({
               ...d,
-              propertyPhotos: (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
+              propertyPhotos: pRes?.photos || (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
             }));
           } catch (pErr) {
             console.warn('Property photos upload error:', pErr);
@@ -1957,12 +1974,13 @@ export default function NewLoanScreen({ route, navigation }) {
             });
             setFormData(d => ({
               ...d,
-              propertyDocs: (d.propertyDocs || []).map(item => item.id === uDoc.id ? { ...item, uploaded: true, serverKey: res?.key, uri: item.localUri || item.uri } : item)
+              propertyDocs: (d.propertyDocs || []).map(item => item.id === uDoc.id ? { ...item, uploaded: true, serverKey: res?.key || item.serverKey, uri: res?.key || item.serverKey || item.localUri || item.uri } : item)
             }));
           } catch (dErr) {
             console.warn('Property doc upload error:', dErr);
           }
         }
+
       }
       if (step === 2) {
         await updateLoan(currentLoanId, {
@@ -2052,10 +2070,10 @@ export default function NewLoanScreen({ route, navigation }) {
               type: isVid ? 'video/mp4' : 'image/jpeg'
             });
           });
-          await uploadPropertyPhotos(currentLoanId, fdPhotos);
+          const pRes = await uploadPropertyPhotos(currentLoanId, fdPhotos);
           setFormData(d => ({
             ...d,
-            propertyPhotos: (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
+            propertyPhotos: pRes?.photos || (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
           }));
         } catch (pErr) {
           console.warn('Submit photos upload error:', pErr);
@@ -2077,14 +2095,14 @@ export default function NewLoanScreen({ route, navigation }) {
             fdDoc.append('docType', effectiveDocType);
             fdDoc.append('name', pDoc.name || 'Document');
             fdDoc.append('date', pDoc.date || formatDate(new Date()));
-            await uploadRegistryDocument(currentLoanId, fdDoc, {
+            const res = await uploadRegistryDocument(currentLoanId, fdDoc, {
               docType: effectiveDocType,
               name: pDoc.name || 'Document',
               date: pDoc.date || formatDate(new Date()),
             });
             setFormData(d => ({
               ...d,
-              propertyDocs: (d.propertyDocs || []).map(item => item.id === pDoc.id ? { ...item, uploaded: true, uri: item.localUri || item.uri } : item)
+              propertyDocs: (d.propertyDocs || []).map(item => item.id === pDoc.id ? { ...item, uploaded: true, serverKey: res?.key || item.serverKey, uri: res?.key || item.serverKey || item.localUri || item.uri } : item)
             }));
           } catch (dErr) {
             console.warn('Submit doc upload error:', dErr);
@@ -2096,7 +2114,9 @@ export default function NewLoanScreen({ route, navigation }) {
         videoUri: finalVideoUri,
         houseVideoUri: finalHouseVideoUri,
         propertyDocs: formData.propertyDocs,
+        propertyPhotos: formData.propertyPhotos,
       });
+
       showAlert('Submitted!', 'Loan application submitted successfully.');
       navigation.goBack();
     } catch (err) {

@@ -38,7 +38,8 @@ router.patch('/profile', (req, res) => notImplemented(res));
 
 router.get('/loans', async (req, res) => {
   const loans = await db.listLoansByEmployee(req.user.userId);
-  res.json(loans);
+  const enriched = (loans || []).map(l => ({ ...l, employeeName: l.employeeName || req.user.name }));
+  res.json(enriched);
 });
 
 router.post('/loans', async (req, res) => {
@@ -50,6 +51,7 @@ router.post('/loans', async (req, res) => {
     applicationNumber: appId,
     displayLoanId: null,
     employeeId: user.userId,
+    employeeName: user.name || req.user.name,
     adminId: user.createdBy,
     status: 'draft',
     createdAt: now,
@@ -66,8 +68,44 @@ router.get('/loans/:loanId', async (req, res) => {
     return res.status(404).json({ message: 'Loan not found' });
   }
   const emis = await ensureEmiSchedule(loan);
-  res.json({ ...loan, emis });
+  res.json({ ...loan, employeeName: loan.employeeName || req.user.name, emis });
 });
+
+function sanitizeMediaList(incomingList, existingList) {
+  if (!Array.isArray(incomingList)) return incomingList;
+  const existingMap = new Map();
+  if (Array.isArray(existingList)) {
+    for (const item of existingList) {
+      if (!item) continue;
+      if (item.id) existingMap.set(String(item.id), item);
+      if (item.docType) existingMap.set(String(item.docType), item);
+    }
+  }
+
+  const result = [];
+  for (const item of incomingList) {
+    if (!item || typeof item !== 'object') continue;
+    const existing = (item.id && existingMap.get(String(item.id))) || (item.docType && existingMap.get(String(item.docType)));
+
+    let effectiveUri = item.serverKey || item.key || item.uri || '';
+    if (typeof effectiveUri === 'string' && (effectiveUri.startsWith('file:') || effectiveUri.startsWith('content:') || effectiveUri.startsWith('blob:'))) {
+      if (existing && existing.uri && !existing.uri.startsWith('file:') && !existing.uri.startsWith('content:')) {
+        effectiveUri = existing.uri;
+      } else {
+        effectiveUri = null;
+      }
+    }
+
+    if (effectiveUri) {
+      result.push({
+        ...item,
+        uri: effectiveUri,
+        uploaded: true,
+      });
+    }
+  }
+  return result;
+}
 
 router.patch('/loans/:loanId', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
@@ -83,6 +121,23 @@ router.patch('/loans/:loanId', async (req, res) => {
   delete updates.employeeId;
   delete updates.adminId;
   delete updates.status;
+
+  if (updates.videoUri && (updates.videoUri.startsWith('file:') || updates.videoUri.startsWith('content:'))) {
+    delete updates.videoUri;
+  }
+  if (updates.houseVideoUri && (updates.houseVideoUri.startsWith('file:') || updates.houseVideoUri.startsWith('content:'))) {
+    delete updates.houseVideoUri;
+  }
+
+  if (Array.isArray(updates.propertyDocs)) {
+    updates.propertyDocs = sanitizeMediaList(updates.propertyDocs, loan.propertyDocs);
+  }
+  if (Array.isArray(updates.propertyPhotos)) {
+    updates.propertyPhotos = sanitizeMediaList(updates.propertyPhotos, loan.propertyPhotos);
+  }
+  if (Array.isArray(updates.videos)) {
+    updates.videos = sanitizeMediaList(updates.videos, loan.videos);
+  }
 
   const existingChangedFields = loan.changedFields || [];
   const newChangedFields = Object.keys(updates).filter(key => {
@@ -104,43 +159,48 @@ router.post('/loans/:loanId/submit', async (req, res) => {
 
   const updates = { status: 'submitted', updatedAt: new Date().toISOString() };
 
-  // Safety merge: if body provides any media or document records that are missing in DB, merge them in!
   if (req.body) {
     const isValidKey = (u) => typeof u === 'string' && u.trim() && !u.startsWith('file:') && !u.startsWith('content:');
-    if (req.body.videoUri && !loan.videoUri && isValidKey(req.body.videoUri)) updates.videoUri = req.body.videoUri;
-    if (req.body.houseVideoUri && !loan.houseVideoUri && isValidKey(req.body.houseVideoUri)) updates.houseVideoUri = req.body.houseVideoUri;
-    if (Array.isArray(req.body.videos) && req.body.videos.length > 0) {
-      const existingVids = Array.isArray(loan.videos) ? [...loan.videos] : [];
-      for (const v of req.body.videos) {
-        if (v && isValidKey(v.uri) && !existingVids.some(ev => ev.uri === v.uri || ev.videoType === v.videoType)) {
-          existingVids.push(v);
-        }
-      }
-      updates.videos = existingVids;
+    if (req.body.videoUri && isValidKey(req.body.videoUri)) {
+      updates.videoUri = req.body.videoUri;
     }
+    if (req.body.houseVideoUri && isValidKey(req.body.houseVideoUri)) {
+      updates.houseVideoUri = req.body.houseVideoUri;
+    }
+
+    const existingDocs = Array.isArray(loan.propertyDocs) ? [...loan.propertyDocs] : [];
     if (Array.isArray(req.body.propertyDocs) && req.body.propertyDocs.length > 0) {
-      const existingDocs = Array.isArray(loan.propertyDocs) ? [...loan.propertyDocs] : [];
-      for (const d of req.body.propertyDocs) {
-        const docUri = d.serverKey || (isValidKey(d.uri) ? d.uri : null);
-        if (docUri && !existingDocs.some(ed => ed.uri === docUri)) {
-          existingDocs.push({
-            id: d.id || Date.now().toString(),
-            uri: docUri,
-            docType: d.docType || 'Custom Document',
-            name: d.name || 'Document',
-            date: d.date || new Date().toISOString().split('T')[0],
-            uploaded: true,
-            mimeType: d.mimeType || 'application/pdf',
-          });
+      const sanitized = sanitizeMediaList(req.body.propertyDocs, existingDocs);
+      for (const d of sanitized) {
+        const idx = existingDocs.findIndex(ed => ed.id === d.id || ed.docType === d.docType || ed.uri === d.uri);
+        if (idx >= 0) {
+          existingDocs[idx] = { ...existingDocs[idx], ...d };
+        } else {
+          existingDocs.push(d);
         }
       }
       updates.propertyDocs = existingDocs;
+    }
+
+    const existingPhotos = Array.isArray(loan.propertyPhotos) ? [...loan.propertyPhotos] : [];
+    if (Array.isArray(req.body.propertyPhotos) && req.body.propertyPhotos.length > 0) {
+      const sanitized = sanitizeMediaList(req.body.propertyPhotos, existingPhotos);
+      for (const p of sanitized) {
+        const idx = existingPhotos.findIndex(ep => ep.id === p.id || ep.uri === p.uri);
+        if (idx >= 0) {
+          existingPhotos[idx] = { ...existingPhotos[idx], ...p };
+        } else {
+          existingPhotos.push(p);
+        }
+      }
+      updates.propertyPhotos = existingPhotos;
     }
   }
 
   await db.updateLoan(loan.loanId, updates);
   res.json(await db.getLoanById(loan.loanId));
 });
+
 
 router.get('/emi-this-month', async (req, res) => {
   try {
@@ -203,15 +263,25 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     const seenKeys = new Set();
 
     const addMediaUrl = async (type, name, uri, extra = {}) => {
-      if (!uri || seenKeys.has(`${type}_${uri}`)) return;
+      let rawUri = uri;
+      if (typeof uri === 'object' && uri !== null) {
+        rawUri = uri.uri || uri.url || uri.key || '';
+      }
+      if (!rawUri || typeof rawUri !== 'string') return;
+      const cleanUri = rawUri.trim();
+      if (!cleanUri || cleanUri.startsWith('file:') || cleanUri.startsWith('content:') || cleanUri.startsWith('blob:')) return;
+
+      const dedupeKey = `${type}_${cleanUri}`;
+      if (seenKeys.has(dedupeKey)) return;
+
       try {
-        const url = await getPresignedUrl(uri);
+        const url = await getPresignedUrl(cleanUri);
         if (url) {
           urls.push({ type, name, url, ...extra });
-          seenKeys.add(`${type}_${uri}`);
+          seenKeys.add(dedupeKey);
         }
       } catch (err) {
-        console.warn('Error generating presigned url for', uri, err);
+        console.warn('Error generating presigned url for', cleanUri, err);
       }
     };
 
@@ -219,34 +289,38 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
     if (loan.houseVideoUri) await addMediaUrl('video', 'House / Property Video', loan.houseVideoUri, { videoType: 'house' });
     if (Array.isArray(loan.videos)) {
       for (const v of loan.videos) {
-        if (v && v.uri) {
-          const vLabel = v.name || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
-          await addMediaUrl('video', vLabel, v.uri, { videoType: v.videoType || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
+        if (v) {
+          const vUri = typeof v === 'string' ? v : (v.uri || v.url || v.key);
+          const vLabel = (typeof v === 'object' && v.name) || (v.videoType === 'house' ? 'House / Property Video' : 'Owner Verification Video');
+          await addMediaUrl('video', vLabel, vUri, { videoType: (typeof v === 'object' && v.videoType) || (vLabel.toLowerCase().includes('house') ? 'house' : 'owner') });
         }
       }
     }
     if (Array.isArray(loan.propertyPhotos)) {
       for (let idx = 0; idx < loan.propertyPhotos.length; idx++) {
         const p = loan.propertyPhotos[idx];
-        if (p && p.uri) {
-          const isVid = p.type === 'video' || (typeof p.uri === 'string' && (p.uri.toLowerCase().endsWith('.mp4') || p.uri.toLowerCase().includes('video')));
-          const pLabel = p.name || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
-          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, p.uri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
+        if (p) {
+          const pUri = typeof p === 'string' ? p : (p.uri || p.url || p.key);
+          const isVid = (typeof p === 'object' && p.type === 'video') || (typeof pUri === 'string' && (pUri.toLowerCase().endsWith('.mp4') || pUri.toLowerCase().includes('video')));
+          const pLabel = (typeof p === 'object' && p.name) || (isVid ? 'House / Property Video' : (loan.propertyPhotos.length > 1 ? `Property Photo ${idx + 1}` : 'Property Photo'));
+          await addMediaUrl(isVid ? 'video' : 'photo', pLabel, pUri, { mimeType: isVid ? 'video/mp4' : 'image/jpeg' });
         }
       }
     }
     if (Array.isArray(loan.propertyDocs)) {
       for (const d of loan.propertyDocs) {
-        if (d && d.uri) {
-          await addMediaUrl('document', d.name || d.docType || 'Property Document', d.uri, {
-            docType: d.docType,
-            date: d.date,
-            mimeType: d.mimeType,
-            id: d.id,
+        if (d) {
+          const dUri = typeof d === 'string' ? d : (d.uri || d.url || d.key);
+          await addMediaUrl('document', (typeof d === 'object' && (d.name || d.docType)) || 'Property Document', dUri, {
+            docType: typeof d === 'object' ? d.docType : 'Document',
+            date: typeof d === 'object' ? d.date : null,
+            mimeType: typeof d === 'object' ? d.mimeType : null,
+            id: typeof d === 'object' ? d.id : null,
           });
         }
       }
     }
+
     if (loan.agreementUri) {
       await addMediaUrl('document', 'Loan Agreement', loan.agreementUri, { docType: 'Loan Agreement' });
     }
