@@ -41,9 +41,30 @@ const STANDARD_DOC_TYPES = [
 ];
 
 function FullScreenVideo({ url, name, onClose, onDownload, downloading }) {
-  const player = useVideoPlayer(url, (p) => {
-    p.play();
+  const isValid = url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://') || url.startsWith('content://'));
+  const safeUrl = isValid ? url : null;
+  const player = useVideoPlayer(safeUrl || null, (p) => {
+    if (safeUrl) {
+      try { p.play(); } catch (e) {}
+    }
   });
+
+  if (!safeUrl) {
+    return (
+      <View style={styles.modalBg}>
+        <View style={{ alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+          <Text style={{ color: colors.white, fontSize: 16, marginTop: 12, textAlign: 'center', fontWeight: '600' }}>
+            Video file is invalid or unavailable.
+          </Text>
+          <TouchableOpacity style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.primary, borderRadius: 8 }} onPress={onClose}>
+            <Text style={{ color: colors.white, fontWeight: '700' }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.modalBg}>
       <VideoView style={styles.fullMedia} player={player} allowsFullscreen allowsPictureInPicture />
@@ -233,15 +254,21 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
     }
   };
 
-  const normalizeMediaUrl = (url) => {
+  const normalizeMediaUrl = (rawUrl) => {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    const url = rawUrl.trim();
     if (!url) return '';
-    let fixed = url;
-    if (fixed.startsWith('http://13.200.237.51/api/')) {
-      fixed = fixed.replace('http://13.200.237.51/api/', 'http://13.200.237.51:5000/api/');
-    } else if (fixed.startsWith('/api/')) {
-      fixed = `http://13.200.237.51:5000${fixed}`;
+    if (url.startsWith('http://13.200.237.51/api/')) {
+      return url.replace('http://13.200.237.51/api/', 'http://13.200.237.51:5000/api/');
     }
-    return fixed;
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://') || url.startsWith('content://') || url.startsWith('data:')) {
+      return url;
+    }
+    if (url.startsWith('/api/')) {
+      return `http://13.200.237.51:5000${url}`;
+    }
+    const cleanKey = url.replace(/^\/+/, '');
+    return `http://13.200.237.51:5000/api/files/download?key=${encodeURIComponent(cleanKey)}`;
   };
 
   const load = async () => {

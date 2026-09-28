@@ -1297,8 +1297,12 @@ function Step3({ data, setData }) {
 // ─── MEDIA PREVIEW MODALS FOR STEP 4 ──────────────────────────────────────────
 function ReviewVideoModal({ visible, uri, title, onClose }) {
   const resolvedUri = resolveMediaUri(uri);
-  const player = useVideoPlayer(resolvedUri || null, p => {
-    if (visible && resolvedUri) p.play();
+  const isValid = visible && resolvedUri && typeof resolvedUri === 'string' && (resolvedUri.startsWith('http://') || resolvedUri.startsWith('https://') || resolvedUri.startsWith('file://') || resolvedUri.startsWith('content://'));
+  const safeUri = isValid ? resolvedUri : null;
+  const player = useVideoPlayer(safeUri || null, p => {
+    if (visible && safeUri) {
+      try { p.play(); } catch (e) {}
+    }
   });
 
   if (!visible || !uri) return null;
@@ -1312,7 +1316,14 @@ function ReviewVideoModal({ visible, uri, title, onClose }) {
             <Ionicons name="close" size={24} color={colors.white} />
           </TouchableOpacity>
         </View>
-        <VideoView style={rv.fullVideo} player={player} allowsFullscreen allowsPictureInPicture />
+        {safeUri ? (
+          <VideoView style={rv.fullVideo} player={player} allowsFullscreen allowsPictureInPicture />
+        ) : (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+            <Text style={{ color: colors.white, marginTop: 12 }}>Video unavailable</Text>
+          </View>
+        )}
       </View>
     </Modal>
   );

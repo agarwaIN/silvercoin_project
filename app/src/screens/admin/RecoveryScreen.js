@@ -49,7 +49,46 @@ export default function RecoveryScreen({ navigation }) {
   const [txnRef, setTxnRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Edit Dates Modal State
+  const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
+  const [editDatesItem, setEditDatesItem] = useState(null);
+  const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
+  const [submittingDates, setSubmittingDates] = useState(false);
+
   const isEmployee = user?.role === 'employee';
+
+  const handleOpenEditDates = (item) => {
+    setEditDatesItem(item);
+    setDatesData({
+      disbursementDate: item.disbursementDate || '',
+      emiStartDate: item.emiOpeningDate || item.dueDate || '',
+    });
+    setEditDatesModalVisible(true);
+  };
+
+  const handleSaveDates = async () => {
+    if (!editDatesItem) return;
+    if (!datesData.disbursementDate?.trim() && !datesData.emiStartDate?.trim()) {
+      showAlert('Error', 'Please enter at least one valid date.');
+      return;
+    }
+    setSubmittingDates(true);
+    try {
+      if (isEmployee) {
+        await employeeApi.updateLoanDates(editDatesItem.loanId, datesData);
+      } else {
+        await adminApi.updateLoanDates(editDatesItem.loanId, datesData);
+      }
+      showAlert('Success', 'Disbursement Date and EMI Start Date updated successfully.');
+      setEditDatesModalVisible(false);
+      setEditDatesItem(null);
+      await loadData();
+    } catch (err) {
+      showAlert('Error', err.response?.data?.message || err.message || 'Failed to update dates.');
+    } finally {
+      setSubmittingDates(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -436,6 +475,16 @@ export default function RecoveryScreen({ navigation }) {
                         {monthlyEmiDayStr}
                       </Text>
                     </View>
+                    <TouchableOpacity
+                      style={styles.editDatesPillBtn}
+                      onPress={(e) => {
+                        e?.stopPropagation?.();
+                        handleOpenEditDates(item);
+                      }}
+                    >
+                      <Ionicons name="pencil" size={11} color="#047857" />
+                      <Text style={styles.editDatesPillTxt}>Edit</Text>
+                    </TouchableOpacity>
                   </View>
 
                   {/* Overdue Warning Callout */}
@@ -681,6 +730,64 @@ export default function RecoveryScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Loan Dates Modal */}
+      <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => setEditDatesModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Edit Loan Dates</Text>
+                <Text style={styles.modalSub}>
+                  {editDatesItem?.borrowerName} • {editDatesItem?.displayLoanId}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditDatesModalVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.fieldLabel}>Disbursement Date (DD/MM/YYYY or YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="e.g. 15/05/2024 or 2024-05-15"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={datesData.disbursementDate}
+              onChangeText={(t) => setDatesData({ ...datesData, disbursementDate: t })}
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: 10 }]}>EMI Start Date (DD/MM/YYYY or YYYY-MM-DD)</Text>
+            <TextInput
+              style={[styles.modalInputSmall, { marginBottom: 20 }]}
+              placeholder="e.g. 15/06/2024 or 2024-06-15"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={datesData.emiStartDate}
+              onChangeText={(t) => setDatesData({ ...datesData, emiStartDate: t })}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setEditDatesModalVisible(false)}
+                disabled={submittingDates}
+              >
+                <Text style={styles.cancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                onPress={handleSaveDates}
+                disabled={submittingDates}
+              >
+                {submittingDates ? (
+                  <ActivityIndicator color={colors.white} size="small" />
+                ) : (
+                  <Text style={styles.confirmTxt}>Save Dates</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -907,4 +1014,28 @@ const styles = StyleSheet.create({
   cancelTxt: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.text },
   confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.dark, alignItems: 'center' },
   confirmTxt: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  editDatesPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  editDatesPillTxt: {
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
+    color: '#047857',
+  },
+  modalInputSmall: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: colors.text,
+  },
 });

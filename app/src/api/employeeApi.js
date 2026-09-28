@@ -46,3 +46,5 @@ export const requestForeclosure = (loanId, data) => api.post(`/employee/loans/${
 export const getRecovery = () => api.get('/employee/recovery').then((r) => r.data);
 export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '') =>
   api.post(`/employee/loans/${loanId}/pay-emi`, { paymentId, amount, paymentMode, transactionRef: txnRef, txnRef }).then((r) => r.data);
+export const updateLoanDates = (loanId, data) =>
+  api.post(`/employee/loans/${loanId}/update-dates`, data).then((r) => r.data);

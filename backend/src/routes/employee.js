@@ -560,4 +560,72 @@ router.post('/loans/:loanId/request-foreclosure', async (req, res) => {
   res.json({ message: 'Foreclosure requested successfully' });
 });
 
+function parseDateInput(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+  if (!s) return null;
+  const ddmmyyyyMatch = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (ddmmyyyyMatch) {
+    const day = String(ddmmyyyyMatch[1]).padStart(2, '0');
+    const month = String(ddmmyyyyMatch[2]).padStart(2, '0');
+    const year = ddmmyyyyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const yyyymmddMatch = s.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/);
+  if (yyyymmddMatch) {
+    const year = yyyymmddMatch[1];
+    const month = String(yyyymmddMatch[2]).padStart(2, '0');
+    const day = String(yyyymmddMatch[3]).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return s;
+}
+
+router.post('/loans/:loanId/update-dates', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+    const { disbursementDate, emiStartDate } = req.body;
+    const parsedDisbDate = parseDateInput(disbursementDate);
+    const parsedEmiDate = parseDateInput(emiStartDate);
+    const updates = {};
+
+    if (parsedDisbDate) {
+      updates.disbursementDate = parsedDisbDate;
+      const disbursements = Array.isArray(loan.disbursements) ? [...loan.disbursements] : [];
+      if (disbursements.length > 0) {
+        disbursements[0] = { ...disbursements[0], date: parsedDisbDate };
+      } else {
+        disbursements.push({
+          date: parsedDisbDate,
+          amount: loan.approvedAmount || loan.loanAmount || 0,
+          bankName: 'N/A',
+          transactionNumber: 'N/A',
+        });
+      }
+      updates.disbursements = disbursements;
+    }
+
+    if (parsedEmiDate) {
+      updates.emiStartDate = parsedEmiDate;
+      updates.loanStartDate = parsedEmiDate;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await db.updateLoan(loan.loanId, updates);
+      if (parsedEmiDate) {
+        const { updateEmiScheduleDates } = require('../services/emiService');
+        await updateEmiScheduleDates(loan.loanId, parsedEmiDate);
+      }
+    }
+
+    const updatedLoan = await db.getLoanById(loan.loanId);
+    res.json({ message: 'Dates updated successfully', loan: updatedLoan });
+  } catch (err) {
+    console.error('Error in /employee/loans/:loanId/update-dates:', err);
+    res.status(500).json({ message: err.message || 'Failed to update dates' });
+  }
+});
+
 module.exports = router;
