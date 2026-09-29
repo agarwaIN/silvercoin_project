@@ -38,6 +38,27 @@ export const ensureLocalFileUri = async (rawUri, fallbackExt = '.mp4') => {
   return rawUri;
 };
 
+export function makeFormDataFile(rawUri, defaultName, mimeType) {
+  if (!rawUri || typeof rawUri !== 'string') {
+    return { uri: '', name: defaultName || 'file', type: mimeType || 'application/octet-stream' };
+  }
+  let cleanUri = rawUri.trim();
+  if (Platform.OS === 'android') {
+    if (!cleanUri.startsWith('file://') && !cleanUri.startsWith('content://')) {
+      cleanUri = `file://${cleanUri}`;
+    }
+  } else {
+    if (!cleanUri.startsWith('file://') && !cleanUri.startsWith('ph://') && !cleanUri.startsWith('assets-library://')) {
+      cleanUri = `file://${cleanUri}`;
+    }
+  }
+  return {
+    uri: cleanUri,
+    name: defaultName || 'file',
+    type: mimeType || 'application/octet-stream',
+  };
+}
+
 export function resolveMediaUri(raw) {
   if (!raw) return '';
   const s = typeof raw === 'object' && raw.uri ? raw.uri : String(raw);
@@ -353,11 +374,7 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
       const fd = new FormData();
       fd.append('videoType', videoType);
       fd.append('name', isHouse ? 'House / Property Video' : 'Owner Verification Video');
-      fd.append('video', {
-        uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
-        name: isHouse ? 'house_video.mp4' : 'owner_video.mp4',
-        type: 'video/mp4',
-      });
+      fd.append('video', makeFormDataFile(uri, isHouse ? 'house_video.mp4' : 'owner_video.mp4', 'video/mp4'));
       const res = await uploadVideo(activeLoanId, fd, videoType, isHouse ? 'House / Property Video' : 'Owner Verification Video');
       if (isHouse) {
         setData(d => ({ ...d, houseVideoUri: res?.key || uri, localHouseVideoUri: uri, houseVideoUploaded: true }));
@@ -576,11 +593,7 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
               const fd = new FormData();
               newItems.forEach((item, i) => {
                 const isVid = item.type === 'video' || (item.uri && (item.uri.toLowerCase().endsWith('.mp4') || item.uri.toLowerCase().endsWith('.mov')));
-                fd.append('photos', {
-                  uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
-                  name: isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`,
-                  type: isVid ? 'video/mp4' : 'image/jpeg',
-                });
+                fd.append('photos', makeFormDataFile(item.uri, isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
               });
               const res = await uploadPropertyPhotos(activeLoanId, fd);
               const serverPhotos = res?.photos || [];
@@ -637,11 +650,7 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
             setPhotoUploading(true);
             try {
               const fd = new FormData();
-              fd.append('photos', {
-                uri: Platform.OS === 'android' ? newItem.uri : newItem.uri.replace('file://', ''),
-                name: isVid ? `photo_vid_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`,
-                type: isVid ? 'video/mp4' : 'image/jpeg',
-              });
+              fd.append('photos', makeFormDataFile(newItem.uri, isVid ? `photo_vid_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
               const res = await uploadPropertyPhotos(activeLoanId, fd);
               const serverPhotos = res?.photos || [];
               const lastServerPhoto = serverPhotos[serverPhotos.length - 1];
@@ -813,11 +822,7 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
     setDocUploading(true);
     try {
       const fd = new FormData();
-      fd.append('document', {
-        uri: Platform.OS === 'android' ? pickedAsset.uri : pickedAsset.uri.replace('file://', ''),
-        name: pickedAsset.name || 'document',
-        type: pickedAsset.mimeType || 'application/pdf',
-      });
+      fd.append('document', makeFormDataFile(pickedAsset.uri, pickedAsset.name || 'document', pickedAsset.mimeType || 'application/pdf'));
       fd.append('docType', effectiveDocType);
       fd.append('name', finalName);
       fd.append('date', newDoc.date);
@@ -1884,17 +1889,13 @@ export default function NewLoanScreen({ route, navigation }) {
         });
 
         // Upload Owner Video if pending
-        if (formData.videoUri && !formData.videoUploaded) {
+        if (formData.videoUri && (!formData.videoUploaded || formData.videoUri.startsWith('file:') || formData.videoUri.startsWith('content:'))) {
           try {
             const ownerUri = await ensureLocalFileUri(formData.videoUri, '.mp4');
             const fd = new FormData();
             fd.append('videoType', 'owner');
             fd.append('name', 'Owner Verification Video');
-            fd.append('video', {
-              uri: Platform.OS === 'android' ? ownerUri : ownerUri.replace('file://', ''),
-              name: 'owner_video.mp4',
-              type: 'video/mp4'
-            });
+            fd.append('video', makeFormDataFile(ownerUri, 'owner_video.mp4', 'video/mp4'));
             const res = await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
             if (res?.key) {
               setFormData(d => ({ ...d, videoUri: res.key, videoUploaded: true }));
@@ -1906,17 +1907,13 @@ export default function NewLoanScreen({ route, navigation }) {
         }
 
         // Upload House Video if pending
-        if (formData.houseVideoUri && !formData.houseVideoUploaded) {
+        if (formData.houseVideoUri && (!formData.houseVideoUploaded || formData.houseVideoUri.startsWith('file:') || formData.houseVideoUri.startsWith('content:'))) {
           try {
             const houseUri = await ensureLocalFileUri(formData.houseVideoUri, '.mp4');
             const fdHouse = new FormData();
             fdHouse.append('videoType', 'house');
             fdHouse.append('name', 'House / Property Video');
-            fdHouse.append('video', {
-              uri: Platform.OS === 'android' ? houseUri : houseUri.replace('file://', ''),
-              name: 'house_video.mp4',
-              type: 'video/mp4'
-            });
+            fdHouse.append('video', makeFormDataFile(houseUri, 'house_video.mp4', 'video/mp4'));
             const res = await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
             if (res?.key) {
               setFormData(d => ({ ...d, houseVideoUri: res.key, houseVideoUploaded: true }));
@@ -1948,40 +1945,31 @@ export default function NewLoanScreen({ route, navigation }) {
         });
 
         // Upload any pending property photos
-        const unuploadedPhotos = (formData.propertyPhotos || []).filter(p => !p.uploaded && p.uri);
+        const unuploadedPhotos = (formData.propertyPhotos || []).filter(p => (!p.uploaded || (p.uri && (p.uri.startsWith('file:') || p.uri.startsWith('content:')))) && p.uri);
         if (unuploadedPhotos.length > 0) {
           try {
             const fd = new FormData();
             unuploadedPhotos.forEach((item, i) => {
               const isVid = item.type === 'video' || (item.uri && (item.uri.toLowerCase().endsWith('.mp4') || item.uri.toLowerCase().endsWith('.mov')));
-              fd.append('photos', {
-                uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
-                name: isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`,
-                type: isVid ? 'video/mp4' : 'image/jpeg'
-              });
+              fd.append('photos', makeFormDataFile(item.uri, isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
             });
             const pRes = await uploadPropertyPhotos(currentLoanId, fd);
-            setFormData(d => ({
-              ...d,
-              propertyPhotos: pRes?.photos || (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
-            }));
+            if (pRes?.photos) {
+              setFormData(d => ({ ...d, propertyPhotos: pRes.photos }));
+            }
           } catch (pErr) {
             console.warn('Property photos upload error:', pErr);
           }
         }
 
         // Upload any pending property documents
-        const unuploadedDocs = (formData.propertyDocs || []).filter(doc => !doc.uploaded && doc.uri);
+        const unuploadedDocs = (formData.propertyDocs || []).filter(doc => (!doc.uploaded || (doc.uri && (doc.uri.startsWith('file:') || doc.uri.startsWith('content:')))) && doc.uri);
         for (const uDoc of unuploadedDocs) {
           try {
             const fd = new FormData();
             const recognizedStd = getStandardDocTitle({ docType: uDoc.docType, name: uDoc.name });
             const effectiveDocType = (uDoc.docType === 'Custom Document' && recognizedStd) ? recognizedStd : (uDoc.docType || 'Custom Document');
-            fd.append('document', {
-              uri: Platform.OS === 'android' ? uDoc.uri : uDoc.uri.replace('file://', ''),
-              name: uDoc.name || 'document',
-              type: uDoc.mimeType || 'application/pdf',
-            });
+            fd.append('document', makeFormDataFile(uDoc.localUri || uDoc.uri, uDoc.name || 'document', uDoc.mimeType || 'application/pdf'));
             fd.append('docType', effectiveDocType);
             fd.append('name', uDoc.name || 'Document');
             fd.append('date', uDoc.date || formatDate(new Date()));
@@ -2033,19 +2021,17 @@ export default function NewLoanScreen({ route, navigation }) {
 
       let finalVideoUri = formData.videoUri;
       let finalHouseVideoUri = formData.houseVideoUri;
+      let currentDocs = Array.isArray(formData.propertyDocs) ? [...formData.propertyDocs] : [];
+      let currentPhotos = Array.isArray(formData.propertyPhotos) ? [...formData.propertyPhotos] : [];
 
-      // Ensure pending videos are uploaded before final submit
-      if (formData.videoUri && !formData.videoUploaded && currentLoanId) {
+      // Ensure pending owner video is uploaded before final submit
+      if (formData.videoUri && (!formData.videoUploaded || formData.videoUri.startsWith('file:') || formData.videoUri.startsWith('content:')) && currentLoanId) {
         try {
           const ownerUri = await ensureLocalFileUri(formData.videoUri, '.mp4');
           const fd = new FormData();
           fd.append('videoType', 'owner');
           fd.append('name', 'Owner Verification Video');
-          fd.append('video', {
-            uri: Platform.OS === 'android' ? ownerUri : ownerUri.replace('file://', ''),
-            name: 'owner_video.mp4',
-            type: 'video/mp4'
-          });
+          fd.append('video', makeFormDataFile(ownerUri, 'owner_video.mp4', 'video/mp4'));
           const res = await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
           if (res?.key) {
             finalVideoUri = res.key;
@@ -2053,19 +2039,18 @@ export default function NewLoanScreen({ route, navigation }) {
           }
         } catch (vErr) {
           console.warn('Submit owner video upload error:', vErr);
+          throw new Error('Could not upload Owner Verification Video. Please check network connection and try again.');
         }
       }
-      if (formData.houseVideoUri && !formData.houseVideoUploaded && currentLoanId) {
+
+      // Ensure pending house video is uploaded before final submit
+      if (formData.houseVideoUri && (!formData.houseVideoUploaded || formData.houseVideoUri.startsWith('file:') || formData.houseVideoUri.startsWith('content:')) && currentLoanId) {
         try {
           const houseUri = await ensureLocalFileUri(formData.houseVideoUri, '.mp4');
           const fdHouse = new FormData();
           fdHouse.append('videoType', 'house');
           fdHouse.append('name', 'House / Property Video');
-          fdHouse.append('video', {
-            uri: Platform.OS === 'android' ? houseUri : houseUri.replace('file://', ''),
-            name: 'house_video.mp4',
-            type: 'video/mp4'
-          });
+          fdHouse.append('video', makeFormDataFile(houseUri, 'house_video.mp4', 'video/mp4'));
           const res = await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
           if (res?.key) {
             finalHouseVideoUri = res.key;
@@ -2073,72 +2058,76 @@ export default function NewLoanScreen({ route, navigation }) {
           }
         } catch (hErr) {
           console.warn('Submit house video upload error:', hErr);
+          throw new Error('Could not upload House / Property Video. Please check network connection and try again.');
         }
       }
+
       // Ensure pending photos are uploaded before final submit
-      const pendingPhotos = (formData.propertyPhotos || []).filter(p => !p.uploaded && p.uri);
+      const pendingPhotos = currentPhotos.filter(p => (!p.uploaded || (p.uri && (p.uri.startsWith('file:') || p.uri.startsWith('content:')))) && p.uri);
       if (pendingPhotos.length > 0 && currentLoanId) {
         try {
           const fdPhotos = new FormData();
           pendingPhotos.forEach((item, i) => {
             const isVid = item.type === 'video' || (item.uri && (item.uri.toLowerCase().endsWith('.mp4') || item.uri.toLowerCase().endsWith('.mov')));
-            fdPhotos.append('photos', {
-              uri: Platform.OS === 'android' ? item.uri : item.uri.replace('file://', ''),
-              name: isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`,
-              type: isVid ? 'video/mp4' : 'image/jpeg'
-            });
+            fdPhotos.append('photos', makeFormDataFile(item.uri, isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
           });
           const pRes = await uploadPropertyPhotos(currentLoanId, fdPhotos);
-          setFormData(d => ({
-            ...d,
-            propertyPhotos: pRes?.photos || (d.propertyPhotos || []).map(p => ({ ...p, uploaded: true }))
-          }));
+          if (pRes?.photos && Array.isArray(pRes.photos)) {
+            currentPhotos = pRes.photos;
+            setFormData(d => ({ ...d, propertyPhotos: pRes.photos }));
+          }
         } catch (pErr) {
           console.warn('Submit photos upload error:', pErr);
+          throw new Error('Could not upload Property Photos. Please check network connection and try again.');
         }
       }
+
       // Ensure pending documents are uploaded before final submit
-      const pendingDocs = (formData.propertyDocs || []).filter(d => !d.uploaded && d.uri);
-      if (pendingDocs.length > 0 && currentLoanId) {
-        for (const pDoc of pendingDocs) {
-          try {
-            const fdDoc = new FormData();
-            const recognizedStd = getStandardDocTitle({ docType: pDoc.docType, name: pDoc.name });
-            const effectiveDocType = (pDoc.docType === 'Custom Document' && recognizedStd) ? recognizedStd : (pDoc.docType || 'Custom Document');
-            fdDoc.append('document', {
-              uri: Platform.OS === 'android' ? pDoc.uri : pDoc.uri.replace('file://', ''),
-              name: pDoc.name || 'document',
-              type: pDoc.mimeType || 'application/pdf',
-            });
-            fdDoc.append('docType', effectiveDocType);
-            fdDoc.append('name', pDoc.name || 'Document');
-            fdDoc.append('date', pDoc.date || formatDate(new Date()));
-            const res = await uploadRegistryDocument(currentLoanId, fdDoc, {
-              docType: effectiveDocType,
-              name: pDoc.name || 'Document',
-              date: pDoc.date || formatDate(new Date()),
-            });
-            setFormData(d => ({
-              ...d,
-              propertyDocs: (d.propertyDocs || []).map(item => item.id === pDoc.id ? { ...item, uploaded: true, serverKey: res?.key || item.serverKey, uri: res?.key || item.serverKey || item.localUri || item.uri } : item)
-            }));
-          } catch (dErr) {
-            console.warn('Submit doc upload error:', dErr);
+      for (let idx = 0; idx < currentDocs.length; idx++) {
+        const pDoc = currentDocs[idx];
+        if (pDoc.uploaded && pDoc.serverKey && !pDoc.serverKey.startsWith('file:') && !pDoc.serverKey.startsWith('content:')) continue;
+        if (!pDoc.uri) continue;
+        try {
+          const fdDoc = new FormData();
+          const recognizedStd = getStandardDocTitle({ docType: pDoc.docType, name: pDoc.name });
+          const effectiveDocType = (pDoc.docType === 'Custom Document' && recognizedStd) ? recognizedStd : (pDoc.docType || 'Custom Document');
+          fdDoc.append('document', makeFormDataFile(pDoc.localUri || pDoc.uri, pDoc.name || 'document', pDoc.mimeType || 'application/pdf'));
+          fdDoc.append('docType', effectiveDocType);
+          fdDoc.append('name', pDoc.name || 'Document');
+          fdDoc.append('date', pDoc.date || formatDate(new Date()));
+          const res = await uploadRegistryDocument(currentLoanId, fdDoc, {
+            docType: effectiveDocType,
+            name: pDoc.name || 'Document',
+            date: pDoc.date || formatDate(new Date()),
+          });
+          if (res?.key) {
+            currentDocs[idx] = {
+              ...pDoc,
+              uploaded: true,
+              serverKey: res.key,
+              uri: res.key,
+              docType: res.doc?.docType || effectiveDocType,
+            };
           }
+        } catch (dErr) {
+          console.warn('Submit doc upload error:', dErr);
+          throw new Error(`Could not upload document "${pDoc.name || 'attachment'}". Please check network connection and try again.`);
         }
       }
+      setFormData(d => ({ ...d, propertyDocs: currentDocs }));
+
       // Final submit with full media payload
       await submitLoan(currentLoanId, {
         videoUri: finalVideoUri,
         houseVideoUri: finalHouseVideoUri,
-        propertyDocs: formData.propertyDocs,
-        propertyPhotos: formData.propertyPhotos,
+        propertyDocs: currentDocs,
+        propertyPhotos: currentPhotos,
       });
 
       showAlert('Submitted!', 'Loan application submitted successfully.');
       navigation.goBack();
     } catch (err) {
-      showAlert('Error', err.response?.data?.message || 'Could not submit loan.');
+      showAlert('Error', err.message || err.response?.data?.message || 'Could not submit loan.');
     } finally { setLoading(false); }
   };
 

@@ -62,8 +62,13 @@ api.interceptors.request.use((config) => {
   applyBaseUrl(config);
   if (_token) config.headers.Authorization = `Bearer ${_token}`;
   if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
-    delete config.headers['Content-Type'];
-    delete config.headers['content-type'];
+    if (typeof config.headers.delete === 'function') {
+      config.headers.delete('Content-Type');
+      config.headers.delete('content-type');
+    } else {
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+    }
   }
   return config;
 });

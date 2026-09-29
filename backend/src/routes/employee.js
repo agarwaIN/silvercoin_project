@@ -78,14 +78,17 @@ function sanitizeMediaList(incomingList, existingList) {
     for (const item of existingList) {
       if (!item) continue;
       if (item.id) existingMap.set(String(item.id), item);
-      if (item.docType) existingMap.set(String(item.docType), item);
+      if (item.docType && item.docType !== 'Custom Document' && item.docType !== 'Document') {
+        existingMap.set(String(item.docType), item);
+      }
     }
   }
 
   const result = [];
   for (const item of incomingList) {
     if (!item || typeof item !== 'object') continue;
-    const existing = (item.id && existingMap.get(String(item.id))) || (item.docType && existingMap.get(String(item.docType)));
+    const matchByDocType = (item.docType && item.docType !== 'Custom Document' && item.docType !== 'Document') ? existingMap.get(String(item.docType)) : null;
+    const existing = (item.id && existingMap.get(String(item.id))) || matchByDocType;
 
     let effectiveUri = item.serverKey || item.key || item.uri || '';
     if (typeof effectiveUri === 'string' && (effectiveUri.startsWith('file:') || effectiveUri.startsWith('content:') || effectiveUri.startsWith('blob:'))) {
@@ -172,7 +175,12 @@ router.post('/loans/:loanId/submit', async (req, res) => {
     if (Array.isArray(req.body.propertyDocs) && req.body.propertyDocs.length > 0) {
       const sanitized = sanitizeMediaList(req.body.propertyDocs, existingDocs);
       for (const d of sanitized) {
-        const idx = existingDocs.findIndex(ed => ed.id === d.id || ed.docType === d.docType || ed.uri === d.uri);
+        const idx = existingDocs.findIndex(ed => {
+          if (ed.id && d.id && String(ed.id) === String(d.id)) return true;
+          if (ed.uri && d.uri && ed.uri === d.uri) return true;
+          if (ed.docType && d.docType && ed.docType === d.docType && ed.docType !== 'Custom Document' && ed.docType !== 'Document') return true;
+          return false;
+        });
         if (idx >= 0) {
           existingDocs[idx] = { ...existingDocs[idx], ...d };
         } else {
