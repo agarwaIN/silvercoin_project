@@ -37,7 +37,7 @@ export default function LoanListScreen({ navigation }) {
 
   const load = useCallback(async () => {
     const data = await getLoans();
-    setLoans(data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    setLoans(Array.isArray(data) ? [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : []);
   }, []);
 
   useFocusEffect(

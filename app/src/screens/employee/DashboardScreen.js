@@ -20,7 +20,7 @@ export default function EmployeeDashboard({ navigation }) {
   const load = useCallback(async () => {
     await Promise.all([
       getLoans()
-        .then((data) => setLoans(data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))))
+        .then((data) => setLoans(Array.isArray(data) ? [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : []))
         .catch(() => {}),
       getEmiThisMonth().then(setEmiThisMonth).catch(() => {}),
     ]);

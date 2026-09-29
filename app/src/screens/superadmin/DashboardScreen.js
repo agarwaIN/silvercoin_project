@@ -59,8 +59,8 @@ export default function SADashboard({ navigation }) {
     setLoading(true);
     try {
       const [u, l] = await Promise.all([getAllUsers(), getAllLoans()]);
-      setUsers(u);
-      setLoans(l.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      setUsers(Array.isArray(u) ? u : []);
+      setLoans(Array.isArray(l) ? [...l].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : []);
     } catch (err) {
       console.error('Failed to load SuperAdmin dashboard:', err);
     } finally {

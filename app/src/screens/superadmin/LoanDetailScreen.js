@@ -152,7 +152,7 @@ export default function LoanDetailScreen({ route }) {
               <Text style={styles.emiTitle}>EMI Repayment Schedule ({loan.emis.length} Months)</Text>
             </View>
             <View style={styles.emiBody}>
-              {loan.emis.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).map((emi, idx) => {
+              {[...(loan.emis || [])].sort((a, b) => new Date(a?.dueDate || 0) - new Date(b?.dueDate || 0)).map((emi, idx) => {
                 const totalDue = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
                 const isPaid = emi.status === 'paid';
                 return (

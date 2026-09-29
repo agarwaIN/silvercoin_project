@@ -57,7 +57,7 @@ export default function AdminLoanListScreen({ navigation }) {
 
   return (
     <View style={styles.safe} edges={['top']}>
-       <StatusBar barStyle={'light-content'} translucent={true} backgroundColor={"green"} />
+      <StatusBar barStyle={'light-content'} translucent={true} backgroundColor={"green"} />
       <Header title="Loan Applications" />
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={20} color={colors.muted} style={styles.searchIcon} />
@@ -114,7 +114,7 @@ export default function AdminLoanListScreen({ navigation }) {
                 {item.employeeName ? (
                   <View style={styles.submittedByRow}>
                     <Ionicons name="person" size={12} color="#047857" />
-                    <Text style={styles.submittedByText}>Submitted / Filled By: <Text style={styles.submittedByName}>{item.employeeName}</Text></Text>
+                    <Text style={styles.submittedByText}>Submitted By: <Text style={styles.submittedByName}>{item.employeeName}</Text></Text>
                   </View>
                 ) : null}
 
@@ -136,7 +136,7 @@ export default function AdminLoanListScreen({ navigation }) {
                         <Ionicons name="alert-circle" size={14} color="#D97706" />
                         <Text style={styles.emiChangePreviewTitle}>EMI Change Requested</Text>
                       </View>
-                      
+
                       {changedFields.map((f, i) => (
                         <View key={i} style={styles.diffRow}>
                           <Text style={styles.diffLabel}>{f.label}:</Text>
@@ -145,7 +145,7 @@ export default function AdminLoanListScreen({ navigation }) {
                           <Text style={styles.diffNew}>{f.isCurrency ? '₹' : ''}{Number(f.new || 0).toLocaleString('en-IN')}{f.suffix || ''}</Text>
                         </View>
                       ))}
-                      
+
                       <View style={[styles.diffRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: '#FDE68A', paddingTop: 6 }]}>
                         <Text style={[styles.diffLabel, { color: '#B45309', fontFamily: fonts.bold }]}>Final EMI:</Text>
                         <Text style={styles.diffOld}>₹{Number(item.emiAmount || 0).toLocaleString('en-IN')}</Text>

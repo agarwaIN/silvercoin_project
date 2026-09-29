@@ -40,30 +40,10 @@ const STANDARD_DOC_TYPES = [
   'Owner Pics',
 ];
 
-function FullScreenVideo({ url, name, onClose, onDownload, downloading }) {
-  const isValid = url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://') || url.startsWith('content://'));
-  const safeUrl = isValid ? url : null;
-  const player = useVideoPlayer(safeUrl || null, (p) => {
-    if (safeUrl) {
-      try { p.play(); } catch (e) {}
-    }
+function VideoPlayerComponent({ url, name, onClose, onDownload, downloading }) {
+  const player = useVideoPlayer(url, (p) => {
+    try { p.play(); } catch (e) {}
   });
-
-  if (!safeUrl) {
-    return (
-      <View style={styles.modalBg}>
-        <View style={{ alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
-          <Text style={{ color: colors.white, fontSize: 16, marginTop: 12, textAlign: 'center', fontWeight: '600' }}>
-            Video file is invalid or unavailable.
-          </Text>
-          <TouchableOpacity style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.primary, borderRadius: 8 }} onPress={onClose}>
-            <Text style={{ color: colors.white, fontWeight: '700' }}>Close</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.modalBg}>
@@ -89,6 +69,27 @@ function FullScreenVideo({ url, name, onClose, onDownload, downloading }) {
       </View>
     </View>
   );
+}
+
+function FullScreenVideo({ url, name, onClose, onDownload, downloading }) {
+  const isValid = url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://') || url.startsWith('content://'));
+  if (!isValid) {
+    return (
+      <View style={styles.modalBg}>
+        <View style={{ alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+          <Text style={{ color: colors.white, fontSize: 16, marginTop: 12, textAlign: 'center', fontWeight: '600' }}>
+            Video file is invalid or unavailable.
+          </Text>
+          <TouchableOpacity style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.primary, borderRadius: 8 }} onPress={onClose}>
+            <Text style={{ color: colors.white, fontWeight: '700' }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return <VideoPlayerComponent url={url} name={name} onClose={onClose} onDownload={onDownload} downloading={downloading} />;
 }
 
 export const getStandardDocTitle = (d) => {
@@ -282,10 +283,11 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
         }));
         setMedia(normalized);
       } else {
-        setMedia(data);
+        setMedia([]);
       }
     } catch (err) {
-      console.error(err);
+      console.error('MediaViewer fetch error:', err);
+      setMedia([]);
     }
     setLoading(false);
   };
@@ -432,9 +434,10 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   }
 
   // Filter media items into categories
-  const videos = media.filter((m) => m.type === 'video');
-  const photos = media.filter((m) => m.type === 'photo' || m.type === 'image');
-  const docs = media.filter((m) => m.type === 'document');
+  const mediaList = Array.isArray(media) ? media : [];
+  const videos = mediaList.filter((m) => m && m.type === 'video');
+  const photos = mediaList.filter((m) => m && (m.type === 'photo' || m.type === 'image'));
+  const docs = mediaList.filter((m) => m && m.type === 'document');
 
   // Standard property docs checklist state mapping with comprehensive match keys
   const standardDocsList = [

@@ -375,7 +375,7 @@ export default function LoanDetailScreen({ route, navigation }) {
               <Text style={[styles.emiChangeTitle, { color: '#15803D' }]}>EMI Schedule</Text>
             </View>
             <View style={styles.emiChangeBody}>
-              {loan.emis.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).map((emi, idx) => {
+              {[...(loan.emis || [])].sort((a, b) => new Date(a?.dueDate || 0) - new Date(b?.dueDate || 0)).map((emi, idx) => {
                 const totalDue = Number(emi.amount) + Number(emi.penaltyAmount || 0);
                 const isPaid = emi.status === 'paid';
                 return (
