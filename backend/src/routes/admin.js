@@ -407,8 +407,9 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
 
 function parseDateInput(str) {
   if (!str) return null;
-  const s = String(str).trim();
+  let s = String(str).trim();
   if (!s) return null;
+  if (s.includes('T')) s = s.split('T')[0];
   const ddmmyyyyMatch = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
   if (ddmmyyyyMatch) {
     const day = String(ddmmyyyyMatch[1]).padStart(2, '0');
@@ -423,7 +424,7 @@ function parseDateInput(str) {
     const day = String(yyyymmddMatch[3]).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
-  return s;
+  return s.slice(0, 10);
 }
 
 router.post('/loans/:loanId/update-dates', async (req, res) => {

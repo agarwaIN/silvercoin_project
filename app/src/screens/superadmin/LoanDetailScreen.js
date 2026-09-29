@@ -69,10 +69,17 @@ export default function LoanDetailScreen({ route }) {
     }
   };
 
+  const cleanDateStr = (d) => {
+    if (!d || typeof d !== 'string') return '';
+    const s = d.trim();
+    if (s.includes('T')) return s.split('T')[0];
+    return s.slice(0, 10);
+  };
+
   const handleOpenEditDates = () => {
-    const defaultDisbDate = loan?.disbursements?.[0]?.date || loan?.disbursementDate || formatDate(new Date());
-    const defaultEmiDate = loan?.emiStartDate || loan?.loanStartDate || formatDate(new Date());
-    setDatesData({ disbursementDate: defaultDisbDate, emiStartDate: defaultEmiDate });
+    const rawDisbDate = loan?.disbursements?.[0]?.date || loan?.disbursementDate || new Date().toISOString().slice(0, 10);
+    const rawEmiDate = loan?.emiStartDate || loan?.loanStartDate || new Date().toISOString().slice(0, 10);
+    setDatesData({ disbursementDate: cleanDateStr(rawDisbDate), emiStartDate: cleanDateStr(rawEmiDate) });
     setEditDatesModalVisible(true);
   };
 

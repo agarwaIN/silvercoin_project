@@ -57,11 +57,18 @@ export default function RecoveryScreen({ navigation }) {
 
   const isEmployee = user?.role === 'employee';
 
+  const cleanDateStr = (d) => {
+    if (!d || typeof d !== 'string') return '';
+    const s = d.trim();
+    if (s.includes('T')) return s.split('T')[0];
+    return s.slice(0, 10);
+  };
+
   const handleOpenEditDates = (item) => {
     setEditDatesItem(item);
     setDatesData({
-      disbursementDate: item.disbursementDate || '',
-      emiStartDate: item.emiOpeningDate || item.dueDate || '',
+      disbursementDate: cleanDateStr(item.disbursementDate),
+      emiStartDate: cleanDateStr(item.emiOpeningDate || item.dueDate),
     });
     setEditDatesModalVisible(true);
   };
