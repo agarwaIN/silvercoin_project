@@ -24,25 +24,39 @@ async function uploadBuffer(key, buffer) {
   return key;
 }
 
-async function openDownloadStream(key) {
+async function getFileInfo(key) {
   const filePath = absPath(key);
   try {
     await fsp.access(filePath);
+    const stat = await fsp.stat(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const byExt = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.pdf': 'application/pdf',
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.mov': 'video/quicktime',
+    };
+    return {
+      filePath,
+      size: stat.size,
+      contentType: byExt[ext] || 'application/octet-stream',
+    };
   } catch {
     throw new Error('File not found');
   }
-  const ext = path.extname(filePath).toLowerCase();
-  const byExt = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.pdf': 'application/pdf',
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-  };
+}
+
+async function openDownloadStream(key, rangeOptions = null) {
+  const info = await getFileInfo(key);
+  const streamOptions = rangeOptions ? { start: rangeOptions.start, end: rangeOptions.end } : undefined;
   return {
-    stream: fs.createReadStream(filePath),
-    contentType: byExt[ext] || 'application/octet-stream',
+    stream: fs.createReadStream(info.filePath, streamOptions),
+    contentType: info.contentType,
+    size: info.size,
+    filePath: info.filePath,
   };
 }
 
@@ -81,5 +95,6 @@ module.exports = {
   uploadBuffer,
   getPresignedUrl,
   openDownloadStream,
+  getFileInfo,
 };
 

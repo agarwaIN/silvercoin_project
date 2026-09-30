@@ -706,6 +706,90 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   res.json({ message: 'Document uploaded', key, doc: newDocEntry });
 });
 
+router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
+
+  const newItems = [];
+  const now = Date.now();
+  for (let i = 0; i < req.files.length; i++) {
+    const file = req.files[i];
+    const isVid = (file.mimetype || '').startsWith('video/') || (file.originalname || '').toLowerCase().endsWith('.mp4');
+    const ext = isVid ? '.mp4' : '.jpg';
+    const key = `loans/${loan.loanId}/photo_${now}_${i}${ext}`;
+    await uploadBuffer(key, file.buffer);
+    newItems.push({
+      id: `${now}_${i}`,
+      uri: key,
+      type: isVid ? 'video' : 'image',
+      name: file.originalname || (isVid ? 'Property Video' : `Property Photo ${i + 1}`)
+    });
+  }
+
+  const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
+  const existingPhotos = Array.isArray(freshLoan.propertyPhotos) ? [...freshLoan.propertyPhotos] : [];
+  const updatedPhotos = [...existingPhotos];
+  for (const item of newItems) {
+    if (!updatedPhotos.some(p => p.uri === item.uri)) {
+      updatedPhotos.push(item);
+    }
+  }
+
+  await db.updateLoan(loan.loanId, { propertyPhotos: updatedPhotos });
+  res.json({ message: 'Photos uploaded', count: req.files.length, uploaded: newItems, photos: updatedPhotos });
+});
+
+router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
+
+  const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase().trim();
+  const rawName = (req.query.name || req.body.name || req.file.originalname || '').toLowerCase().trim();
+  
+  let videoType = 'owner';
+  if (rawType === 'house' || rawType === 'property') {
+    videoType = 'house';
+  } else if (rawType === 'owner') {
+    videoType = 'owner';
+  } else if (rawType.includes('house') || rawType.includes('walkthrough') || rawName.includes('house') || (rawName.includes('property') && !rawName.includes('owner'))) {
+    videoType = 'house';
+  }
+  const isHouse = videoType === 'house';
+  const label = isHouse ? 'House / Property Video' : 'Owner Verification Video';
+
+  const key = `loans/${loan.loanId}/${videoType}_video_${Date.now()}.mp4`;
+  await uploadBuffer(key, req.file.buffer);
+
+  const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
+  const existingVideos = Array.isArray(freshLoan.videos) ? [...freshLoan.videos] : [];
+  const entry = {
+    id: `${videoType}_${Date.now()}`,
+    uri: key,
+    videoType,
+    name: label,
+    uploadedAt: new Date().toISOString(),
+    mimeType: req.file.mimetype || 'video/mp4',
+  };
+  const filtered = existingVideos.filter(v => v.videoType !== videoType);
+  filtered.push(entry);
+
+  const updates = {
+    videos: filtered,
+  };
+  if (isHouse) {
+    updates.houseVideoUri = key;
+    if (freshLoan.videoUri) updates.videoUri = freshLoan.videoUri;
+  } else {
+    updates.videoUri = key;
+    if (freshLoan.houseVideoUri) updates.houseVideoUri = freshLoan.houseVideoUri;
+  }
+
+  await db.updateLoan(loan.loanId, updates);
+  res.json({ message: 'Video uploaded', key, videoType, name: label });
+});
+
 router.post('/profile/organization-logo', upload.single('logo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   const key = `users/${req.user.userId}/logo_${Date.now()}`;

@@ -78,8 +78,8 @@ function sanitizeMediaList(incomingList, existingList) {
     for (const item of existingList) {
       if (!item) continue;
       if (item.id) existingMap.set(String(item.id), item);
-      if (item.docType && item.docType !== 'Custom Document' && item.docType !== 'Document') {
-        existingMap.set(String(item.docType), item);
+      if (item.uri && !item.uri.startsWith('file:') && !item.uri.startsWith('content:')) {
+        existingMap.set(String(item.uri), item);
       }
     }
   }
@@ -87,8 +87,7 @@ function sanitizeMediaList(incomingList, existingList) {
   const result = [];
   for (const item of incomingList) {
     if (!item || typeof item !== 'object') continue;
-    const matchByDocType = (item.docType && item.docType !== 'Custom Document' && item.docType !== 'Document') ? existingMap.get(String(item.docType)) : null;
-    const existing = (item.id && existingMap.get(String(item.id))) || matchByDocType;
+    const existing = (item.id && existingMap.get(String(item.id))) || (item.uri && existingMap.get(String(item.uri)));
 
     let effectiveUri = item.serverKey || item.key || item.uri || '';
     if (typeof effectiveUri === 'string' && (effectiveUri.startsWith('file:') || effectiveUri.startsWith('content:') || effectiveUri.startsWith('blob:'))) {
@@ -178,7 +177,6 @@ router.post('/loans/:loanId/submit', async (req, res) => {
         const idx = existingDocs.findIndex(ed => {
           if (ed.id && d.id && String(ed.id) === String(d.id)) return true;
           if (ed.uri && d.uri && ed.uri === d.uri) return true;
-          if (ed.docType && d.docType && ed.docType === d.docType && ed.docType !== 'Custom Document' && ed.docType !== 'Document') return true;
           return false;
         });
         if (idx >= 0) {
@@ -194,7 +192,11 @@ router.post('/loans/:loanId/submit', async (req, res) => {
     if (Array.isArray(req.body.propertyPhotos) && req.body.propertyPhotos.length > 0) {
       const sanitized = sanitizeMediaList(req.body.propertyPhotos, existingPhotos);
       for (const p of sanitized) {
-        const idx = existingPhotos.findIndex(ep => ep.id === p.id || ep.uri === p.uri);
+        const idx = existingPhotos.findIndex(ep => {
+          if (ep.id && p.id && String(ep.id) === String(p.id)) return true;
+          if (ep.uri && p.uri && ep.uri === p.uri) return true;
+          return false;
+        });
         if (idx >= 0) {
           existingPhotos[idx] = { ...existingPhotos[idx], ...p };
         } else {
@@ -410,13 +412,19 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
 
   const newItems = [];
+  const now = Date.now();
   for (let i = 0; i < req.files.length; i++) {
     const file = req.files[i];
     const isVid = (file.mimetype || '').startsWith('video/') || (file.originalname || '').toLowerCase().endsWith('.mp4');
     const ext = isVid ? '.mp4' : '.jpg';
-    const key = `loans/${loan.loanId}/photo_${Date.now()}_${i}${ext}`;
+    const key = `loans/${loan.loanId}/photo_${now}_${i}${ext}`;
     await uploadBuffer(key, file.buffer);
-    newItems.push({ uri: key, type: isVid ? 'video' : 'image', name: file.originalname || 'Property Photo' });
+    newItems.push({
+      id: `${now}_${i}`,
+      uri: key,
+      type: isVid ? 'video' : 'image',
+      name: file.originalname || (isVid ? 'Property Video' : `Property Photo ${i + 1}`)
+    });
   }
 
   // Reload fresh loan state right before updating to avoid overwriting concurrent uploads
@@ -430,7 +438,7 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
   }
 
   await db.updateLoan(loan.loanId, { propertyPhotos: updatedPhotos });
-  res.json({ message: 'Photos uploaded', count: req.files.length, photos: updatedPhotos });
+  res.json({ message: 'Photos uploaded', count: req.files.length, uploaded: newItems, photos: updatedPhotos });
 });
 
 router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, res) => {

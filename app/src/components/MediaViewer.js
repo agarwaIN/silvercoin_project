@@ -257,10 +257,10 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
 
   const normalizeMediaUrl = (rawUrl) => {
     if (!rawUrl || typeof rawUrl !== 'string') return '';
-    const url = rawUrl.trim();
+    let url = rawUrl.trim();
     if (!url) return '';
-    if (url.startsWith('http://13.200.237.51/api/')) {
-      return url.replace('http://13.200.237.51/api/', 'http://13.200.237.51:5000/api/');
+    if (url.includes('13.200.237.51') && !url.includes(':5000') && !url.startsWith('https://')) {
+      url = url.replace('13.200.237.51', '13.200.237.51:5000');
     }
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://') || url.startsWith('content://') || url.startsWith('data:')) {
       return url;
@@ -435,9 +435,10 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
 
   // Filter media items into categories
   const mediaList = Array.isArray(media) ? media : [];
-  const videos = mediaList.filter((m) => m && m.type === 'video');
-  const photos = mediaList.filter((m) => m && (m.type === 'photo' || m.type === 'image'));
-  const docs = mediaList.filter((m) => m && m.type === 'document');
+  const isVideoItem = (m) => m && (m.type === 'video' || (m.mimeType && m.mimeType.includes('video')) || (typeof m.url === 'string' && (m.url.toLowerCase().includes('.mp4') || m.url.toLowerCase().includes('.mov') || m.url.toLowerCase().includes('video'))));
+  const videos = mediaList.filter(isVideoItem);
+  const photos = mediaList.filter((m) => !isVideoItem(m) && (m.type === 'photo' || m.type === 'image'));
+  const docs = mediaList.filter((m) => !isVideoItem(m) && (m.type === 'document' || !m.type || m.type === 'file'));
 
   // Standard property docs checklist state mapping with comprehensive match keys
   const standardDocsList = [

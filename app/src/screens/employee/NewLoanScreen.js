@@ -596,18 +596,25 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
                 fd.append('photos', makeFormDataFile(item.uri, isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
               });
               const res = await uploadPropertyPhotos(activeLoanId, fd);
-              const serverPhotos = res?.photos || [];
-              setData(d => ({
-                ...d,
-                propertyPhotos: (d.propertyPhotos || []).map(p => {
-                  if (newItems.some(ni => ni.uri === p.uri || ni.localUri === p.localUri)) {
-                    const match = serverPhotos.find(sp => sp.name === p.name || sp.uri === p.uri) || serverPhotos[serverPhotos.length - 1];
-                    const sKey = match?.uri || match?.key || p.serverKey || p.uri;
-                    return { ...p, uri: sKey, serverKey: sKey, uploaded: true };
+              const uploadedItems = res?.uploaded || (Array.isArray(res?.photos) ? res.photos.slice(-newItems.length) : []);
+              setData(d => {
+                const current = [...(d.propertyPhotos || [])];
+                newItems.forEach((ni, idx) => {
+                  const sItem = uploadedItems[idx];
+                  const sKey = sItem?.uri || sItem?.key;
+                  const pIdx = current.findIndex(p => (p.localUri && p.localUri === ni.localUri) || (p.uri && p.uri === ni.uri));
+                  if (pIdx >= 0 && sKey) {
+                    current[pIdx] = {
+                      ...current[pIdx],
+                      uri: sKey,
+                      serverKey: sKey,
+                      uploaded: true,
+                      name: sItem.name || current[pIdx].name,
+                    };
                   }
-                  return p;
-                })
-              }));
+                });
+                return { ...d, propertyPhotos: current };
+              });
             } catch {
               Alert.alert('Upload Notice', 'Photos saved locally. Will retry on submit.');
             } finally { setPhotoUploading(false); }
@@ -652,16 +659,17 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
               const fd = new FormData();
               fd.append('photos', makeFormDataFile(newItem.uri, isVid ? `photo_vid_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
               const res = await uploadPropertyPhotos(activeLoanId, fd);
-              const serverPhotos = res?.photos || [];
-              const lastServerPhoto = serverPhotos[serverPhotos.length - 1];
-              const sKey = lastServerPhoto?.uri || lastServerPhoto?.key;
+              const uploadedItems = res?.uploaded || (Array.isArray(res?.photos) ? res.photos.slice(-1) : []);
+              const sItem = uploadedItems[0] || (res?.photos && res.photos[res.photos.length - 1]);
+              const sKey = sItem?.uri || sItem?.key;
               setData(d => ({
                 ...d,
                 propertyPhotos: (d.propertyPhotos || []).map(p => (p.uri === newItem.uri || p.localUri === newItem.localUri) ? {
                   ...p,
                   uri: sKey || p.uri,
                   serverKey: sKey || p.serverKey || p.uri,
-                  uploaded: true
+                  uploaded: true,
+                  name: sItem?.name || p.name,
                 } : p)
               }));
             } catch {
@@ -797,11 +805,7 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
         }
       }
       newDoc.docType = docTypeToAssign;
-      const isIntentionalStdReplace = selectedDocType !== 'Custom Document' && existingDocs.some(doc => doc.docType === docTypeToAssign);
-      const updated = isIntentionalStdReplace
-        ? [...existingDocs.filter(doc => doc.docType !== docTypeToAssign), newDoc]
-        : [...existingDocs, newDoc];
-      return { ...d, propertyDocs: updated };
+      return { ...d, propertyDocs: [...existingDocs, newDoc] };
     });
 
     setModalVisible(false);
@@ -831,9 +835,16 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
         name: finalName,
         date: newDoc.date,
       });
+      const serverDoc = res?.doc;
       setData(d => ({
         ...d,
-        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? { ...d2, uploaded: true, serverKey: res?.key || d2.serverKey, uri: res?.key || d2.serverKey || d2.localUri || d2.uri } : d2)
+        propertyDocs: (d.propertyDocs || []).map(d2 => d2.id === newDoc.id ? {
+          ...d2,
+          uploaded: true,
+          serverKey: res?.key || d2.serverKey,
+          uri: res?.key || d2.serverKey || d2.localUri || d2.uri,
+          docType: serverDoc?.docType || d2.docType,
+        } : d2)
       }));
 
     } catch {
@@ -904,84 +915,101 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
         Upload any available property documents. All items below are non-essential.
       </Text>
 
-      <View style={stdS.container}>
-        {STANDARD_PROPERTY_DOCS.map((std) => {
-          const uploadedDoc = (data.propertyDocs || []).find(
-            (d) => d.docType === std.type || getStandardDocTitle(d) === std.title
+      {(() => {
+        const assignedDocIds = new Set();
+        const standardSlotDocs = {};
+        STANDARD_PROPERTY_DOCS.forEach(std => {
+          const found = (data.propertyDocs || []).find(
+            d => !assignedDocIds.has(d.id) && (d.docType === std.type || getStandardDocTitle(d) === std.title)
           );
-          return (
-            <View key={std.id} style={stdS.card}>
-              <View style={stdS.info}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Ionicons
-                    name={uploadedDoc ? "checkmark-circle" : "document-text-outline"}
-                    size={20}
-                    color={uploadedDoc ? colors.success : colors.dark}
-                  />
-                  <Text style={stdS.title}>{std.title}</Text>
-                </View>
-                <Text style={stdS.subtitle}>{std.subtitle}</Text>
-                {uploadedDoc && (
-                  <Text style={stdS.fileName} numberOfLines={1}>
-                    Named: {uploadedDoc.name} {uploadedDoc.uploaded ? '✓' : '(local)'}
-                  </Text>
-                )}
-              </View>
-              <View style={stdS.actions}>
-                {uploadedDoc ? (
-                  <>
-                    <TouchableOpacity style={stdS.viewBtn} onPress={() => openDoc(uploadedDoc.localUri || uploadedDoc.uri)}>
-                      <Ionicons name="eye-outline" size={15} color={colors.primary} />
-                      <Text style={stdS.viewTxt}>View</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={stdS.removeBtn} onPress={() => removeDoc(uploadedDoc.id)}>
-                      <Ionicons name="trash-outline" size={15} color={colors.error} />
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity style={stdS.uploadBtn} onPress={() => openUploadModal(std.type)} disabled={docUploading}>
-                    <Ionicons name="cloud-upload-outline" size={15} color={colors.white} />
-                    <Text style={stdS.uploadTxt}>Upload</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+          if (found) {
+            standardSlotDocs[std.id] = found;
+            assignedDocIds.add(found.id);
+          }
+        });
+        const additionalDocs = (data.propertyDocs || []).filter(d => !assignedDocIds.has(d.id));
+
+        return (
+          <>
+            <View style={stdS.container}>
+              {STANDARD_PROPERTY_DOCS.map((std) => {
+                const uploadedDoc = standardSlotDocs[std.id];
+                return (
+                  <View key={std.id} style={stdS.card}>
+                    <View style={stdS.info}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons
+                          name={uploadedDoc ? "checkmark-circle" : "document-text-outline"}
+                          size={20}
+                          color={uploadedDoc ? colors.success : colors.dark}
+                        />
+                        <Text style={stdS.title}>{std.title}</Text>
+                      </View>
+                      <Text style={stdS.subtitle}>{std.subtitle}</Text>
+                      {uploadedDoc && (
+                        <Text style={stdS.fileName} numberOfLines={1}>
+                          Named: {uploadedDoc.name} {uploadedDoc.uploaded ? '✓' : '(local)'}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={stdS.actions}>
+                      {uploadedDoc ? (
+                        <>
+                          <TouchableOpacity style={stdS.viewBtn} onPress={() => openDoc(uploadedDoc.localUri || uploadedDoc.uri)}>
+                            <Ionicons name="eye-outline" size={15} color={colors.primary} />
+                            <Text style={stdS.viewTxt}>View</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={stdS.removeBtn} onPress={() => removeDoc(uploadedDoc.id)}>
+                            <Ionicons name="trash-outline" size={15} color={colors.error} />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TouchableOpacity style={stdS.uploadBtn} onPress={() => openUploadModal(std.type)} disabled={docUploading}>
+                          <Ionicons name="cloud-upload-outline" size={15} color={colors.white} />
+                          <Text style={stdS.uploadTxt}>Upload</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
             </View>
-          );
-        })}
-      </View>
 
-      {/* ── Custom / Additional Property Documents ── */}
-      <FieldLabel text="Additional Documents (Optional)" />
-      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}>
-        Upload electricity bill, tax receipts, or custom papers.
-      </Text>
+            {/* ── Custom / Additional Property Documents ── */}
+            <FieldLabel text="Additional Documents (Optional)" />
+            <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}>
+              Upload electricity bill, tax receipts, or custom papers.
+            </Text>
 
-      <TouchableOpacity style={docS.uploadBtn} onPress={() => openUploadModal('Custom Document')} disabled={docUploading}>
-        {docUploading
-          ? <ActivityIndicator color={colors.white} size="small" />
-          : <Ionicons name="add-circle-outline" size={20} color={colors.white} />}
-        <Text style={docS.uploadTxt}>
-          {docUploading ? 'Uploading...' : '+ Add Other Document'}
-        </Text>
-      </TouchableOpacity>
+            <TouchableOpacity style={docS.uploadBtn} onPress={() => openUploadModal('Custom Document')} disabled={docUploading}>
+              {docUploading
+                ? <ActivityIndicator color={colors.white} size="small" />
+                : <Ionicons name="add-circle-outline" size={20} color={colors.white} />}
+              <Text style={docS.uploadTxt}>
+                {docUploading ? 'Uploading...' : '+ Add Other Document'}
+              </Text>
+            </TouchableOpacity>
 
-      {/* Render Custom Documents List */}
-      {(data.propertyDocs || []).filter(d => !STANDARD_PROPERTY_DOCS.some(std => std.type === d.docType || std.title.toLowerCase() === d.name?.toLowerCase()) && !getStandardDocTitle(d)).map(doc => (
-        <View key={doc.id} style={docS.row}>
-          <Ionicons name="document-text-outline" size={20} color={colors.dark} />
-          <View style={{ flex: 1 }}>
-            <Text style={docS.name} numberOfLines={1}>{doc.name}</Text>
-            <Text style={{ fontSize: 11, color: colors.muted }}>{doc.docType || 'Custom Document'}</Text>
-          </View>
-          {doc.uploaded && <Ionicons name="checkmark-circle" size={16} color={colors.success} />}
-          <TouchableOpacity onPress={() => openDoc(doc.localUri || doc.uri)} style={{ paddingHorizontal: 6 }}>
-            <Ionicons name="eye-outline" size={18} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => removeDoc(doc.id)} style={{ paddingHorizontal: 6 }}>
-            <Ionicons name="trash-outline" size={18} color={colors.error} />
-          </TouchableOpacity>
-        </View>
-      ))}
+            {/* Render Custom & Additional Documents List without hiding any */}
+            {additionalDocs.map(doc => (
+              <View key={doc.id} style={docS.row}>
+                <Ionicons name="document-text-outline" size={20} color={colors.dark} />
+                <View style={{ flex: 1 }}>
+                  <Text style={docS.name} numberOfLines={1}>{doc.name}</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>{doc.docType || 'Custom Document'}</Text>
+                </View>
+                {doc.uploaded && <Ionicons name="checkmark-circle" size={16} color={colors.success} />}
+                <TouchableOpacity onPress={() => openDoc(doc.localUri || doc.uri)} style={{ paddingHorizontal: 6 }}>
+                  <Ionicons name="eye-outline" size={18} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => removeDoc(doc.id)} style={{ paddingHorizontal: 6 }}>
+                  <Ionicons name="trash-outline" size={18} color={colors.error} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </>
+        );
+      })()}
 
       {/* ── Property Area ── */}
       <FieldLabel text="Property Area (Sq. M)" required />

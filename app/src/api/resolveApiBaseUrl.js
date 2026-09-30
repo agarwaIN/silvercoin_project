@@ -5,6 +5,9 @@ import { DEV_API_PORT, PRODUCTION_API_ORIGIN } from '../config/api';
 export function normalizeApiBaseUrl(raw) {
   if (raw == null || String(raw).trim() === '') return '';
   let s = String(raw).trim().replace(/\/+$/, '');
+  if (s.includes('13.200.237.51') && !s.includes(':5000') && !s.startsWith('https://')) {
+    s = s.replace('13.200.237.51', '13.200.237.51:5000');
+  }
   if (!/^https?:\/\//i.test(s)) {
     s = `http://${s}`;
   }

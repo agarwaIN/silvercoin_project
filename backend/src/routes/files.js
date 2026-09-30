@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { openDownloadStream } = require('../services/fileStorageService');
+const { openDownloadStream, getFileInfo } = require('../services/fileStorageService');
 
 const router = express.Router();
 
@@ -37,13 +37,46 @@ router.get('/download', async (req, res) => {
   }
 
   try {
-    const { stream, contentType } = await openDownloadStream(key);
-    res.setHeader('Content-Type', contentType);
+    const info = await getFileInfo(key);
+    const fileSize = info.size;
+    const contentType = info.contentType;
+
+    res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'private, max-age=3600');
-    stream.on('error', () => {
-      if (!res.headersSent) res.status(404).json({ message: 'File not found' });
-    });
-    stream.pipe(res);
+
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (start >= fileSize || (parts[1] && end >= fileSize)) {
+        res.setHeader('Content-Range', `bytes */${fileSize}`);
+        return res.status(416).send('Requested range not satisfiable');
+      }
+
+      const chunksize = (end - start) + 1;
+      const { stream } = await openDownloadStream(key, { start, end });
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Length': chunksize,
+        'Content-Type': contentType,
+      });
+      stream.on('error', () => {
+        if (!res.headersSent) res.status(404).json({ message: 'File stream error' });
+      });
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+      });
+      const { stream } = await openDownloadStream(key);
+      stream.on('error', () => {
+        if (!res.headersSent) res.status(404).json({ message: 'File stream error' });
+      });
+      stream.pipe(res);
+    }
   } catch {
     return res.status(404).json({ message: 'File not found' });
   }
