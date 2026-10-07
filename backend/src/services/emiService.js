@@ -339,6 +339,7 @@ async function buildLoanRecoveryItems(loans) {
       paidCount,
       totalCount,
       recoveryStatus,
+      emis: allEmisSorted,
     });
   }
 

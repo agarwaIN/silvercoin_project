@@ -57,4 +57,10 @@ export const returnLoan = (loanId, reason) => api.post(`/admin/loans/${loanId}/r
 export const disburseLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/disburse`, data).then((r) => r.data);
 export const approveForeclosure = (loanId) => api.post(`/admin/loans/${loanId}/approve-foreclosure`).then((r) => r.data);
 export const updateLoanDates = (loanId, data) => api.post(`/admin/loans/${loanId}/update-dates`, data).then((r) => r.data);
-
+export const uploadVideo = (loanId, formData, videoType, name) => {
+  const params = [];
+  if (videoType) params.push(`videoType=${encodeURIComponent(videoType)}`);
+  if (name) params.push(`name=${encodeURIComponent(name)}`);
+  const qs = params.length > 0 ? `?${params.join('&')}` : '';
+  return api.post(`/admin/loans/${loanId}/upload-video${qs}`, formData).then((r) => r.data);
+};

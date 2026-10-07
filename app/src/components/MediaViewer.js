@@ -23,8 +23,8 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { usePopup } from '../context/PopupContext';
 import { useAuth } from '../context/AuthContext';
-import { uploadRegistryDocument as uploadAdminDoc } from '../api/adminApi';
-import { uploadRegistryDocument as uploadEmpDoc } from '../api/employeeApi';
+import { uploadRegistryDocument as uploadAdminDoc, uploadVideo as uploadAdminVideo } from '../api/adminApi';
+import { uploadRegistryDocument as uploadEmpDoc, uploadVideo as uploadEmpVideo } from '../api/employeeApi';
 import { WebView } from 'react-native-webview';
 import { formatDate } from '../utils/date';
 
@@ -185,7 +185,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const [loading, setLoading] = useState(!!loanId);
   const [selectedMedia, setSelectedMedia] = useState(null);
 
-  // Custom Upload Modal State
+  // Custom Document Upload Modal State
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [selectedDocType, setSelectedDocType] = useState('Property Registry - 1');
   const [customDocName, setCustomDocName] = useState('');
@@ -193,6 +193,134 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const [pickedFile, setPickedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  // Video Upload Modal State
+  const [videoUploadModalVisible, setVideoUploadModalVisible] = useState(false);
+  const [selectedVideoType, setSelectedVideoType] = useState('owner'); // 'owner' or 'house'
+  const [pickedVideoFile, setPickedVideoFile] = useState(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+
+  const openVideoUploadModal = (type = 'owner') => {
+    setSelectedVideoType(type);
+    setPickedVideoFile(null);
+    setVideoUploadModalVisible(true);
+  };
+
+  const handlePickVideoFromGallery = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permission Needed', 'Allow photo and video gallery access to select a video.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const filename = asset.fileName || `${selectedVideoType}_video_${Date.now()}.mp4`;
+      setPickedVideoFile({
+        uri: asset.uri,
+        name: filename,
+        mimeType: asset.mimeType || 'video/mp4',
+        size: asset.fileSize,
+        duration: asset.duration,
+      });
+    } catch (err) {
+      console.warn('Pick video error:', err);
+      showAlert('Error', 'Failed to pick video from device.');
+    }
+  };
+
+  const handleRecordVideoWithCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permission Needed', 'Allow camera access to record video.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: false,
+        quality: 0.8,
+        videoMaxDuration: 180,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const filename = `${selectedVideoType}_recorded_${Date.now()}.mp4`;
+      setPickedVideoFile({
+        uri: asset.uri,
+        name: filename,
+        mimeType: asset.mimeType || 'video/mp4',
+        size: asset.fileSize,
+        duration: asset.duration,
+      });
+    } catch (err) {
+      console.warn('Record video error:', err);
+      showAlert('Camera Error', 'Could not record video with camera.');
+    }
+  };
+
+  const handlePickVideoFileAlternative = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: 'video/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        const asset = res.assets[0];
+        setPickedVideoFile({
+          uri: asset.uri,
+          name: asset.name || `${selectedVideoType}_video_${Date.now()}.mp4`,
+          mimeType: asset.mimeType || 'video/mp4',
+          size: asset.size,
+        });
+      }
+    } catch (err) {
+      showAlert('Error', 'Failed to select video file.');
+    }
+  };
+
+  const handleVideoUploadSubmit = async () => {
+    if (!pickedVideoFile) {
+      showAlert('Required', 'Please record or select a video to upload.');
+      return;
+    }
+    if (!loanId) {
+      showAlert('Error', 'Loan ID not provided.');
+      return;
+    }
+
+    const label = selectedVideoType === 'house' ? 'House / Property Video' : 'Owner Verification Video';
+    setUploadingVideo(true);
+    try {
+      const formData = new FormData();
+      formData.append('video', {
+        uri: Platform.OS === 'android' ? pickedVideoFile.uri : pickedVideoFile.uri.replace('file://', ''),
+        name: pickedVideoFile.name || `${selectedVideoType}_video.mp4`,
+        type: pickedVideoFile.mimeType || 'video/mp4',
+      });
+      formData.append('videoType', selectedVideoType);
+      formData.append('name', label);
+
+      const uploader = user?.role === 'admin' ? uploadAdminVideo : uploadEmpVideo;
+      await uploader(loanId, formData, selectedVideoType, label);
+
+      showAlert('Success', `${label} uploaded successfully!`);
+      setVideoUploadModalVisible(false);
+      setPickedVideoFile(null);
+      await load();
+      if (onDocumentUploaded) onDocumentUploaded();
+    } catch (err) {
+      console.error('Video upload error:', err);
+      showAlert('Upload Error', err.response?.data?.message || err.message || 'Failed to upload video.');
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
 
   const downloadAndSaveMedia = async (url, originalName, mimeType) => {
     if (!url) {
@@ -532,22 +660,164 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       </View>
 
       {/* Category 1: Videos */}
-      <Text style={styles.sectionHeader}>Property & Owner Videos</Text>
-      {videos.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          {videos.map((m, i) => (
-            <TouchableOpacity key={i} style={styles.mediaBox} onPress={() => handlePress(m)}>
-              <Ionicons name="videocam" size={28} color="#D97706" />
-              <Text style={styles.mediaLabel} numberOfLines={1}>
-                {m.name || `Video ${i + 1}`}
-              </Text>
-              <Text style={styles.viewText}>Watch Video</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      ) : (
-        <Text style={styles.emptyCategoryTxt}>No video recorded</Text>
-      )}
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionHeader}>Property & Owner Videos</Text>
+        {loanId && (
+          <TouchableOpacity
+            style={styles.addVideoPillBtn}
+            onPress={() => openVideoUploadModal('owner')}
+          >
+            <Ionicons name="videocam-outline" size={13} color={colors.white} />
+            <Text style={styles.addVideoPillTxt}>+ Upload Video</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {(() => {
+        const ownerVideo = videos.find(
+          (v) => (v.videoType === 'owner') ||
+                 (v.name && v.name.toLowerCase().includes('owner'))
+        );
+        const houseVideo = videos.find(
+          (v) => (v.videoType === 'house') ||
+                 (v.name && (v.name.toLowerCase().includes('house') || (v.name.toLowerCase().includes('property') && !v.name.toLowerCase().includes('owner'))))
+        );
+        const extraVideos = videos.filter((v) => v !== ownerVideo && v !== houseVideo);
+
+        return (
+          <View style={styles.videoSectionContainer}>
+            {/* Slot 1: Owner Verification Video */}
+            <View style={styles.videoCardSlot}>
+              <View style={styles.videoCardHeader}>
+                <View style={[styles.videoIconCircle, { backgroundColor: ownerVideo ? '#DCFCE7' : '#FEF3C7' }]}>
+                  <Ionicons
+                    name={ownerVideo ? 'videocam' : 'videocam-outline'}
+                    size={22}
+                    color={ownerVideo ? '#15803D' : '#D97706'}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.videoSlotTitle}>Owner Verification Video</Text>
+                  <View style={styles.videoStatusTagRow}>
+                    {ownerVideo ? (
+                      <View style={styles.uploadedBadge}>
+                        <Ionicons name="checkmark-circle" size={12} color="#15803D" />
+                        <Text style={styles.uploadedBadgeTxt}>Recorded / Uploaded</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.missingBadge}>
+                        <Ionicons name="alert-circle" size={12} color="#D97706" />
+                        <Text style={styles.missingBadgeTxt}>Not uploaded by employee</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.videoCardActions}>
+                {ownerVideo ? (
+                  <TouchableOpacity
+                    style={styles.watchVideoBtn}
+                    onPress={() => handlePress(ownerVideo)}
+                  >
+                    <Ionicons name="play-circle" size={15} color={colors.white} />
+                    <Text style={styles.watchVideoBtnTxt}>Watch Video</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {loanId && (
+                  <TouchableOpacity
+                    style={[styles.uploadSlotBtn, ownerVideo ? styles.replaceSlotBtn : styles.primarySlotBtn]}
+                    onPress={() => openVideoUploadModal('owner')}
+                  >
+                    <Ionicons
+                      name={ownerVideo ? 'refresh' : 'cloud-upload-outline'}
+                      size={14}
+                      color={ownerVideo ? colors.dark : colors.white}
+                    />
+                    <Text style={[styles.uploadSlotBtnTxt, ownerVideo ? { color: colors.dark } : { color: colors.white }]}>
+                      {ownerVideo ? 'Re-upload Video' : '+ Upload Owner Video'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Slot 2: House / Property Walkthrough Video */}
+            <View style={styles.videoCardSlot}>
+              <View style={styles.videoCardHeader}>
+                <View style={[styles.videoIconCircle, { backgroundColor: houseVideo ? '#DCFCE7' : '#FEF3C7' }]}>
+                  <Ionicons
+                    name={houseVideo ? 'home' : 'home-outline'}
+                    size={22}
+                    color={houseVideo ? '#15803D' : '#D97706'}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.videoSlotTitle}>House / Property Video</Text>
+                  <View style={styles.videoStatusTagRow}>
+                    {houseVideo ? (
+                      <View style={styles.uploadedBadge}>
+                        <Ionicons name="checkmark-circle" size={12} color="#15803D" />
+                        <Text style={styles.uploadedBadgeTxt}>Recorded / Uploaded</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.missingBadge}>
+                        <Ionicons name="alert-circle" size={12} color="#D97706" />
+                        <Text style={styles.missingBadgeTxt}>Not uploaded by employee</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.videoCardActions}>
+                {houseVideo ? (
+                  <TouchableOpacity
+                    style={styles.watchVideoBtn}
+                    onPress={() => handlePress(houseVideo)}
+                  >
+                    <Ionicons name="play-circle" size={15} color={colors.white} />
+                    <Text style={styles.watchVideoBtnTxt}>Watch Video</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {loanId && (
+                  <TouchableOpacity
+                    style={[styles.uploadSlotBtn, houseVideo ? styles.replaceSlotBtn : styles.primarySlotBtn]}
+                    onPress={() => openVideoUploadModal('house')}
+                  >
+                    <Ionicons
+                      name={houseVideo ? 'refresh' : 'cloud-upload-outline'}
+                      size={14}
+                      color={houseVideo ? colors.dark : colors.white}
+                    />
+                    <Text style={[styles.uploadSlotBtnTxt, houseVideo ? { color: colors.dark } : { color: colors.white }]}>
+                      {houseVideo ? 'Re-upload Video' : '+ Upload House Video'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Any Additional Uploaded Videos */}
+            {extraVideos.length > 0 && (
+              <View style={{ marginTop: 6 }}>
+                <Text style={[styles.inputLabel, { marginBottom: 6, fontSize: 11 }]}>Additional Recorded Videos</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                  {extraVideos.map((m, i) => (
+                    <TouchableOpacity key={i} style={styles.mediaBox} onPress={() => handlePress(m)}>
+                      <Ionicons name="videocam" size={26} color="#D97706" />
+                      <Text style={styles.mediaLabel} numberOfLines={1}>
+                        {m.name || `Video ${i + 3}`}
+                      </Text>
+                      <Text style={styles.viewText}>Watch Video</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+        );
+      })()}
 
       {/* Category 2: Photos / Images */}
       <Text style={styles.sectionHeader}>Property & Owner Pictures</Text>
@@ -846,6 +1116,113 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
           </View>
         </View>
       </Modal>
+      {/* Video Upload Modal */}
+      <Modal visible={videoUploadModalVisible} transparent animationType="slide" onRequestClose={() => setVideoUploadModalVisible(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.uploadModalCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.uploadModalTitle}>Upload Video</Text>
+              <TouchableOpacity onPress={() => setVideoUploadModalVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>Select Video Type</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+              <TouchableOpacity
+                style={[styles.typeChip, selectedVideoType === 'owner' && styles.typeChipActive, { flex: 1, alignItems: 'center' }]}
+                onPress={() => setSelectedVideoType('owner')}
+              >
+                <Text style={[styles.typeChipTxt, selectedVideoType === 'owner' && styles.typeChipTxtActive]}>
+                  Owner Video
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeChip, selectedVideoType === 'house' && styles.typeChipActive, { flex: 1, alignItems: 'center' }]}
+                onPress={() => setSelectedVideoType('house')}
+              >
+                <Text style={[styles.typeChipTxt, selectedVideoType === 'house' && styles.typeChipTxtActive]}>
+                  House Video
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.inputLabel, { marginTop: 4 }]}>Choose Video Source</Text>
+
+            {/* Option 1: Camera Record */}
+            <TouchableOpacity
+              style={[styles.pickFileBtn, { backgroundColor: '#F0FDF4', borderColor: '#16A34A', marginBottom: 8 }]}
+              onPress={handleRecordVideoWithCamera}
+            >
+              <Ionicons name="videocam" size={20} color="#16A34A" />
+              <Text style={[styles.pickFileTxt, { color: '#15803D', fontWeight: '700' }]}>
+                Record Video with Camera
+              </Text>
+            </TouchableOpacity>
+
+            {/* Option 2: Gallery Video Picker */}
+            <TouchableOpacity
+              style={[styles.pickFileBtn, { backgroundColor: '#EFF6FF', borderColor: colors.primary, marginBottom: 8, marginTop: 0 }]}
+              onPress={handlePickVideoFromGallery}
+            >
+              <Ionicons name="images" size={20} color={colors.primary} />
+              <Text style={[styles.pickFileTxt, { color: colors.primary, fontWeight: '700' }]}>
+                Choose from Gallery / Videos
+              </Text>
+            </TouchableOpacity>
+
+            {/* Option 3: File Browser */}
+            <TouchableOpacity
+              style={[styles.pickFileBtn, { marginTop: 0, marginBottom: 10 }]}
+              onPress={handlePickVideoFileAlternative}
+            >
+              <Ionicons name="folder-open-outline" size={18} color={colors.muted} />
+              <Text style={[styles.pickFileTxt, { color: colors.text }]}>
+                Browse Video Files (.mp4, .mov)
+              </Text>
+            </TouchableOpacity>
+
+            {/* Selected File Notice */}
+            {pickedVideoFile ? (
+              <View style={styles.selectedFileNotice}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.selectedFileNoticeTxt} numberOfLines={1}>
+                    {pickedVideoFile.name}
+                  </Text>
+                  {pickedVideoFile.size ? (
+                    <Text style={styles.selectedFileSizeTxt}>
+                      Size: {(pickedVideoFile.size / (1024 * 1024)).toFixed(2)} MB
+                      {pickedVideoFile.duration ? ` • Duration: ${Math.round(pickedVideoFile.duration)}s` : ''}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setVideoUploadModalVisible(false)}
+                disabled={uploadingVideo}
+              >
+                <Text style={styles.cancelModalTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitModalBtn, !pickedVideoFile && { opacity: 0.6 }]}
+                onPress={handleVideoUploadSubmit}
+                disabled={uploadingVideo || !pickedVideoFile}
+              >
+                {uploadingVideo ? (
+                  <ActivityIndicator color={colors.white} size="small" />
+                ) : (
+                  <Text style={styles.submitModalTxt}>Upload Video</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -902,4 +1279,27 @@ const styles = StyleSheet.create({
   cancelModalTxt: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.text },
   submitModalBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.dark, alignItems: 'center' },
   submitModalTxt: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, marginBottom: 8 },
+  addVideoPillBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#D97706', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  addVideoPillTxt: { color: colors.white, fontFamily: fonts.bold, fontSize: 11 },
+  videoSectionContainer: { gap: 10, marginBottom: 6 },
+  videoCardSlot: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+  videoCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  videoIconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  videoSlotTitle: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark },
+  videoStatusTagRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
+  uploadedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  uploadedBadgeTxt: { fontFamily: fonts.medium, fontSize: 10, color: '#15803D' },
+  missingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FEF3C7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  missingBadgeTxt: { fontFamily: fonts.medium, fontSize: 10, color: '#B45309' },
+  videoCardActions: { flexDirection: 'row', gap: 8, marginTop: 10, justifyContent: 'flex-end', alignItems: 'center' },
+  watchVideoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#D97706', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  watchVideoBtnTxt: { color: colors.white, fontFamily: fonts.semiBold, fontSize: 12 },
+  uploadSlotBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  primarySlotBtn: { backgroundColor: colors.dark },
+  replaceSlotBtn: { backgroundColor: '#E2E8F0', borderWidth: 1, borderColor: colors.border },
+  uploadSlotBtnTxt: { fontFamily: fonts.semiBold, fontSize: 12 },
+  selectedFileNotice: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F0FDF4', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#BBF7D0', marginBottom: 4 },
+  selectedFileNoticeTxt: { fontFamily: fonts.semiBold, fontSize: 12, color: '#166534' },
+  selectedFileSizeTxt: { fontFamily: fonts.regular, fontSize: 10, color: '#15803D', marginTop: 1 },
 });

@@ -739,7 +739,7 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
 
 router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
 
   const newItems = [];
@@ -773,7 +773,7 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
 
 router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
-  if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
   if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
 
   const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase().trim();

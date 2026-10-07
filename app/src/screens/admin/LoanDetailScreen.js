@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import CalendarPicker from '../../components/CalendarPicker';
 export default function LoanDetailScreen({ route, navigation }) {
   const { showAlert } = usePopup();
   const rawParams = route.params || {};
+  const scrollRef = useRef(null);
   const loanId = rawParams.loanId || rawParams.params?.loanId || rawParams.loan?.loanId;
   const [loan, setLoan] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -270,6 +271,7 @@ export default function LoanDetailScreen({ route, navigation }) {
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <Header title={loan.displayLoanId || loan.applicationNumber || loan.loanId} onBack={() => navigation.goBack()} />
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -379,7 +381,16 @@ export default function LoanDetailScreen({ route, navigation }) {
         )}
 
         {loan.emis && loan.emis.length > 0 && (
-          <View style={[styles.emiChangeCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', marginTop: 0 }]}>
+          <View
+            onLayout={(e) => {
+              if (rawParams.scrollToEmi) {
+                setTimeout(() => {
+                  scrollRef.current?.scrollTo({ y: Math.max(0, e.nativeEvent.layout.y - 20), animated: true });
+                }, 250);
+              }
+            }}
+            style={[styles.emiChangeCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', marginTop: 0 }]}
+          >
             <View style={styles.emiChangeHeader}>
               <Ionicons name="calendar-outline" size={20} color="#15803D" />
               <Text style={[styles.emiChangeTitle, { color: '#15803D' }]}>EMI Schedule</Text>
