@@ -61,6 +61,25 @@ router.post('/loans', async (req, res) => {
   res.status(201).json(loan);
 });
 
+router.get('/loans/check-aadhaar', async (req, res) => {
+  try {
+    const { aadhaar, excludeLoanId } = req.query;
+    if (!aadhaar) return res.json({ exists: false });
+    const existing = await db.findLoanByAadhaar(aadhaar, excludeLoanId);
+    if (existing) {
+      return res.json({
+        exists: true,
+        loanId: existing.displayLoanId || existing.applicationNumber || existing.loanId,
+        ownerName: existing.ownerName,
+      });
+    }
+    return res.json({ exists: false });
+  } catch (err) {
+    console.error('Employee Check Aadhaar Error:', err);
+    res.json({ exists: false });
+  }
+});
+
 router.get('/loans/:loanId', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
@@ -118,6 +137,21 @@ router.patch('/loans/:loanId', async (req, res) => {
   if (['approved'].includes(loan.status)) {
     return res.status(400).json({ message: 'Approved loans cannot be edited' });
   }
+
+  // Validate that Aadhaar is unique across all loan applications
+  if (req.body.aadhaar) {
+    const cleanAadhaar = String(req.body.aadhaar).replace(/\D/g, '');
+    if (cleanAadhaar.length === 12) {
+      const existing = await db.findLoanByAadhaar(cleanAadhaar, loan.loanId);
+      if (existing) {
+        const existingId = existing.displayLoanId || existing.applicationNumber || existing.loanId;
+        return res.status(400).json({
+          message: `A loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${existingId}). Only one loan application can be created for 1 Aadhaar number.`,
+        });
+      }
+    }
+  }
+
   const updates = { ...req.body, updatedAt: new Date().toISOString() };
   delete updates.loanId;
   delete updates.employeeId;
@@ -157,6 +191,21 @@ router.post('/loans/:loanId/submit', async (req, res) => {
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) {
     return res.status(404).json({ message: 'Loan not found' });
+  }
+
+  // Enforce unique Aadhaar before final submission
+  const targetAadhaar = (req.body && req.body.aadhaar) || loan.aadhaar;
+  if (targetAadhaar) {
+    const cleanAadhaar = String(targetAadhaar).replace(/\D/g, '');
+    if (cleanAadhaar.length === 12) {
+      const existing = await db.findLoanByAadhaar(cleanAadhaar, loan.loanId);
+      if (existing) {
+        const existingId = existing.displayLoanId || existing.applicationNumber || existing.loanId;
+        return res.status(400).json({
+          message: `Cannot submit: A loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${existingId}). Only one loan application can be created for 1 Aadhaar number.`,
+        });
+      }
+    }
   }
 
   const updates = { status: 'submitted', updatedAt: new Date().toISOString() };
@@ -251,8 +300,14 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
     const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
     if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
 
-    const { paymentId, amount, paymentMode, transactionRef, txnRef } = req.body;
-    const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, { paymentMode, transactionRef, txnRef });
+    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date } = req.body;
+    const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {
+      paymentMode,
+      transactionRef: transactionRef || txnRef,
+      txnRef: txnRef || transactionRef,
+      paymentDate: paymentDate || date,
+      date: paymentDate || date,
+    });
     res.json({ message: 'Payment recorded successfully', ...result });
   } catch (err) {
     console.error('Employee Pay EMI Error:', err);

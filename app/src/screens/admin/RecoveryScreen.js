@@ -22,7 +22,8 @@ import * as adminApi from '../../api/adminApi';
 import * as employeeApi from '../../api/employeeApi';
 import { usePopup } from '../../context/PopupContext';
 import { useAuth } from '../../context/AuthContext';
-import { formatDate } from '../../utils/date';
+import { formatDate, getTodayFormatted } from '../../utils/date';
+import CalendarPicker from '../../components/CalendarPicker';
 
 const getOrdinalDay = (dayNum) => {
   if (!dayNum) return '';
@@ -47,6 +48,7 @@ export default function RecoveryScreen({ navigation }) {
   const [payAmount, setPayAmount] = useState('');
   const [payMode, setPayMode] = useState('Cash'); // 'Cash', 'UPI', 'Bank'
   const [txnRef, setTxnRef] = useState('');
+  const [payDate, setPayDate] = useState(getTodayFormatted());
   const [submitting, setSubmitting] = useState(false);
 
   // Edit Dates Modal State
@@ -54,14 +56,13 @@ export default function RecoveryScreen({ navigation }) {
   const [editDatesItem, setEditDatesItem] = useState(null);
   const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
   const [submittingDates, setSubmittingDates] = useState(false);
+  const [activeDatePicker, setActiveDatePicker] = useState(null);
 
   const isEmployee = user?.role === 'employee';
 
   const cleanDateStr = (d) => {
-    if (!d || typeof d !== 'string') return '';
-    const s = d.trim();
-    if (s.includes('T')) return s.split('T')[0];
-    return s.slice(0, 10);
+    if (!d) return '';
+    return formatDate(d);
   };
 
   const handleOpenEditDates = (item) => {
@@ -70,6 +71,7 @@ export default function RecoveryScreen({ navigation }) {
       disbursementDate: cleanDateStr(item.disbursementDate),
       emiStartDate: cleanDateStr(item.emiOpeningDate || item.dueDate),
     });
+    setActiveDatePicker(null);
     setEditDatesModalVisible(true);
   };
 
@@ -153,7 +155,21 @@ export default function RecoveryScreen({ navigation }) {
       const nameMatch = (item.borrowerName || '').toLowerCase().includes(q);
       const idMatch = (item.displayLoanId || item.loanId || '').toLowerCase().includes(q);
       const mobMatch = (item.borrowerMobile || '').includes(q);
-      if (!nameMatch && !idMatch && !mobMatch) return false;
+
+      // Check Aadhaar Number (Full or Last 4 digits)
+      const aadhaar = String(item.borrowerAadhaar || item.aadhaar || '').replace(/\D/g, '');
+      const queryDigits = q.replace(/\D/g, '');
+      let aadhaarMatch = false;
+      if (aadhaar) {
+        if (queryDigits.length >= 4) {
+          aadhaarMatch = aadhaar.slice(-4) === queryDigits || aadhaar.endsWith(queryDigits) || aadhaar.includes(queryDigits);
+        }
+        if (!aadhaarMatch) {
+          aadhaarMatch = (item.borrowerAadhaar || item.aadhaar || '').toLowerCase().includes(q);
+        }
+      }
+
+      if (!nameMatch && !idMatch && !mobMatch && !aadhaarMatch) return false;
     }
 
     if (activeTab === 'overdue') {
@@ -203,6 +219,8 @@ export default function RecoveryScreen({ navigation }) {
     setPayAmount(String(defaultAmount || item.amount || ''));
     setPayMode('Cash');
     setTxnRef('');
+    setPayDate(getTodayFormatted());
+    setActiveDatePicker(null);
   };
 
   const handleConfirmPay = async () => {
@@ -213,27 +231,26 @@ export default function RecoveryScreen({ navigation }) {
       return;
     }
 
-    // Strictly enforce Transaction/UTR Reference for UPI or Bank
-    if (['UPI', 'Bank'].includes(payMode)) {
-      if (!txnRef || !txnRef.trim()) {
-        showAlert(
-          'UTR Reference Mandatory',
-          `Transaction / UTR Reference number is mandatory for ${payMode} payments. Please enter the unique transaction reference to prevent duplicate entries.`,
-        );
-        return;
-      }
+    // Strictly enforce Transaction/Receipt Reference for all payments
+    if (!txnRef || !txnRef.trim()) {
+      showAlert(
+        'Receipt Reference Mandatory',
+        'Receipt / Reference number is mandatory for all payments. Please enter a valid number to prevent duplicate entries.',
+      );
+      return;
     }
 
     setSubmitting(true);
     try {
       const cleanRef = txnRef.trim();
       if (isEmployee) {
-        await employeeApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef);
+        await employeeApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef, payDate);
       } else {
-        await adminApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef);
+        await adminApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef, payDate);
       }
       showAlert('Success', `Recorded payment of ₹${amountNum.toLocaleString('en-IN')} successfully.`);
       setSelectedItem(null);
+      setActiveDatePicker(null);
       await loadData();
     } catch (err) {
       showAlert('Payment Error', err.response?.data?.message || err.message || 'Failed to record payment.');
@@ -610,9 +627,21 @@ export default function RecoveryScreen({ navigation }) {
       </View>
 
       {/* Collect Payment Modal */}
-      <Modal visible={!!selectedItem} transparent animationType="slide" onRequestClose={() => setSelectedItem(null)}>
+      <Modal visible={!!selectedItem} transparent animationType="slide" onRequestClose={() => { setActiveDatePicker(null); setSelectedItem(null); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            {activeDatePicker === 'recoveryPayDate' ? (
+              <CalendarPicker
+                title="Select Payment Received Date"
+                value={payDate}
+                onSelect={(d) => {
+                  setPayDate(d);
+                  setActiveDatePicker(null);
+                }}
+                onClose={() => setActiveDatePicker(null)}
+              />
+            ) : (
+              <>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Record EMI Payment</Text>
@@ -646,34 +675,75 @@ export default function RecoveryScreen({ navigation }) {
             {/* Quick-fill preset chips */}
             <Text style={styles.fieldLabel}>Quick Fill Amount:</Text>
             <View style={styles.presetChipsRow}>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => setPayAmount(String(selectedItem?.dueAmount || selectedItem?.amount || ''))}
-              >
-                <Text style={styles.presetChipTxt}>
-                  {selectedItem?.isPartiallyPaid
-                    ? `Remaining Due (₹${selectedItem?.dueAmount})`
-                    : `1 Full EMI (₹${selectedItem?.amount})`}
-                </Text>
-              </TouchableOpacity>
-              {selectedItem?.totalOverdue > selectedItem?.dueAmount ? (
-                <TouchableOpacity
-                  style={[styles.presetChip, { borderColor: colors.error, backgroundColor: '#FEE2E2' }]}
-                  onPress={() => setPayAmount(String(selectedItem?.totalOverdue || ''))}
-                >
-                  <Text style={[styles.presetChipTxt, { color: colors.error }]}>
-                    All Overdue (₹{selectedItem?.totalOverdue})
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-              {selectedItem?.amount ? (
-                <TouchableOpacity
-                  style={styles.presetChip}
-                  onPress={() => setPayAmount(String(Number(selectedItem.amount) * 2))}
-                >
-                  <Text style={styles.presetChipTxt}>2 EMIs (Advance)</Text>
-                </TouchableOpacity>
-              ) : null}
+              {(() => {
+                const fullEmi = Math.round(Number(selectedItem?.amount || 0));
+                const currentDue = Math.round(Number(selectedItem?.dueAmount || selectedItem?.amount || 0));
+                const totalOverdue = Math.round(Number(selectedItem?.totalOverdue || 0));
+                const advanceEmi = Math.round(fullEmi * 2);
+
+                const chips = [];
+
+                if (fullEmi > 0) {
+                  chips.push({
+                    id: 'full',
+                    label: `1 Full EMI: ₹${fullEmi.toLocaleString('en-IN')}`,
+                    value: fullEmi,
+                  });
+                }
+
+                if (currentDue > 0 && currentDue !== fullEmi) {
+                  chips.push({
+                    id: 'due',
+                    label: `Due EMI: ₹${currentDue.toLocaleString('en-IN')}`,
+                    value: currentDue,
+                  });
+                }
+
+                if (totalOverdue > 0 && totalOverdue !== currentDue && totalOverdue !== fullEmi) {
+                  chips.push({
+                    id: 'overdue',
+                    label: `All Overdue: ₹${totalOverdue.toLocaleString('en-IN')}`,
+                    value: totalOverdue,
+                    isOverdue: true,
+                  });
+                }
+
+                if (advanceEmi > 0) {
+                  chips.push({
+                    id: 'advance',
+                    label: `2 EMIs Advance: ₹${advanceEmi.toLocaleString('en-IN')}`,
+                    value: advanceEmi,
+                  });
+                }
+
+                return chips.map((chip) => {
+                  const isActive = payAmount === String(chip.value);
+                  const isOverdue = chip.isOverdue;
+
+                  return (
+                    <TouchableOpacity
+                      key={chip.id}
+                      style={[
+                        styles.presetChip,
+                        isOverdue && styles.presetChipOverdue,
+                        isActive && (isOverdue ? styles.presetChipOverdueActive : styles.presetChipActive),
+                      ]}
+                      onPress={() => setPayAmount(String(chip.value))}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.presetChipTxt,
+                          isOverdue && styles.presetChipOverdueTxt,
+                          isActive && (isOverdue ? styles.presetChipOverdueTxtActive : styles.presetChipTxtActive),
+                        ]}
+                      >
+                        {chip.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                });
+              })()}
             </View>
 
             <Input
@@ -683,6 +753,29 @@ export default function RecoveryScreen({ navigation }) {
               keyboardType="numeric"
               placeholder="Enter Collected Amount"
             />
+
+            <Text style={styles.fieldLabel}>Payment Received Date * (DD-MM-YYYY)</Text>
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: colors.inputBg,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 12,
+                marginBottom: 12,
+              }}
+              onPress={() => setActiveDatePicker('recoveryPayDate')}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.text }}>
+                {formatDate(payDate) || 'Select Payment Date'}
+              </Text>
+              <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+            </TouchableOpacity>
 
             <Text style={styles.fieldLabel}>Payment Mode *</Text>
             <View style={styles.modeRow}>
@@ -700,24 +793,23 @@ export default function RecoveryScreen({ navigation }) {
             </View>
 
             <Input
-              label={
-                ['UPI', 'Bank'].includes(payMode)
-                  ? 'Transaction / UTR Reference * (Mandatory)'
-                  : 'Receipt / Reference (Optional for Cash)'
-              }
+              label="Receipt / Reference No. * (Mandatory)"
               value={txnRef}
               onChangeText={setTxnRef}
               placeholder={
                 ['UPI', 'Bank'].includes(payMode)
                   ? 'Enter Mandatory UTR / Bank Reference No.'
-                  : 'Optional Receipt / Slip Number'
+                  : 'Enter Mandatory Receipt / Slip Number'
               }
             />
 
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
               <TouchableOpacity
                 style={styles.cancelBtn}
-                onPress={() => setSelectedItem(null)}
+                onPress={() => {
+                  setActiveDatePicker(null);
+                  setSelectedItem(null);
+                }}
                 disabled={submitting}
               >
                 <Text style={styles.cancelTxt}>Cancel</Text>
@@ -734,64 +826,90 @@ export default function RecoveryScreen({ navigation }) {
                 )}
               </TouchableOpacity>
             </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
 
       {/* Edit Loan Dates Modal */}
-      <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => setEditDatesModalVisible(false)}>
+      <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Edit Loan Dates</Text>
-                <Text style={styles.modalSub}>
-                  {editDatesItem?.borrowerName} • {editDatesItem?.displayLoanId}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setEditDatesModalVisible(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={22} color={colors.muted} />
-              </TouchableOpacity>
-            </View>
+            {activeDatePicker ? (
+              <CalendarPicker
+                title={activeDatePicker === 'disbursementDate' ? 'Select Disbursement Date' : 'Select EMI Start Date'}
+                value={activeDatePicker === 'disbursementDate' ? datesData.disbursementDate : datesData.emiStartDate}
+                onSelect={(d) => {
+                  if (activeDatePicker === 'disbursementDate') {
+                    setDatesData({ ...datesData, disbursementDate: d });
+                  } else {
+                    setDatesData({ ...datesData, emiStartDate: d });
+                  }
+                  setActiveDatePicker(null);
+                }}
+                onClose={() => setActiveDatePicker(null)}
+              />
+            ) : (
+              <>
+                <View style={styles.modalHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalTitle}>Edit Loan Dates</Text>
+                    <Text style={styles.modalSub}>
+                      {editDatesItem?.borrowerName} • {editDatesItem?.displayLoanId}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setEditDatesModalVisible(false)} style={{ padding: 4 }}>
+                    <Ionicons name="close" size={22} color={colors.muted} />
+                  </TouchableOpacity>
+                </View>
 
-            <Text style={styles.fieldLabel}>Disbursement Date (DD/MM/YYYY or YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="e.g. 15/05/2024 or 2024-05-15"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={datesData.disbursementDate}
-              onChangeText={(t) => setDatesData({ ...datesData, disbursementDate: t })}
-            />
+                <Text style={styles.fieldLabel}>Disbursement Date (DD-MM-YYYY)</Text>
+                <TouchableOpacity
+                  style={styles.datePickerInput}
+                  onPress={() => setActiveDatePicker('disbursementDate')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(datesData.disbursementDate) || 'DD-MM-YYYY'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+                </TouchableOpacity>
 
-            <Text style={[styles.fieldLabel, { marginTop: 10 }]}>EMI Start Date (DD/MM/YYYY or YYYY-MM-DD)</Text>
-            <TextInput
-              style={[styles.modalInputSmall, { marginBottom: 20 }]}
-              placeholder="e.g. 15/06/2024 or 2024-06-15"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={datesData.emiStartDate}
-              onChangeText={(t) => setDatesData({ ...datesData, emiStartDate: t })}
-            />
+                <Text style={[styles.fieldLabel, { marginTop: 10 }]}>EMI Start Date (DD-MM-YYYY)</Text>
+                <TouchableOpacity
+                  style={[styles.datePickerInput, { marginBottom: 20 }]}
+                  onPress={() => setActiveDatePicker('emiStartDate')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(datesData.emiStartDate) || 'DD-MM-YYYY'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+                </TouchableOpacity>
 
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setEditDatesModalVisible(false)}
-                disabled={submittingDates}
-              >
-                <Text style={styles.cancelTxt}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={handleSaveDates}
-                disabled={submittingDates}
-              >
-                {submittingDates ? (
-                  <ActivityIndicator color={colors.white} size="small" />
-                ) : (
-                  <Text style={styles.confirmTxt}>Save Dates</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}
+                    disabled={submittingDates}
+                  >
+                    <Text style={styles.cancelTxt}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.confirmBtn}
+                    onPress={handleSaveDates}
+                    disabled={submittingDates}
+                  >
+                    {submittingDates ? (
+                      <ActivityIndicator color={colors.white} size="small" />
+                    ) : (
+                      <Text style={styles.confirmTxt}>Save Dates</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -1002,16 +1120,31 @@ const styles = StyleSheet.create({
   modalOverviewLabel: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted },
   modalOverviewVal: { fontFamily: fonts.bold, fontSize: 13, color: colors.dark, marginTop: 2 },
   fieldLabel: { fontFamily: fonts.semiBold, fontSize: fontSize.xs, color: colors.text, marginBottom: 6 },
-  presetChipsRow: { flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
+  presetChipsRow: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   presetChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#F1F5F9',
   },
+  presetChipActive: {
+    borderColor: colors.dark || '#4B6B4E',
+    backgroundColor: colors.dark || '#4B6B4E',
+  },
+  presetChipOverdue: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  presetChipOverdueActive: {
+    borderColor: colors.error || '#E53E3E',
+    backgroundColor: colors.error || '#E53E3E',
+  },
   presetChipTxt: { fontFamily: fonts.medium, fontSize: 11, color: colors.text },
+  presetChipTxtActive: { color: colors.white, fontFamily: fonts.bold },
+  presetChipOverdueTxt: { fontFamily: fonts.medium, fontSize: 11, color: colors.error || '#E53E3E' },
+  presetChipOverdueTxtActive: { color: colors.white, fontFamily: fonts.bold },
   modeRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   modeChip: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
   modeChipActive: { borderColor: colors.dark, backgroundColor: colors.dark },
@@ -1042,6 +1175,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 10,
     padding: 12,
+    fontSize: 14,
+    color: colors.text,
+  },
+  datePickerInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  datePickerValueText: {
+    fontFamily: fonts.medium,
     fontSize: 14,
     color: colors.text,
   },

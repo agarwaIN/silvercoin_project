@@ -199,12 +199,37 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
     const loan = await db.getLoanById(req.params.loanId);
     if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
 
-    const { paymentId, amount, paymentMode, transactionRef, txnRef } = req.body;
-    const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, { paymentMode, transactionRef, txnRef });
+    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date } = req.body;
+    const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {
+      paymentMode,
+      transactionRef: transactionRef || txnRef,
+      txnRef: txnRef || transactionRef,
+      paymentDate: paymentDate || date,
+      date: paymentDate || date,
+    });
     res.json({ message: 'Payment recorded successfully', ...result });
   } catch (err) {
     console.error('Pay EMI Error:', err);
     res.status(400).json({ message: err.message || 'Failed to record payment' });
+  }
+});
+
+router.get('/loans/check-aadhaar', async (req, res) => {
+  try {
+    const { aadhaar, excludeLoanId } = req.query;
+    if (!aadhaar) return res.json({ exists: false });
+    const existing = await db.findLoanByAadhaar(aadhaar, excludeLoanId);
+    if (existing) {
+      return res.json({
+        exists: true,
+        loanId: existing.displayLoanId || existing.applicationNumber || existing.loanId,
+        ownerName: existing.ownerName,
+      });
+    }
+    return res.json({ exists: false });
+  } catch (err) {
+    console.error('Check Aadhaar Error:', err);
+    res.json({ exists: false });
   }
 });
 
@@ -522,10 +547,16 @@ router.post('/loans/:loanId/disburse', async (req, res) => {
     return res.status(400).json({ message: 'Missing disbursement details' });
   }
 
-  const disbursements = loan.disbursements || [];
-  disbursements.push({ date, amount, bankName, transactionNumber });
+  const isDup = db.findTransactionRefExists ? await db.findTransactionRefExists(transactionNumber) : false;
+  if (isDup) {
+    return res.status(400).json({ message: `Transaction number "${transactionNumber}" has already been used in the system.` });
+  }
 
-  const updates = { disbursements, status: 'active' };
+  const disbursements = loan.disbursements || [];
+  const normalizedDate = parseDateInput(date) || date;
+  disbursements.push({ date: normalizedDate, amount, bankName, transactionNumber });
+
+  const updates = { disbursements, status: 'active', disbursementDate: normalizedDate };
   
   // Generate displayLoanId on first disbursement if not exists
   if (!loan.displayLoanId && !loan.officialLoanId) {

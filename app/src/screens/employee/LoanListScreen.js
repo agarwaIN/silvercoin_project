@@ -72,7 +72,7 @@ export default function LoanListScreen({ navigation }) {
         <Ionicons name="search-outline" size={20} color={colors.muted} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search Owner Name Or Loan ID"
+          placeholder="Search Name, Loan ID, or Aadhaar (full / last 4)"
           placeholderTextColor={colors.muted}
           value={search}
           onChangeText={setSearch}

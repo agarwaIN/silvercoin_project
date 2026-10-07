@@ -303,6 +303,45 @@ async function findEmiByTxnRef(txnRef) {
   ) || null;
 }
 
+async function findTransactionRefExists(txnRef) {
+  if (!txnRef) return false;
+  const normalized = String(txnRef).trim().toLowerCase();
+  if (!normalized) return false;
+
+  // Check EMIs table
+  const emis = await scanAll(tableName('emis'));
+  const emiFound = emis.some(e =>
+    (e.transactionRef && String(e.transactionRef).trim().toLowerCase() === normalized) ||
+    (e.txnRef && String(e.txnRef).trim().toLowerCase() === normalized)
+  );
+  if (emiFound) return true;
+
+  // Check loan disbursements
+  const loans = await scanAll(tableName('loans'));
+  for (const loan of loans) {
+    if (Array.isArray(loan.disbursements)) {
+      const disbFound = loan.disbursements.some(d =>
+        d && d.transactionNumber && String(d.transactionNumber).trim().toLowerCase() === normalized
+      );
+      if (disbFound) return true;
+    }
+  }
+  return false;
+}
+
+async function findLoanByAadhaar(aadhaar, excludeLoanId = null) {
+  if (!aadhaar) return null;
+  const cleanAadhaar = String(aadhaar).replace(/\D/g, '');
+  if (!cleanAadhaar || cleanAadhaar.length < 4) return null;
+
+  const loans = await scanAll(tableName('loans'));
+  return loans.find(l => {
+    if (excludeLoanId && String(l.loanId) === String(excludeLoanId)) return false;
+    const loanAadhaar = String(l.aadhaar || l.borrowerAadhaar || l.aadhaarNumber || '').replace(/\D/g, '');
+    return loanAadhaar && loanAadhaar === cleanAadhaar;
+  }) || null;
+}
+
 async function createOtpSession(session) {
   await docClient.send(new PutCommand({
     TableName: tableName('otpSessions'),
@@ -368,6 +407,8 @@ module.exports = {
   updateEmiPayment,
   deleteEmiPayment,
   findEmiByTxnRef,
+  findTransactionRefExists,
+  findLoanByAadhaar,
   createOtpSession,
   getOtpSession,
   updateOtpSession,

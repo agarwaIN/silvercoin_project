@@ -125,6 +125,12 @@ export default function SADashboard({ navigation }) {
   // Filtered Loans
   const filteredLoans = loans.filter((loan) => {
     const q = searchQuery.trim().toLowerCase();
+    const queryDigits = q.replace(/\D/g, '');
+    const aadhaar = String(loan.aadhaar || loan.borrowerAadhaar || loan.aadhaarNumber || '').replace(/\D/g, '');
+    const aadhaarMatches =
+      (queryDigits.length >= 4 && (aadhaar.slice(-4) === queryDigits || aadhaar.endsWith(queryDigits) || aadhaar.includes(queryDigits))) ||
+      (loan.aadhaar && loan.aadhaar.toLowerCase().includes(q));
+
     const matchesSearch =
       !q ||
       (loan.displayLoanId && loan.displayLoanId.toLowerCase().includes(q)) ||
@@ -132,7 +138,8 @@ export default function SADashboard({ navigation }) {
       (loan.loanId && loan.loanId.toLowerCase().includes(q)) ||
       (loan.ownerName && loan.ownerName.toLowerCase().includes(q)) ||
       (loan.adminName && loan.adminName.toLowerCase().includes(q)) ||
-      (loan.employeeName && loan.employeeName.toLowerCase().includes(q));
+      (loan.employeeName && loan.employeeName.toLowerCase().includes(q)) ||
+      aadhaarMatches;
 
     if (!matchesSearch) return false;
     if (loanStatusFilter === 'all') return true;

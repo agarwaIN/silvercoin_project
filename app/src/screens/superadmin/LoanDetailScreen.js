@@ -11,6 +11,7 @@ import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
 import { getLoan, getMediaPreview, updateLoanDates } from '../../api/superadminApi';
 import { formatDate } from '../../utils/date';
+import CalendarPicker from '../../components/CalendarPicker';
 
 export default function LoanDetailScreen({ route }) {
   const rawParams = route.params || {};
@@ -22,6 +23,7 @@ export default function LoanDetailScreen({ route }) {
   const [processing, setProcessing] = useState(false);
   const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
   const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
+  const [activeDatePicker, setActiveDatePicker] = useState(null);
   const navigation = useNavigation();
 
 
@@ -70,16 +72,15 @@ export default function LoanDetailScreen({ route }) {
   };
 
   const cleanDateStr = (d) => {
-    if (!d || typeof d !== 'string') return '';
-    const s = d.trim();
-    if (s.includes('T')) return s.split('T')[0];
-    return s.slice(0, 10);
+    if (!d) return '';
+    return formatDate(d);
   };
 
   const handleOpenEditDates = () => {
-    const rawDisbDate = loan?.disbursements?.[0]?.date || loan?.disbursementDate || new Date().toISOString().slice(0, 10);
-    const rawEmiDate = loan?.emiStartDate || loan?.loanStartDate || new Date().toISOString().slice(0, 10);
+    const rawDisbDate = loan?.disbursements?.[0]?.date || loan?.disbursementDate || new Date();
+    const rawEmiDate = loan?.emiStartDate || loan?.loanStartDate || new Date();
     setDatesData({ disbursementDate: cleanDateStr(rawDisbDate), emiStartDate: cleanDateStr(rawEmiDate) });
+    setActiveDatePicker(null);
     setEditDatesModalVisible(true);
   };
 
@@ -187,42 +188,66 @@ export default function LoanDetailScreen({ route }) {
         )}
       </ScrollView>
 
-      <Modal visible={editDatesModalVisible} transparent animationType="fade">
+      <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Loan Dates</Text>
-            <Text style={styles.modalSubtitle}>Update Disbursement Date and EMI Schedule Start Date</Text>
+            {activeDatePicker ? (
+              <CalendarPicker
+                title={activeDatePicker === 'disbursementDate' ? 'Select Disbursement Date' : 'Select EMI Start Date'}
+                value={activeDatePicker === 'disbursementDate' ? datesData.disbursementDate : datesData.emiStartDate}
+                onSelect={(d) => {
+                  if (activeDatePicker === 'disbursementDate') {
+                    setDatesData({ ...datesData, disbursementDate: d });
+                  } else {
+                    setDatesData({ ...datesData, emiStartDate: d });
+                  }
+                  setActiveDatePicker(null);
+                }}
+                onClose={() => setActiveDatePicker(null)}
+              />
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Edit Loan Dates</Text>
+                <Text style={styles.modalSubtitle}>Update Disbursement Date and EMI Schedule Start Date</Text>
 
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
-              Disbursement Date (DD/MM/YYYY or YYYY-MM-DD)
-            </Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="e.g. 2026-10-01"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={datesData.disbursementDate}
-              onChangeText={t => setDatesData({ ...datesData, disbursementDate: t })}
-            />
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Disbursement Date (DD-MM-YYYY)
+                </Text>
+                <TouchableOpacity
+                  style={styles.datePickerInput}
+                  onPress={() => setActiveDatePicker('disbursementDate')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(datesData.disbursementDate) || 'DD-MM-YYYY'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+                </TouchableOpacity>
 
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 8, marginBottom: 6 }}>
-              EMI Start Date (DD/MM/YYYY or YYYY-MM-DD)
-            </Text>
-            <TextInput
-              style={[styles.modalInputSmall, { marginBottom: 20 }]}
-              placeholder="e.g. 2026-11-01"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={datesData.emiStartDate}
-              onChangeText={t => setDatesData({ ...datesData, emiStartDate: t })}
-            />
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 8, marginBottom: 6 }}>
+                  EMI Start Date (DD-MM-YYYY)
+                </Text>
+                <TouchableOpacity
+                  style={[styles.datePickerInput, { marginBottom: 20 }]}
+                  onPress={() => setActiveDatePicker('emiStartDate')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(datesData.emiStartDate) || 'DD-MM-YYYY'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+                </TouchableOpacity>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setEditDatesModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleSaveDates} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Save Dates</Text>}
-              </TouchableOpacity>
-            </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancel} onPress={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }} disabled={processing}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleSaveDates} disabled={processing}>
+                    {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Save Dates</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -279,6 +304,8 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginBottom: 8 },
   modalSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 16 },
   modalInputSmall: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, marginBottom: 12 },
+  datePickerInput: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 12 },
+  datePickerValueText: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
   modalActions: { flexDirection: 'row', gap: 12 },
   modalCancel: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   modalCancelText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.text },

@@ -12,7 +12,8 @@ import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
 import { Ionicons } from '@expo/vector-icons';
 import { payEmi } from '../../api/adminApi';
-import { formatDate } from '../../utils/date';
+import { formatDate, getTodayFormatted } from '../../utils/date';
+import CalendarPicker from '../../components/CalendarPicker';
 
 export default function LoanDetailScreen({ route, navigation }) {
   const { showAlert } = usePopup();
@@ -33,9 +34,10 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [disburseModalVisible, setDisburseModalVisible] = useState(false);
   const [disburseData, setDisburseData] = useState({ date: formatDate(new Date()), amount: '', bankName: '', transactionNumber: '' });
   const [payEmiModalVisible, setPayEmiModalVisible] = useState(false);
-  const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0, paymentMode: 'Cash', txnRef: '' });
+  const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0, paymentMode: 'Cash', txnRef: '', paymentDate: '' });
   const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
   const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
+  const [activeDatePicker, setActiveDatePicker] = useState(null);
 
 
   const load = useCallback(async () => {
@@ -145,16 +147,18 @@ export default function LoanDetailScreen({ route, navigation }) {
     }
     const mode = payEmiData.paymentMode || 'Cash';
     const cleanRef = (payEmiData.txnRef || '').trim();
-    if (['UPI', 'Bank'].includes(mode) && !cleanRef) {
-      showAlert('Required Field Missing', 'Transaction / UTR reference number is mandatory for UPI and Bank payments.');
+    if (!cleanRef) {
+      showAlert('Required Field Missing', 'Receipt / Reference number is mandatory.');
       return;
     }
+    const payDate = payEmiData.paymentDate || getTodayFormatted();
     setProcessing(true);
     try {
-      await payEmi(loanId, payEmiData.paymentId, payEmiData.amount, mode, cleanRef);
+      await payEmi(loanId, payEmiData.paymentId, payEmiData.amount, mode, cleanRef, payDate);
       setPayEmiModalVisible(false);
+      setActiveDatePicker(null);
       await load();
-      showAlert('Success', 'EMI payment recorded.');
+      showAlert('Success', 'EMI payment recorded successfully.');
     } catch (error) {
       showAlert('Error', error.response?.data?.message || 'Failed to record EMI payment.');
     } finally {
@@ -225,16 +229,15 @@ export default function LoanDetailScreen({ route, navigation }) {
   };
 
   const cleanDateStr = (d) => {
-    if (!d || typeof d !== 'string') return '';
-    const s = d.trim();
-    if (s.includes('T')) return s.split('T')[0];
-    return s.slice(0, 10);
+    if (!d) return '';
+    return formatDate(d);
   };
 
   const handleOpenEditDates = () => {
-    const rawDisbDate = loan.disbursements?.[0]?.date || loan.disbursementDate || new Date().toISOString().slice(0, 10);
-    const rawEmiDate = loan.emiStartDate || loan.loanStartDate || new Date().toISOString().slice(0, 10);
+    const rawDisbDate = loan.disbursements?.[0]?.date || loan.disbursementDate || new Date();
+    const rawEmiDate = loan.emiStartDate || loan.loanStartDate || new Date();
     setDatesData({ disbursementDate: cleanDateStr(rawDisbDate), emiStartDate: cleanDateStr(rawEmiDate) });
+    setActiveDatePicker(null);
     setEditDatesModalVisible(true);
   };
 
@@ -406,7 +409,9 @@ export default function LoanDetailScreen({ route, navigation }) {
                             dueAmount: totalDue - (emi.paidAmount || 0),
                             paymentMode: 'Cash',
                             txnRef: '',
+                            paymentDate: getTodayFormatted(),
                           });
+                          setActiveDatePicker(null);
                           setPayEmiModalVisible(true);
                         }}
                       >
@@ -502,163 +507,250 @@ export default function LoanDetailScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      <Modal visible={disburseModalVisible} transparent animationType="fade">
+      <Modal visible={disburseModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setDisburseModalVisible(false); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Record Disbursement</Text>
-            <Text style={styles.modalSubtitle}>Enter bank transaction details to mark this loan as Active.</Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Date (DD/MM/YYYY)"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={disburseData.date}
-              onChangeText={t => setDisburseData({...disburseData, date: t})}
-            />
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Amount (₹)"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={disburseData.amount?.toString()}
-              onChangeText={t => setDisburseData({...disburseData, amount: t})}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Bank Name"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={disburseData.bankName}
-              onChangeText={t => setDisburseData({...disburseData, bankName: t})}
-            />
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Transaction Number / UTR"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={disburseData.transactionNumber}
-              onChangeText={t => setDisburseData({...disburseData, transactionNumber: t})}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setDisburseModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleDisburse} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Disburse</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={payEmiModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Receive Payment</Text>
-            <Text style={styles.modalSubtitle}>Enter the amount received from the customer. Remaining due: ₹{payEmiData.dueAmount}</Text>
-            
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Amount (₹)"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={payEmiData.amount?.toString()}
-              onChangeText={t => setPayEmiData({...payEmiData, amount: t})}
-              keyboardType="numeric"
-            />
-
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 12, marginBottom: 6 }}>
-              Payment Mode *
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              {['Cash', 'UPI', 'Bank'].map(mode => (
+            {activeDatePicker === 'disburseDate' ? (
+              <CalendarPicker
+                title="Select Disbursement Date"
+                value={disburseData.date}
+                onSelect={(t) => {
+                  setDisburseData({ ...disburseData, date: t });
+                  setActiveDatePicker(null);
+                }}
+                onClose={() => setActiveDatePicker(null)}
+              />
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Record Disbursement</Text>
+                <Text style={styles.modalSubtitle}>Enter bank transaction details to mark this loan as Active.</Text>
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Disbursement Date (DD-MM-YYYY)
+                </Text>
                 <TouchableOpacity
-                  key={mode}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: payEmiData.paymentMode === mode ? colors.primary : colors.border,
-                    backgroundColor: payEmiData.paymentMode === mode ? colors.primary : colors.white,
-                    alignItems: 'center',
-                  }}
-                  onPress={() => setPayEmiData({ ...payEmiData, paymentMode: mode })}
+                  style={styles.datePickerInput}
+                  onPress={() => setActiveDatePicker('disburseDate')}
+                  activeOpacity={0.7}
                 >
-                  <Text
-                    style={{
-                      fontFamily: fonts.semiBold,
-                      fontSize: 13,
-                      color: payEmiData.paymentMode === mode ? colors.white : colors.text,
-                    }}
-                  >
-                    {mode}
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(disburseData.date) || 'DD-MM-YYYY'}
                   </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
-              {['UPI', 'Bank'].includes(payEmiData.paymentMode)
-                ? 'Transaction / UTR Reference * (Mandatory)'
-                : 'Receipt / Reference (Optional for Cash)'}
-            </Text>
-            <TextInput
-              style={[styles.modalInputSmall, { marginBottom: 16 }]}
-              placeholder={
-                ['UPI', 'Bank'].includes(payEmiData.paymentMode)
-                  ? 'Enter mandatory UTR / Bank Reference No.'
-                  : 'Optional receipt / slip number'
-              }
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={payEmiData.txnRef}
-              onChangeText={t => setPayEmiData({ ...payEmiData, txnRef: t })}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setPayEmiModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handlePayEmi} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Confirm Payment</Text>}
-              </TouchableOpacity>
-            </View>
+                <TextInput
+                  style={styles.modalInputSmall}
+                  placeholder="Amount (₹)"
+                  placeholderTextColor={colors.placeholder || '#4B5563'}
+                  value={disburseData.amount?.toString()}
+                  onChangeText={t => setDisburseData({...disburseData, amount: t})}
+                  keyboardType="numeric"
+                />
+                <TextInput
+                  style={styles.modalInputSmall}
+                  placeholder="Bank Name"
+                  placeholderTextColor={colors.placeholder || '#4B5563'}
+                  value={disburseData.bankName}
+                  onChangeText={t => setDisburseData({...disburseData, bankName: t})}
+                />
+                <TextInput
+                  style={styles.modalInputSmall}
+                  placeholder="Transaction Number / UTR"
+                  placeholderTextColor={colors.placeholder || '#4B5563'}
+                  value={disburseData.transactionNumber}
+                  onChangeText={t => setDisburseData({...disburseData, transactionNumber: t})}
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancel} onPress={() => { setActiveDatePicker(null); setDisburseModalVisible(false); }} disabled={processing}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleDisburse} disabled={processing}>
+                    {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Disburse</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
 
-      <Modal visible={editDatesModalVisible} transparent animationType="fade">
+      <Modal visible={payEmiModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setPayEmiModalVisible(false); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Loan Dates</Text>
-            <Text style={styles.modalSubtitle}>Update Disbursement Date and EMI Schedule Start Date</Text>
+            {activeDatePicker === 'payDate' ? (
+              <CalendarPicker
+                title="Select Payment Received Date"
+                value={payEmiData.paymentDate}
+                onSelect={(d) => {
+                  setPayEmiData({ ...payEmiData, paymentDate: d });
+                  setActiveDatePicker(null);
+                }}
+                onClose={() => setActiveDatePicker(null)}
+              />
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Receive Payment</Text>
+                <Text style={styles.modalSubtitle}>
+                  Enter the amount received from the customer. Remaining due: ₹{payEmiData.dueAmount}
+                </Text>
 
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
-              Disbursement Date (DD/MM/YYYY or YYYY-MM-DD)
-            </Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="e.g. 2026-10-01"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={datesData.disbursementDate}
-              onChangeText={t => setDatesData({ ...datesData, disbursementDate: t })}
-            />
+                <TextInput
+                  style={styles.modalInputSmall}
+                  placeholder="Amount (₹)"
+                  placeholderTextColor={colors.placeholder || '#4B5563'}
+                  value={payEmiData.amount?.toString()}
+                  onChangeText={t => setPayEmiData({...payEmiData, amount: t})}
+                  keyboardType="numeric"
+                />
 
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 8, marginBottom: 6 }}>
-              EMI Start Date (DD/MM/YYYY or YYYY-MM-DD)
-            </Text>
-            <TextInput
-              style={[styles.modalInputSmall, { marginBottom: 20 }]}
-              placeholder="e.g. 2026-11-01"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={datesData.emiStartDate}
-              onChangeText={t => setDatesData({ ...datesData, emiStartDate: t })}
-            />
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 4, marginBottom: 6 }}>
+                  Payment Received Date * (DD-MM-YYYY)
+                </Text>
+                <TouchableOpacity
+                  style={styles.datePickerInput}
+                  onPress={() => setActiveDatePicker('payDate')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(payEmiData.paymentDate) || 'DD-MM-YYYY'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+                </TouchableOpacity>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setEditDatesModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleSaveDates} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Save Dates</Text>}
-              </TouchableOpacity>
-            </View>
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 4, marginBottom: 6 }}>
+                  Payment Mode *
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {['Cash', 'UPI', 'Bank'].map(mode => (
+                    <TouchableOpacity
+                      key={mode}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: payEmiData.paymentMode === mode ? colors.primary : colors.border,
+                        backgroundColor: payEmiData.paymentMode === mode ? colors.primary : colors.white,
+                        alignItems: 'center',
+                      }}
+                      onPress={() => setPayEmiData({ ...payEmiData, paymentMode: mode })}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: fonts.semiBold,
+                          fontSize: 13,
+                          color: payEmiData.paymentMode === mode ? colors.white : colors.text,
+                        }}
+                      >
+                        {mode}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Receipt / Reference No. * (Mandatory)
+                </Text>
+                <TextInput
+                  style={[styles.modalInputSmall, { marginBottom: 16 }]}
+                  placeholder={
+                    ['UPI', 'Bank'].includes(payEmiData.paymentMode)
+                      ? 'Enter mandatory UTR / Bank Reference No.'
+                      : 'Enter mandatory receipt / slip number'
+                  }
+                  placeholderTextColor={colors.placeholder || '#4B5563'}
+                  value={payEmiData.txnRef}
+                  onChangeText={t => setPayEmiData({ ...payEmiData, txnRef: t })}
+                />
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancel}
+                    onPress={() => {
+                      setActiveDatePicker(null);
+                      setPayEmiModalVisible(false);
+                    }}
+                    disabled={processing}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalSubmit, { backgroundColor: colors.primary }]}
+                    onPress={handlePayEmi}
+                    disabled={processing}
+                  >
+                    {processing ? (
+                      <ActivityIndicator color={colors.white} size="small" />
+                    ) : (
+                      <Text style={styles.modalSubmitText}>Confirm Payment</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {activeDatePicker ? (
+              <CalendarPicker
+                title={activeDatePicker === 'disbursementDate' ? 'Select Disbursement Date' : 'Select EMI Start Date'}
+                value={activeDatePicker === 'disbursementDate' ? datesData.disbursementDate : datesData.emiStartDate}
+                onSelect={(d) => {
+                  if (activeDatePicker === 'disbursementDate') {
+                    setDatesData({ ...datesData, disbursementDate: d });
+                  } else {
+                    setDatesData({ ...datesData, emiStartDate: d });
+                  }
+                  setActiveDatePicker(null);
+                }}
+                onClose={() => setActiveDatePicker(null)}
+              />
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Edit Loan Dates</Text>
+                <Text style={styles.modalSubtitle}>Update Disbursement Date and EMI Schedule Start Date</Text>
+
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Disbursement Date (DD-MM-YYYY)
+                </Text>
+                <TouchableOpacity
+                  style={styles.datePickerInput}
+                  onPress={() => setActiveDatePicker('disbursementDate')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(datesData.disbursementDate) || 'DD-MM-YYYY'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+                </TouchableOpacity>
+
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 8, marginBottom: 6 }}>
+                  EMI Start Date (DD-MM-YYYY)
+                </Text>
+                <TouchableOpacity
+                  style={[styles.datePickerInput, { marginBottom: 20 }]}
+                  onPress={() => setActiveDatePicker('emiStartDate')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerValueText}>
+                    {formatDate(datesData.emiStartDate) || 'DD-MM-YYYY'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
+                </TouchableOpacity>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancel} onPress={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }} disabled={processing}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleSaveDates} disabled={processing}>
+                    {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Save Dates</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -685,6 +777,8 @@ const styles = StyleSheet.create({
   modalSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 16 },
   modalInput: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, minHeight: 80, textAlignVertical: 'top', fontSize: 14, color: colors.text, marginBottom: 20 },
   modalInputSmall: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: 14, color: colors.text, marginBottom: 12 },
+  datePickerInput: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 12 },
+  datePickerValueText: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
   modalActions: { flexDirection: 'row', gap: 12 },
   modalCancel: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   modalCancelText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.text },

@@ -302,6 +302,7 @@ async function buildLoanRecoveryItems(loans) {
       displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
       borrowerName: loan.ownerName || 'Borrower',
       borrowerMobile: loan.ownerMobile || '',
+      borrowerAadhaar: loan.aadhaar || loan.borrowerAadhaar || loan.aadhaarNumber || '',
       borrowerAddress: loan.ownerAddress || loan.propertyAddress || '',
       employeeId: loan.employeeId,
 
@@ -354,9 +355,40 @@ async function buildLoanRecoveryItems(loans) {
 }
 
 /**
- * Records an EMI payment with smart cascading across unpaid installments.
- * Supports partial payment, full payment, and advance multi-installment payments.
- * Strictly enforces mandatory and unique UTR/Transaction numbers for UPI and Bank payments.
+ * Parse date string to YYYY-MM-DD
+ */
+function parseDateInput(str) {
+  if (!str) return null;
+  let s = String(str).trim();
+  if (!s) return null;
+  if (s.includes('T')) s = s.split('T')[0];
+  const ddmmyyyyMatch = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (ddmmyyyyMatch) {
+    const day = String(ddmmyyyyMatch[1]).padStart(2, '0');
+    const month = String(ddmmyyyyMatch[2]).padStart(2, '0');
+    const year = ddmmyyyyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const yyyymmddMatch = s.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/);
+  if (yyyymmddMatch) {
+    const year = yyyymmddMatch[1];
+    const month = String(yyyymmddMatch[2]).padStart(2, '0');
+    const day = String(yyyymmddMatch[3]).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return null;
+}
+
+/**
+ * Record a payment towards loan EMIs (supports waterfall allocation).
+ * Enforces mandatory, unique receipt/transaction numbers across all payment modes.
  * @param {string} loanId 
  * @param {string} initialPaymentId 
  * @param {number} amount 
@@ -372,14 +404,26 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
   const mode = (paymentDetails.paymentMode || paymentDetails.payMode || 'Cash').trim();
   const rawTxnRef = (paymentDetails.transactionRef || paymentDetails.txnRef || '').trim();
 
-  // If payment mode is UPI or Bank, transaction reference is mandatory and must be unique
-  if (['upi', 'bank'].includes(mode.toLowerCase())) {
-    if (!rawTxnRef) {
-      throw new Error('Transaction / UTR reference number is mandatory for UPI and Bank payments.');
-    }
-    const existing = await db.findEmiByTxnRef(rawTxnRef);
-    if (existing) {
-      throw new Error(`Duplicate payment prevented: A payment with reference "${rawTxnRef}" has already been recorded in the system.`);
+  // Receipt / Reference number is MANDATORY for all payment modes (Cash, UPI, Bank)
+  if (!rawTxnRef) {
+    throw new Error('Receipt / Reference number is mandatory.');
+  }
+
+  // Prevent duplicate transaction / receipt numbers across all payments and disbursements
+  const isDuplicate = db.findTransactionRefExists
+    ? await db.findTransactionRefExists(rawTxnRef)
+    : await db.findEmiByTxnRef(rawTxnRef);
+  if (isDuplicate) {
+    throw new Error(`Duplicate transaction prevented: Receipt / Transaction reference "${rawTxnRef}" has already been recorded in the system.`);
+  }
+
+  // Determine payment received date
+  const rawDateInput = paymentDetails.paymentDate || paymentDetails.date || paymentDetails.paidDate;
+  let effectivePaidDate = new Date().toISOString();
+  if (rawDateInput) {
+    const parsed = parseDateInput(rawDateInput);
+    if (parsed) {
+      effectivePaidDate = new Date(`${parsed}T12:00:00.000Z`).toISOString();
     }
   }
 
@@ -419,11 +463,11 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     await db.updateEmiPayment(emi.paymentId, {
       paidAmount: newPaidAmount,
       status: newStatus,
-      paidDate: new Date().toISOString(),
+      paidDate: effectivePaidDate,
       markedBy: userId,
       paymentMode: mode,
-      transactionRef: rawTxnRef || null,
-      txnRef: rawTxnRef || null,
+      transactionRef: rawTxnRef,
+      txnRef: rawTxnRef,
     });
 
     updatedPayments.push({
@@ -431,7 +475,8 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       paidAmount: newPaidAmount,
       status: newStatus,
       paymentMode: mode,
-      transactionRef: rawTxnRef || null,
+      transactionRef: rawTxnRef,
+      paidDate: effectivePaidDate,
     });
   }
 
@@ -442,11 +487,11 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     await db.updateEmiPayment(lastEmi.paymentId, {
       paidAmount: newPaid,
       status: 'paid',
-      paidDate: new Date().toISOString(),
+      paidDate: effectivePaidDate,
       markedBy: userId,
       paymentMode: mode,
-      transactionRef: rawTxnRef || null,
-      txnRef: rawTxnRef || null,
+      transactionRef: rawTxnRef,
+      txnRef: rawTxnRef,
     });
   }
 

@@ -16,7 +16,7 @@ import * as FileSystem from 'expo-file-system';
 import {
   createLoan, updateLoan, submitLoan,
   uploadVideo, uploadPropertyPhotos, uploadRegistryDocument,
-  getLoanMediaPreview,
+  getLoanMediaPreview, checkAadhaar,
 } from '../../api/employeeApi';
 import { usePopup } from '../../context/PopupContext';
 import Header from '../../components/Header';
@@ -411,7 +411,8 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
       <StyledInput value={data.ownerEmail} onChangeText={v => setData(d => ({ ...d, ownerEmail: v }))} placeholder="Enter Email Address (Optional)" keyboardType="email-address" />
 
       <FieldLabel text="Owner Aadhaar Number" required />
-      <StyledInput value={data.aadhaar} onChangeText={v => setData(d => ({ ...d, aadhaar: v }))} placeholder="Enter 12-Digit Aadhaar Number" keyboardType="numeric" />
+      <StyledInput value={data.aadhaar} onChangeText={v => setData(d => ({ ...d, aadhaar: v }))} placeholder="Enter 12-Digit Aadhaar Number" keyboardType="numeric" maxLength={12} />
+      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>Required — 12 digits. Only one loan application can be created for 1 Aadhaar number.</Text>
 
       <FieldLabel text="Spouse Name (Husband/Wife)" required />
       <StyledInput value={data.spouseName} onChangeText={v => setData(d => ({ ...d, spouseName: v }))} placeholder="Enter Spouse Full Name" />
@@ -1896,6 +1897,23 @@ export default function NewLoanScreen({ route, navigation }) {
         setLoanId(currentLoanId);
       }
       if (step === 0) {
+        const cleanAadhaar = (formData.aadhaar || '').replace(/\D/g, '');
+        if (cleanAadhaar.length === 12) {
+          try {
+            const check = await checkAadhaar(cleanAadhaar, currentLoanId);
+            if (check?.exists) {
+              showAlert(
+                'Aadhaar Already Exists',
+                `A loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). Only one loan application can be created for 1 Aadhaar number.`,
+              );
+              setLoading(false);
+              return;
+            }
+          } catch (chkErr) {
+            console.warn('Aadhaar check warning:', chkErr);
+          }
+        }
+
         await updateLoan(currentLoanId, {
           ownerName: formData.ownerName?.trim(),
           ownerMobile: formData.ownerMobile?.trim(),
@@ -2047,6 +2065,20 @@ export default function NewLoanScreen({ route, navigation }) {
         setLoanId(currentLoanId);
       }
 
+      // Check Aadhaar uniqueness before submission
+      const targetAadhaar = (formData.aadhaar || '').replace(/\D/g, '');
+      if (targetAadhaar.length === 12) {
+        const check = await checkAadhaar(targetAadhaar, currentLoanId);
+        if (check?.exists) {
+          showAlert(
+            'Aadhaar Already Exists',
+            `Cannot submit: A loan application already exists with Aadhaar ending in ${targetAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). Only one loan application can be created for 1 Aadhaar number.`,
+          );
+          setLoading(false);
+          return;
+        }
+      }
+
       let finalVideoUri = formData.videoUri;
       let finalHouseVideoUri = formData.houseVideoUri;
       let currentDocs = Array.isArray(formData.propertyDocs) ? [...formData.propertyDocs] : [];
@@ -2155,7 +2187,7 @@ export default function NewLoanScreen({ route, navigation }) {
       showAlert('Submitted!', 'Loan application submitted successfully.');
       navigation.goBack();
     } catch (err) {
-      showAlert('Error', err.message || err.response?.data?.message || 'Could not submit loan.');
+      showAlert('Error', err.response?.data?.message || err.message || 'Could not submit loan.');
     } finally { setLoading(false); }
   };
 
