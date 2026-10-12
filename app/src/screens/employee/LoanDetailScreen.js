@@ -140,6 +140,13 @@ export default function LoanDetailScreen({ route, navigation }) {
     loan?.firstEmiCollected ||
     loan?.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
   );
+  const isDisbursed = Boolean(
+    (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) ||
+    loan.disbursementDate ||
+    loan.status === 'active' ||
+    loan.status === 'completed'
+  );
+  const isLockedForEmployee = isDisbursed || isFirstEmiCollected;
   const isProcessed = Boolean(
     loan && ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(loan.status)
   );
@@ -157,16 +164,18 @@ export default function LoanDetailScreen({ route, navigation }) {
           <StatusBadge status={loan.status} />
         </View>
 
-        {isFirstEmiCollected && (
+        {isLockedForEmployee && (
           <View style={styles.lockedBanner}>
             <Ionicons name="lock-closed" size={18} color="#065F46" />
             <Text style={styles.lockedBannerText}>
-              First EMI collected. Application details and terms are locked. You can collect EMI and recovery payments.
+              {isDisbursed
+                ? 'Disbursement recorded. Application details, terms, and media are locked. You can collect EMI and recovery payments.'
+                : 'First EMI collected. Application details and terms are locked. You can collect EMI and recovery payments.'}
             </Text>
           </View>
         )}
 
-        {!isProcessed && !isFirstEmiCollected && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
+        {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
           <TouchableOpacity 
             style={styles.continueCardBtn} 
             onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
@@ -183,9 +192,10 @@ export default function LoanDetailScreen({ route, navigation }) {
           fetchMedia={() => getLoanMediaPreview(loan.loanId)}
           loanId={loan.loanId}
           onDocumentUploaded={load}
-          allowUpload={!isFirstEmiCollected}
+          allowUpload={!isLockedForEmployee}
           loanStatus={loan.status}
           isFirstEmiCollected={isFirstEmiCollected}
+          isDisbursed={isDisbursed}
         />
 
         {loan.emiChangeRequest && loan.emiChangeRequest.status === 'pending' && (
@@ -214,7 +224,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {!isProcessed && !isFirstEmiCollected && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
+        {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
           <TouchableOpacity 
             style={styles.editBtn} 
             onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
@@ -224,7 +234,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
 
-        {['approved', 'active'].includes(loan.status) && !isFirstEmiCollected && (!loan.emiChangeRequest || loan.emiChangeRequest.status !== 'pending') && (
+        {['approved', 'active'].includes(loan.status) && !isLockedForEmployee && (!loan.emiChangeRequest || loan.emiChangeRequest.status !== 'pending') && (
           <View style={{ flexDirection: 'row', gap: 12, marginTop: 16, marginBottom: 24 }}>
             <TouchableOpacity 
               style={[styles.emiBtn, { flex: 1, marginTop: 0, marginBottom: 0 }]} 

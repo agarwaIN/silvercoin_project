@@ -25,14 +25,20 @@ export default function EmiChangeRequestScreen({ route, navigation }) {
   const [lastEmiAdjustment, setLastEmiAdjustment] = useState(0);
 
   useEffect(() => {
+    const isDisbursed = Boolean(
+      (Array.isArray(loan?.disbursements) && loan.disbursements.length > 0) ||
+      loan?.disbursementDate ||
+      loan?.status === 'active' ||
+      loan?.status === 'completed'
+    );
     const isFirstEmi = Boolean(
       loan?.firstEmiCollected ||
       loan?.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
     );
-    if (isFirstEmi) {
+    if (isDisbursed || isFirstEmi) {
       showAlert(
         'Action Prohibited',
-        'EMI changes cannot be requested after the first EMI has been collected. Only EMI/recovery collection is permitted.',
+        'EMI changes cannot be requested once disbursement has been recorded. Only EMI/recovery collection is permitted.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     }

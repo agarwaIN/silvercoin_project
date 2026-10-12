@@ -13,6 +13,8 @@ export default function LoanDetailsView({ loan, onEditDates }) {
   const isEmployee = user?.role === 'employee';
   const changedFields = loan.changedFields || [];
   const isFirstEmiCollected = !!(loan.firstEmiCollected || loan.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0));
+  const isDisbursed = Boolean((Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || loan.disbursementDate || loan.status === 'active' || loan.status === 'completed');
+  const isLockedForEmployee = isDisbursed || isFirstEmiCollected;
 
   const [resolvedLocName, setResolvedLocName] = useState(loan.geoLocation?.locationName || '');
   const [resolvedDistrict, setResolvedDistrict] = useState(loan.geoLocation?.district || loan.propertyDistrict || '');
@@ -162,7 +164,7 @@ export default function LoanDetailsView({ loan, onEditDates }) {
               <Text style={{ fontSize: 12, color: '#065F46', fontWeight: 'bold' }}>Final EMI</Text>
               <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
             </View>
-            {onEditDates && (!isFirstEmiCollected || !isEmployee) && (
+            {onEditDates && (!isLockedForEmployee || !isEmployee) && (
               <TouchableOpacity 
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#059669', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, gap: 4 }} 
                 onPress={onEditDates}
@@ -171,10 +173,10 @@ export default function LoanDetailsView({ loan, onEditDates }) {
                 <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Edit Dates</Text>
               </TouchableOpacity>
             )}
-            {isFirstEmiCollected && isEmployee && (
+            {isLockedForEmployee && isEmployee && (
               <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, gap: 4 }}>
                 <Ionicons name="lock-closed" size={13} color="#059669" />
-                <Text style={{ fontSize: 11, color: '#065F46', fontWeight: '600' }}>Locked (EMI Collected)</Text>
+                <Text style={{ fontSize: 11, color: '#065F46', fontWeight: '600' }}>Locked ({isDisbursed ? 'Disbursed' : 'EMI Collected'})</Text>
               </View>
             )}
           </View>

@@ -1846,15 +1846,22 @@ export default function NewLoanScreen({ route, navigation }) {
 
   useEffect(() => {
     if (existingLoan) {
+      const isDisbursed = Boolean(
+        (Array.isArray(existingLoan.disbursements) && existingLoan.disbursements.length > 0) ||
+        existingLoan.disbursementDate ||
+        ['active', 'completed'].includes(existingLoan.status)
+      );
       const isProcessed = ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(existingLoan.status);
       const isFirstEmi = Boolean(
         existingLoan.firstEmiCollected ||
         existingLoan.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
       );
-      if (isProcessed || isFirstEmi) {
+      if (isDisbursed || isProcessed || isFirstEmi) {
         showAlert(
           'Application Locked',
-          'This loan application has already been processed by admin and cannot be edited.',
+          isDisbursed
+            ? 'Disbursement has already been recorded for this loan. Application details cannot be edited.'
+            : 'This loan application has already been processed by admin and cannot be edited.',
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       }

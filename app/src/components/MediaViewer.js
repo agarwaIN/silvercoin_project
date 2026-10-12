@@ -185,6 +185,7 @@ export default function MediaViewer({
   allowUpload = true,
   loanStatus = null,
   isFirstEmiCollected = false,
+  isDisbursed = false,
 }) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
@@ -194,11 +195,11 @@ export default function MediaViewer({
 
   const isEmployee = user?.role === 'employee';
 
-  // Admin can upload media even after first EMI collection.
-  // Employee can upload/reupload media before first EMI is collected, but locked once first EMI is collected.
+  // Admin can upload media even after disbursement or first EMI collection.
+  // Employee can upload/reupload media before disbursement is recorded, but strictly locked once disbursement is recorded (or first EMI collected).
   const canUpload = Boolean(
     allowUpload &&
-    (isEmployee ? !isFirstEmiCollected : true)
+    (isEmployee ? (!isDisbursed && !isFirstEmiCollected) : true)
   );
 
   // Custom Document Upload Modal State
