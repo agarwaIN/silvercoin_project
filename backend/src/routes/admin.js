@@ -14,16 +14,23 @@ const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
 const { ensureEmiSchedule, updateEmiScheduleDates, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected } = require('../services/emiService');
 
+const employeeNameCache = new Map();
+
 async function enrichLoanWithEmployeeName(loan) {
   if (!loan) return loan;
   let employeeName = loan.employeeName || loan.submittedByEmployeeName;
   if (!employeeName && loan.employeeId) {
-    try {
-      const emp = await db.getUserById(loan.employeeId);
-      if (emp) {
-        employeeName = emp.name || emp.email;
-      }
-    } catch (e) {}
+    if (employeeNameCache.has(loan.employeeId)) {
+      employeeName = employeeNameCache.get(loan.employeeId);
+    } else {
+      try {
+        const emp = await db.getUserById(loan.employeeId);
+        if (emp) {
+          employeeName = emp.name || emp.email;
+          employeeNameCache.set(loan.employeeId, employeeName);
+        }
+      } catch (e) {}
+    }
   }
   const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
   return { ...loan, employeeName: employeeName || null, submittedAt };
@@ -165,14 +172,17 @@ router.patch('/profile', async (req, res) => {
 router.get('/emi-this-month', async (req, res) => {
   try {
     const loans = await db.listLoansByAdmin(req.user.userId);
-    let totalCount = 0;
-    let totalAmount = 0;
     const now = new Date();
     const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+    let totalCount = 0;
+    let totalAmount = 0;
 
-    for (const loan of (loans || [])) {
-      const emis = await db.listEmiByLoan(loan.loanId);
-      for (const emi of emis) {
+    const allEmisArrays = await Promise.all(
+      (loans || []).map(l => db.listEmiByLoan(l.loanId).catch(() => []))
+    );
+
+    for (const emis of allEmisArrays) {
+      for (const emi of (emis || [])) {
         if ((emi.status === 'paid' || emi.status === 'partial') && emi.paidDate && emi.paidDate.startsWith(currentMonth)) {
           totalCount++;
           totalAmount += Number(emi.paidAmount || 0);

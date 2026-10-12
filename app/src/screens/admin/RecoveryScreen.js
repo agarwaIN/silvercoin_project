@@ -142,16 +142,22 @@ export default function RecoveryScreen({ navigation }) {
     }
   };
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isRetry = false) => {
     try {
-      setLoading(true);
+      if (!isRetry) setLoading(true);
       const data = isEmployee
         ? await employeeApi.getRecovery()
         : await adminApi.getRecovery();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (!isRetry) {
+        setTimeout(() => {
+          loadData(true);
+        }, 800);
+        return;
+      }
       console.error('Failed to load recovery:', err);
-      showAlert('Error', 'Failed to load recovery records. Please try again.');
+      showAlert('Error', 'Failed to load recovery records. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -713,6 +719,9 @@ export default function RecoveryScreen({ navigation }) {
           data={filteredItems}
           keyExtractor={(item) => item.loanId || item.paymentId}
           contentContainerStyle={styles.listContainer}
+          initialNumToRender={8}
+          maxToRenderPerBatch={10}
+          windowSize={7}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />
           }

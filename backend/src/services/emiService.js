@@ -100,12 +100,15 @@ async function ensureEmiSchedule(loan) {
       };
 
       generatedEmis.push(emi);
-      try {
-        await db.createEmiPayment(emi);
-      } catch (err) {
-        console.warn(`Could not create EMI ${paymentId}:`, err.message);
-      }
     }
+
+    await Promise.all(
+      generatedEmis.map(emi =>
+        db.createEmiPayment(emi).catch(err => {
+          console.warn(`Could not create EMI ${emi.paymentId}:`, err.message);
+        })
+      )
+    );
 
     return generatedEmis;
   } catch (err) {
@@ -221,152 +224,159 @@ async function closeEmisForForeclosure(loanId) {
  * @returns {Promise<Array>}
  */
 async function buildLoanRecoveryItems(loans) {
-  const recoveryItems = [];
   const todayStr = new Date().toISOString().slice(0, 10);
-
-  for (const loan of loans) {
+  const eligibleLoans = (loans || []).filter(loan => {
     const isDisbursed = Array.isArray(loan.disbursements) && loan.disbursements.length > 0;
-    if (!['active', 'approved', 'disbursed'].includes(loan.status) && !isDisbursed) continue;
-    if (loan.status === 'completed') continue;
-    const emis = await ensureEmiSchedule(loan);
-    if (!emis || emis.length === 0) continue;
+    if (!['active', 'approved', 'disbursed'].includes(loan.status) && !isDisbursed) return false;
+    if (loan.status === 'completed') return false;
+    return true;
+  });
 
-    const unpaidEmis = emis.filter(e => e.status !== 'paid');
-    if (unpaidEmis.length === 0) {
-      if (loan.status !== 'completed') {
-        await db.updateLoan(loan.loanId, { status: 'completed' });
+  const items = await Promise.all(eligibleLoans.map(async (loan) => {
+    try {
+      const emis = await ensureEmiSchedule(loan);
+      if (!emis || emis.length === 0) return null;
+
+      const unpaidEmis = emis.filter(e => e.status !== 'paid');
+      if (unpaidEmis.length === 0) {
+        if (loan.status !== 'completed') {
+          db.updateLoan(loan.loanId, { status: 'completed' }).catch(() => {});
+        }
+        return null;
       }
-      continue;
-    }
 
-    // Sort unpaid EMIs by dueDate ascending
-    unpaidEmis.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      // Sort unpaid EMIs by dueDate ascending
+      unpaidEmis.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
-    // Overdue EMIs (due before today)
-    const overdueEmis = unpaidEmis.filter(e => e.dueDate < todayStr);
-    const todayEmis = unpaidEmis.filter(e => e.dueDate === todayStr);
+      // Overdue EMIs (due before today)
+      const overdueEmis = unpaidEmis.filter(e => e.dueDate < todayStr);
 
-    // Oldest unpaid EMI is the current target installment
-    const currentEmi = unpaidEmis[0];
-    // Calculate overdue days for current EMI
-    let daysOverdue = 0;
-    if (currentEmi.dueDate < todayStr) {
-      const diffMs = new Date(todayStr) - new Date(currentEmi.dueDate);
-      daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-    }
-
-    // Apply penalty calculation if overdue beyond 3-day grace period
-    if (daysOverdue > 3) {
-      const penaltyRate = Number(loan.penaltyRate) || 0.1; // 0.1% per day default
-      const calcPenalty = Math.round(Number(currentEmi.amount || 0) * (penaltyRate / 100) * daysOverdue);
-      if (calcPenalty > Number(currentEmi.penaltyAmount || 0)) {
-        currentEmi.penaltyAmount = calcPenalty;
-        db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: calcPenalty, status: 'overdue' }).catch(() => {});
+      // Oldest unpaid EMI is the current target installment
+      const currentEmi = unpaidEmis[0];
+      let daysOverdue = 0;
+      if (currentEmi.dueDate < todayStr) {
+        const diffMs = new Date(todayStr) - new Date(currentEmi.dueDate);
+        daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
       }
+
+      // Apply penalty calculation if overdue beyond 3-day grace period
+      if (daysOverdue > 3) {
+        const penaltyRate = Number(loan.penaltyRate) || 0.1; // 0.1% per day default
+        const calcPenalty = Math.round(Number(currentEmi.amount || 0) * (penaltyRate / 100) * daysOverdue);
+        if (calcPenalty > Number(currentEmi.penaltyAmount || 0)) {
+          currentEmi.penaltyAmount = calcPenalty;
+          db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: calcPenalty, status: 'overdue' }).catch(() => {});
+        }
+      }
+
+      // Recompute currentDue with any updated penalty
+      const finalCurrentDue = (Number(currentEmi.amount || 0) + Number(currentEmi.penaltyAmount || 0)) - Number(currentEmi.paidAmount || 0);
+
+      // Total overdue amount across all overdue installments
+      const totalOverdue = overdueEmis.reduce((sum, e) => {
+        const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
+        return sum + Math.max(0, d);
+      }, 0);
+
+      // Total remaining balance to be recovered on the loan
+      const totalRemainingDue = unpaidEmis.reduce((sum, e) => {
+        const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
+        return sum + Math.max(0, d);
+      }, 0);
+
+      const paidCount = emis.filter(e => e.status === 'paid').length;
+      const totalCount = emis.length;
+
+      let recoveryStatus = overdueEmis.length > 0 ? 'overdue' : 'upcoming';
+
+      // Sort all EMIs to find opening date and monthly cycle
+      const allEmisSorted = [...emis].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      const firstEmi = allEmisSorted[0];
+      const emiOpeningDate = firstEmi ? firstEmi.dueDate : null;
+
+      // Disbursement date
+      const disbursementDate = (loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date)
+        ? loan.disbursements[0].date
+        : loan.loanStartDate || (firstEmi ? firstEmi.dueDate : null);
+
+      // Monthly recurring EMI due day (e.g. 4 for 4th of month)
+      const targetDateForDay = currentEmi.dueDate || (firstEmi ? firstEmi.dueDate : '');
+      const dueDayNumber = targetDateForDay ? parseInt(targetDateForDay.slice(8, 10), 10) : null;
+
+      // Last paid installment info
+      const paidEmis = emis.filter(e => e.status === 'paid').sort((a, b) => new Date(b.paidDate || b.dueDate) - new Date(a.paidDate || a.dueDate));
+      const lastPaidDate = paidEmis.length > 0 ? (paidEmis[0].paidDate ? paidEmis[0].paidDate.slice(0, 10) : paidEmis[0].dueDate) : null;
+      const lastPaidAmount = paidEmis.length > 0 ? Number(paidEmis[0].paidAmount || paidEmis[0].amount || 0) : 0;
+
+      // Calculate advance payments: EMIs paid ahead of today
+      const futurePaidEmis = emis.filter(e => e.status === 'paid' && e.dueDate > todayStr);
+      const advancePaidSum = futurePaidEmis.reduce((sum, e) => sum + Number(e.paidAmount || e.amount || 0), 0);
+      const advanceEmisCount = futurePaidEmis.length;
+
+      // Also check if current upcoming EMI has any partial payment made ahead
+      const partialAdvance = (currentEmi && currentEmi.dueDate > todayStr) ? Number(currentEmi.paidAmount || 0) : 0;
+      const totalAdvanceAmount = advancePaidSum + partialAdvance;
+      const isAdvancePaid = totalAdvanceAmount > 0;
+
+      // Check if current EMI has a part payment
+      const currentEmiPaid = Number(currentEmi.paidAmount || 0);
+      const isPartiallyPaid = currentEmi.status === 'partial' || (currentEmiPaid > 0 && currentEmi.status !== 'paid');
+      const partialPaidAmount = isPartiallyPaid ? currentEmiPaid : 0;
+
+      // Upcoming EMI date (the date of the next installment to be paid)
+      const upcomingEmiDate = currentEmi ? currentEmi.dueDate : null;
+
+      return {
+        loanId: loan.loanId,
+        displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
+        borrowerName: loan.ownerName || 'Borrower',
+        borrowerMobile: loan.ownerMobile || '',
+        borrowerAadhaar: loan.aadhaar || loan.borrowerAadhaar || loan.aadhaarNumber || '',
+        borrowerAddress: loan.ownerAddress || loan.propertyAddress || '',
+        employeeId: loan.employeeId,
+
+        // Target EMI for payment collection
+        paymentId: currentEmi.paymentId,
+        dueDate: currentEmi.dueDate,
+        amount: Number(currentEmi.amount || 0),
+        penaltyAmount: Number(currentEmi.penaltyAmount || 0),
+        dueAmount: Math.max(0, finalCurrentDue),
+        currentEmiStatus: currentEmi.status || 'pending',
+        daysOverdue,
+
+        // Part payment details
+        isPartiallyPaid,
+        partialPaidAmount,
+
+        // Advance payment details
+        isAdvancePaid,
+        totalAdvanceAmount,
+        advanceEmisCount,
+        upcomingEmiDate,
+
+        // Disbursement, EMI opening date, and monthly payment cycle
+        disbursementDate,
+        emiOpeningDate,
+        dueDayNumber,
+        lastPaidDate,
+        lastPaidAmount,
+
+        // Loan-level recovery metrics
+        totalOverdue,
+        totalRemainingDue,
+        overdueCount: overdueEmis.length,
+        paidCount,
+        totalCount,
+        recoveryStatus,
+        emis: allEmisSorted,
+      };
+    } catch (err) {
+      console.warn(`Error building recovery for loan ${loan.loanId}:`, err.message);
+      return null;
     }
+  }));
 
-    // Recompute currentDue with any updated penalty
-    const finalCurrentDue = (Number(currentEmi.amount || 0) + Number(currentEmi.penaltyAmount || 0)) - Number(currentEmi.paidAmount || 0);
-
-    // Total overdue amount across all overdue installments
-    const totalOverdue = overdueEmis.reduce((sum, e) => {
-      const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
-      return sum + Math.max(0, d);
-    }, 0);
-
-    // Total remaining balance to be recovered on the loan
-    const totalRemainingDue = unpaidEmis.reduce((sum, e) => {
-      const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
-      return sum + Math.max(0, d);
-    }, 0);
-
-    const paidCount = emis.filter(e => e.status === 'paid').length;
-    const totalCount = emis.length;
-
-    let recoveryStatus = overdueEmis.length > 0 ? 'overdue' : 'upcoming';
-
-    // Sort all EMIs to find opening date and monthly cycle
-    const allEmisSorted = [...emis].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-    const firstEmi = allEmisSorted[0];
-    const emiOpeningDate = firstEmi ? firstEmi.dueDate : null;
-
-    // Disbursement date
-    const disbursementDate = (loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date)
-      ? loan.disbursements[0].date
-      : loan.loanStartDate || (firstEmi ? firstEmi.dueDate : null);
-
-    // Monthly recurring EMI due day (e.g. 4 for 4th of month)
-    const targetDateForDay = currentEmi.dueDate || (firstEmi ? firstEmi.dueDate : '');
-    const dueDayNumber = targetDateForDay ? parseInt(targetDateForDay.slice(8, 10), 10) : null;
-
-    // Last paid installment info
-    const paidEmis = emis.filter(e => e.status === 'paid').sort((a, b) => new Date(b.paidDate || b.dueDate) - new Date(a.paidDate || a.dueDate));
-    const lastPaidDate = paidEmis.length > 0 ? (paidEmis[0].paidDate ? paidEmis[0].paidDate.slice(0, 10) : paidEmis[0].dueDate) : null;
-    const lastPaidAmount = paidEmis.length > 0 ? Number(paidEmis[0].paidAmount || paidEmis[0].amount || 0) : 0;
-
-    // Calculate advance payments: EMIs paid ahead of today
-    const futurePaidEmis = emis.filter(e => e.status === 'paid' && e.dueDate > todayStr);
-    const advancePaidSum = futurePaidEmis.reduce((sum, e) => sum + Number(e.paidAmount || e.amount || 0), 0);
-    const advanceEmisCount = futurePaidEmis.length;
-
-    // Also check if current upcoming EMI has any partial payment made ahead
-    const partialAdvance = (currentEmi && currentEmi.dueDate > todayStr) ? Number(currentEmi.paidAmount || 0) : 0;
-    const totalAdvanceAmount = advancePaidSum + partialAdvance;
-    const isAdvancePaid = totalAdvanceAmount > 0;
-
-    // Check if current EMI has a part payment
-    const currentEmiPaid = Number(currentEmi.paidAmount || 0);
-    const isPartiallyPaid = currentEmi.status === 'partial' || (currentEmiPaid > 0 && currentEmi.status !== 'paid');
-    const partialPaidAmount = isPartiallyPaid ? currentEmiPaid : 0;
-
-    // Upcoming EMI date (the date of the next installment to be paid)
-    const upcomingEmiDate = currentEmi ? currentEmi.dueDate : null;
-
-    recoveryItems.push({
-      loanId: loan.loanId,
-      displayLoanId: loan.displayLoanId || loan.applicationNumber || loan.loanId,
-      borrowerName: loan.ownerName || 'Borrower',
-      borrowerMobile: loan.ownerMobile || '',
-      borrowerAadhaar: loan.aadhaar || loan.borrowerAadhaar || loan.aadhaarNumber || '',
-      borrowerAddress: loan.ownerAddress || loan.propertyAddress || '',
-      employeeId: loan.employeeId,
-
-      // Target EMI for payment collection
-      paymentId: currentEmi.paymentId,
-      dueDate: currentEmi.dueDate,
-      amount: Number(currentEmi.amount || 0),
-      penaltyAmount: Number(currentEmi.penaltyAmount || 0),
-      dueAmount: Math.max(0, finalCurrentDue),
-      currentEmiStatus: currentEmi.status || 'pending',
-      daysOverdue,
-
-      // Part payment details
-      isPartiallyPaid,
-      partialPaidAmount,
-
-      // Advance payment details
-      isAdvancePaid,
-      totalAdvanceAmount,
-      advanceEmisCount,
-      upcomingEmiDate,
-
-      // Disbursement, EMI opening date, and monthly payment cycle
-      disbursementDate,
-      emiOpeningDate,
-      dueDayNumber,
-      lastPaidDate,
-      lastPaidAmount,
-
-      // Loan-level recovery metrics
-      totalOverdue,
-      totalRemainingDue,
-      overdueCount: overdueEmis.length,
-      paidCount,
-      totalCount,
-      recoveryStatus,
-      emis: allEmisSorted,
-    });
-  }
+  const recoveryItems = items.filter(Boolean);
 
   // Sort priority: overdue first, then upcoming by dueDate
   recoveryItems.sort((a, b) => {

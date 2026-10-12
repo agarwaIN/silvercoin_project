@@ -284,21 +284,18 @@ async function listEmiByLoan(loanId) {
       KeyConditionExpression: 'loanId = :loanId',
       ExpressionAttributeValues: { ':loanId': loanId },
     });
-    if (items && items.length > 0) {
-      return items.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-    }
+    return (items || []).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
   } catch (err) {
     console.warn(`queryAll on loanId-index failed for ${loanId}, attempting scanAll fallback:`, err.message);
-  }
-
-  try {
-    const allEmis = await scanAll(tableName('emis'));
-    return (allEmis || [])
-      .filter(e => e.loanId === loanId)
-      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-  } catch (err) {
-    console.warn(`scanAll fallback for ${loanId} failed:`, err.message);
-    return [];
+    try {
+      const allEmis = await scanAll(tableName('emis'));
+      return (allEmis || [])
+        .filter(e => e.loanId === loanId)
+        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    } catch (scanErr) {
+      console.warn(`scanAll fallback for ${loanId} failed:`, scanErr.message);
+      return [];
+    }
   }
 }
 

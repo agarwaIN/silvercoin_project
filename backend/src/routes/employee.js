@@ -293,13 +293,16 @@ router.post('/loans/:loanId/submit', async (req, res) => {
 router.get('/emi-this-month', async (req, res) => {
   try {
     const loans = await db.listLoansByEmployee(req.user.userId);
+    const currentMonth = new Date().toISOString().slice(0, 7);
     let totalCount = 0;
     let totalAmount = 0;
-    const currentMonth = new Date().toISOString().slice(0, 7);
 
-    for (const loan of loans) {
-      const emis = await db.listEmiByLoan(loan.loanId);
-      for (const emi of emis) {
+    const allEmisArrays = await Promise.all(
+      (loans || []).map(l => db.listEmiByLoan(l.loanId).catch(() => []))
+    );
+
+    for (const emis of allEmisArrays) {
+      for (const emi of (emis || [])) {
         if ((emi.status === 'paid' || emi.status === 'partial') && emi.paidDate && emi.paidDate.startsWith(currentMonth)) {
           totalCount++;
           totalAmount += Number(emi.paidAmount || 0);
