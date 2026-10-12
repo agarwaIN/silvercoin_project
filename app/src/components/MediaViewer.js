@@ -178,12 +178,31 @@ export const isVideoFileAsset = (asset) => {
   );
 };
 
-export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) {
+export default function MediaViewer({
+  fetchMedia,
+  loanId,
+  onDocumentUploaded,
+  allowUpload = true,
+  loanStatus = null,
+  isFirstEmiCollected = false,
+}) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
   const [media, setMedia] = useState(null);
   const [loading, setLoading] = useState(!!loanId);
   const [selectedMedia, setSelectedMedia] = useState(null);
+
+  const isEmployee = user?.role === 'employee';
+  const isProcessedOrApproved = loanStatus && ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(loanStatus);
+
+  // If first EMI collected -> strictly no uploads for anyone
+  // If employee and loan processed/approved/active -> strictly no uploads
+  // If allowUpload is false -> no uploads
+  const canUpload = Boolean(
+    allowUpload &&
+    !isFirstEmiCollected &&
+    !(isEmployee && isProcessedOrApproved)
+  );
 
   // Custom Document Upload Modal State
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
@@ -201,6 +220,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   const [uploadingVideo, setUploadingVideo] = useState(false);
 
   const openVideoUploadModal = (type = 'owner') => {
+    if (!canUpload) return;
     setSelectedVideoType(type);
     setPickedVideoFile(null);
     setVideoUploadModalVisible(true);
@@ -440,6 +460,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
   };
 
   const openUploadModal = (defaultType) => {
+    if (!canUpload) return;
     setSelectedDocType(defaultType || 'Property Registry - 1');
     setCustomDocName('');
     setDocDate(formatDate(new Date()));
@@ -651,7 +672,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title} numberOfLines={2}>Document & Media Inventory</Text>
-        {loanId && (
+        {loanId && canUpload && (
           <TouchableOpacity style={styles.addDocBtn} onPress={() => openUploadModal('Custom Document')}>
             <Ionicons name="add" size={15} color={colors.white} />
             <Text style={styles.addDocTxt}>Add Document</Text>
@@ -662,7 +683,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
       {/* Category 1: Videos */}
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionHeader}>Property & Owner Videos</Text>
-        {loanId && (
+        {loanId && canUpload && (
           <TouchableOpacity
             style={styles.addVideoPillBtn}
             onPress={() => openVideoUploadModal('owner')}
@@ -724,7 +745,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                     <Text style={styles.watchVideoBtnTxt}>Watch Video</Text>
                   </TouchableOpacity>
                 ) : null}
-                {loanId && (
+                {loanId && canUpload && (
                   <TouchableOpacity
                     style={[styles.uploadSlotBtn, ownerVideo ? styles.replaceSlotBtn : styles.primarySlotBtn]}
                     onPress={() => openVideoUploadModal('owner')}
@@ -780,7 +801,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                     <Text style={styles.watchVideoBtnTxt}>Watch Video</Text>
                   </TouchableOpacity>
                 ) : null}
-                {loanId && (
+                {loanId && canUpload && (
                   <TouchableOpacity
                     style={[styles.uploadSlotBtn, houseVideo ? styles.replaceSlotBtn : styles.primarySlotBtn]}
                     onPress={() => openVideoUploadModal('house')}
@@ -873,7 +894,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                     <Text style={styles.viewDocTxt}>View</Text>
                   </TouchableOpacity>
                 </View>
-              ) : loanId ? (
+              ) : (loanId && canUpload) ? (
                 <TouchableOpacity
                   style={styles.uploadDocBtn}
                   onPress={() => openUploadModal(stdItem.title)}
@@ -882,7 +903,7 @@ export default function MediaViewer({ fetchMedia, loanId, onDocumentUploaded }) 
                   <Text style={styles.uploadDocTxt}>Upload</Text>
                 </TouchableOpacity>
               ) : (
-                <Text style={styles.missingTxt}>Missing</Text>
+                <Text style={styles.missingTxt}>Not Uploaded</Text>
               )}
             </View>
           );

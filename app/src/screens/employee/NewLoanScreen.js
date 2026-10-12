@@ -1844,6 +1844,23 @@ export default function NewLoanScreen({ route, navigation }) {
     notes: existingLoan?.notes || '',
   });
 
+  useEffect(() => {
+    if (existingLoan) {
+      const isProcessed = ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(existingLoan.status);
+      const isFirstEmi = Boolean(
+        existingLoan.firstEmiCollected ||
+        existingLoan.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
+      );
+      if (isProcessed || isFirstEmi) {
+        showAlert(
+          'Application Locked',
+          'This loan application has already been processed by admin and cannot be edited.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+    }
+  }, [existingLoan]);
+
   const hasFilledData = () => {
     return (
       !!formData.ownerName?.trim() ||

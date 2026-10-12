@@ -496,6 +496,13 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     });
   }
 
+  // Mark first EMI as collected on the loan record
+  try {
+    await db.updateLoan(loanId, { firstEmiCollected: true });
+  } catch (err) {
+    console.warn('Could not set firstEmiCollected on loan:', err.message);
+  }
+
   // Check if loan is fully paid
   const refreshedEmis = await db.listEmiByLoan(loanId);
   const allPaid = refreshedEmis.every(e => e.status === 'paid');
@@ -506,6 +513,26 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
   return { success: true, updatedPayments };
 }
 
+/**
+ * Checks if the first EMI (or any EMI) has already been collected on a loan.
+ * Returns true if loan has firstEmiCollected flag or any paid/partial EMI exists.
+ * @param {string} loanId 
+ * @returns {Promise<boolean>}
+ */
+async function hasFirstEmiBeenCollected(loanId) {
+  if (!loanId) return false;
+  try {
+    const loan = await db.getLoanById(loanId);
+    if (loan && loan.firstEmiCollected) return true;
+    const emis = await db.listEmiByLoan(loanId);
+    if (!emis || emis.length === 0) return false;
+    return emis.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0);
+  } catch (err) {
+    console.error('Error checking hasFirstEmiBeenCollected:', err);
+    return false;
+  }
+}
+
 module.exports = {
   addMonths,
   ensureEmiSchedule,
@@ -514,4 +541,5 @@ module.exports = {
   closeEmisForForeclosure,
   buildLoanRecoveryItems,
   recordLoanPayment,
+  hasFirstEmiBeenCollected,
 };

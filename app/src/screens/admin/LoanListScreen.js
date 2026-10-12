@@ -18,7 +18,7 @@ import Card from '../../components/Card';
 import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { getLoans } from '../../api/adminApi';
-import { formatDate } from '../../utils/date';
+import { formatDate, formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
 const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Rejected'];
@@ -111,12 +111,28 @@ export default function AdminLoanListScreen({ navigation }) {
                   </View>
                 </View>
 
-                {item.employeeName ? (
-                  <View style={styles.submittedByRow}>
-                    <Ionicons name="person" size={12} color="#047857" />
-                    <Text style={styles.submittedByText}>Submitted By: <Text style={styles.submittedByName}>{item.employeeName}</Text></Text>
-                  </View>
-                ) : null}
+                {(() => {
+                  const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(item);
+                  if (!item.employeeName && !submissionTime) return null;
+                  return (
+                    <View style={styles.submittedByRow}>
+                      <Ionicons name="person" size={12} color="#047857" style={{ marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.submittedByText}>
+                          Submitted By: <Text style={styles.submittedByName}>{item.employeeName || 'Employee'}</Text>
+                        </Text>
+                        {submissionTime ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                            <Ionicons name="time-outline" size={11} color={colors.muted} />
+                            <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.muted }}>
+                              {timeLabel}: {formatDateTime(submissionTime)}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })()}
 
                 {hasPendingEmi && (() => {
                   const req = item.emiChangeRequest;
@@ -205,7 +221,7 @@ const styles = StyleSheet.create({
   date: { fontFamily: fonts.regular, fontSize: fontSize.xs, color: colors.muted, marginTop: 4 },
   submittedByRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
     marginTop: 8,
     paddingTop: 8,

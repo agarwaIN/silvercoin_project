@@ -10,6 +10,7 @@ import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getLoans, getEmiThisMonth } from '../../api/employeeApi';
+import { formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 
 export default function EmployeeDashboard({ navigation }) {
   const { user } = useAuth();
@@ -85,12 +86,28 @@ export default function EmployeeDashboard({ navigation }) {
                 </View>
                 <StatusBadge status={loan.status} />
               </View>
-              {loan.employeeName ? (
-                <View style={styles.submittedByRow}>
-                  <Ionicons name="person" size={12} color="#047857" />
-                  <Text style={styles.submittedByText}>Submitted / Filled By: <Text style={styles.submittedByName}>{loan.employeeName}</Text></Text>
-                </View>
-              ) : null}
+              {(() => {
+                const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(loan);
+                if (!loan.employeeName && !submissionTime) return null;
+                return (
+                  <View style={styles.submittedByRow}>
+                    <Ionicons name="person" size={12} color="#047857" style={{ marginTop: 2 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.submittedByText}>
+                        Submitted / Filled By: <Text style={styles.submittedByName}>{loan.employeeName || 'Employee'}</Text>
+                      </Text>
+                      {submissionTime ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <Ionicons name="time-outline" size={11} color={colors.muted} />
+                          <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.muted }}>
+                            {timeLabel}: {formatDateTime(submissionTime)}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              })()}
             </Card>
           </TouchableOpacity>
         ))}
@@ -154,7 +171,7 @@ const styles = StyleSheet.create({
   amount: { fontFamily: fonts.medium, fontSize: fontSize.sm, color: colors.success, marginTop: 2 },
   submittedByRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
     marginTop: 8,
     paddingTop: 8,

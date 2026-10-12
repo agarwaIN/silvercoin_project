@@ -25,6 +25,20 @@ export default function EmiChangeRequestScreen({ route, navigation }) {
   const [lastEmiAdjustment, setLastEmiAdjustment] = useState(0);
 
   useEffect(() => {
+    const isFirstEmi = Boolean(
+      loan?.firstEmiCollected ||
+      loan?.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
+    );
+    if (isFirstEmi) {
+      showAlert(
+        'Action Prohibited',
+        'EMI changes cannot be requested after the first EMI has been collected. Only EMI/recovery collection is permitted.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+    }
+  }, [loan]);
+
+  useEffect(() => {
     calculateEmi();
   }, [principal, tenure, interestRate]);
 

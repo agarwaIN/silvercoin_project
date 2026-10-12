@@ -16,7 +16,7 @@ function notImplemented(res) {
   return res.status(501).json({ message: 'Not implemented yet' });
 }
 
-const { ensureEmiSchedule } = require('../services/emiService');
+const { ensureEmiSchedule, hasFirstEmiBeenCollected } = require('../services/emiService');
 
 router.get('/users', async (req, res) => {
   try {
@@ -56,8 +56,10 @@ router.get('/loans', async (req, res) => {
     const enriched = loans.map(loan => {
       const admin = userMap.get(loan.adminId);
       const emp = userMap.get(loan.employeeId);
+      const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
       return {
         ...loan,
+        submittedAt,
         adminName: admin ? admin.name : null,
         adminEmail: admin ? admin.email : null,
         adminMobile: admin ? admin.mobile : null,
@@ -84,9 +86,14 @@ router.get('/loans/:loanId', async (req, res) => {
       ensureEmiSchedule(loan),
     ]);
 
+    const firstEmiCollected = !!(loan.firstEmiCollected || (emis || []).some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0));
+    const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
+
     const enriched = {
       ...loan,
       emis: emis || [],
+      firstEmiCollected,
+      submittedAt,
       adminName: admin ? admin.name : null,
       adminEmail: admin ? admin.email : null,
       adminMobile: admin ? admin.mobile : null,
@@ -293,6 +300,11 @@ router.post('/loans/:loanId/update-dates', async (req, res) => {
   try {
     const loan = await db.getLoanById(req.params.loanId);
     if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+    const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+    if (hasFirstEmi) {
+      return res.status(400).json({ message: 'Loan application details and dates cannot be edited after first EMI has been collected.' });
+    }
 
     const { disbursementDate, emiStartDate } = req.body;
     const parsedDisbDate = parseDateInput(disbursementDate);

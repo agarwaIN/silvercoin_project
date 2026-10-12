@@ -112,3 +112,47 @@ export function getTodayFormatted(separator = '-') {
   return formatDate(new Date(), separator);
 }
 
+/**
+ * Formats any date input into DD-MM-YYYY, hh:mm AM/PM format.
+ *
+ * @param {string|number|Date} val
+ * @param {string} [separator='-']
+ * @returns {string} Formatted date & time string.
+ */
+export function formatDateTime(val, separator = '-') {
+  if (!val) return '';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const strHours = String(hours).padStart(2, '0');
+    return `${day}${separator}${month}${separator}${year}, ${strHours}:${minutes} ${ampm}`;
+  } catch {
+    return String(val);
+  }
+}
+
+/**
+ * Resolves submission or creation date/time info for a loan with robust fallbacks.
+ *
+ * @param {object} loan
+ * @returns {{ time: string|null, label: string }}
+ */
+export function getLoanSubmissionInfo(loan) {
+  if (!loan) return { time: null, label: 'Submitted On' };
+  const isDraft = loan.status === 'draft';
+  const time = loan.submittedAt
+    || loan.submissionDate
+    || (isDraft ? loan.createdAt : (loan.status === 'submitted' ? (loan.updatedAt || loan.createdAt) : (loan.createdAt || loan.updatedAt)))
+    || null;
+  const label = (isDraft && !loan.submittedAt) ? 'Created On' : 'Submitted On';
+  return { time, label };
+}
+

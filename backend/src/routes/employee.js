@@ -8,7 +8,7 @@ const { auditLog } = require('../middleware/auditMiddleware');
 const { generateAppId } = require('../services/loanIdService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
-const { ensureEmiSchedule, buildLoanRecoveryItems, recordLoanPayment } = require('../services/emiService');
+const { ensureEmiSchedule, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected } = require('../services/emiService');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -17,6 +17,11 @@ const upload = multer({
 
 const router = express.Router();
 router.use(verifyToken, requireRole('employee'), auditLog);
+
+function isLoanProcessed(loan) {
+  if (!loan) return false;
+  return ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(loan.status);
+}
 
 function notImplemented(res) {
   return res.status(501).json({ message: 'Not implemented yet' });
@@ -38,7 +43,11 @@ router.patch('/profile', (req, res) => notImplemented(res));
 
 router.get('/loans', async (req, res) => {
   const loans = await db.listLoansByEmployee(req.user.userId);
-  const enriched = (loans || []).map(l => ({ ...l, employeeName: l.employeeName || req.user.name }));
+  const enriched = (loans || []).map(l => ({
+    ...l,
+    employeeName: l.employeeName || req.user.name,
+    submittedAt: l.submittedAt || (l.status !== 'draft' ? (l.createdAt || l.updatedAt) : null),
+  }));
   res.json(enriched);
 });
 
@@ -87,7 +96,9 @@ router.get('/loans/:loanId', async (req, res) => {
     return res.status(404).json({ message: 'Loan not found' });
   }
   const emis = await ensureEmiSchedule(loan);
-  res.json({ ...loan, employeeName: loan.employeeName || req.user.name, emis });
+  const firstEmiCollected = !!(loan.firstEmiCollected || (emis || []).some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0));
+  const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
+  res.json({ ...loan, employeeName: loan.employeeName || req.user.name, emis, firstEmiCollected, submittedAt });
 });
 
 function sanitizeMediaList(incomingList, existingList) {
@@ -134,8 +145,12 @@ router.patch('/loans/:loanId', async (req, res) => {
   if (!loan || !isEmp) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  if (['approved'].includes(loan.status)) {
-    return res.status(400).json({ message: 'Approved loans cannot be edited' });
+  if (isLoanProcessed(loan)) {
+    return res.status(400).json({ message: 'Loan application details cannot be edited once the loan has been processed by admin.' });
+  }
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'Loan application details cannot be edited after first EMI has been collected.' });
   }
 
   // Validate that Aadhaar is unique across all loan applications
@@ -193,6 +208,14 @@ router.post('/loans/:loanId/submit', async (req, res) => {
     return res.status(404).json({ message: 'Loan not found' });
   }
 
+  if (isLoanProcessed(loan)) {
+    return res.status(400).json({ message: 'Cannot edit or resubmit: Loan application has already been processed by admin.' });
+  }
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'Cannot edit or resubmit loan application after first EMI has been collected.' });
+  }
+
   // Enforce unique Aadhaar before final submission
   const targetAadhaar = (req.body && req.body.aadhaar) || loan.aadhaar;
   if (targetAadhaar) {
@@ -208,7 +231,13 @@ router.post('/loans/:loanId/submit', async (req, res) => {
     }
   }
 
-  const updates = { status: 'submitted', updatedAt: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const updates = {
+    status: 'submitted',
+    updatedAt: now,
+    submittedAt: loan.submittedAt || now,
+    submittedByEmployeeName: loan.employeeName || req.user.name,
+  };
 
   if (req.body) {
     const isValidKey = (u) => typeof u === 'string' && u.trim() && !u.startsWith('file:') && !u.startsWith('content:');
@@ -404,6 +433,13 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
+  if (isLoanProcessed(loan)) {
+    return res.status(400).json({ message: 'Document upload is disabled once the loan has been processed by admin.' });
+  }
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'Document upload is disabled after first EMI collection.' });
+  }
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
   const fileMime = (req.file.mimetype || '').toLowerCase();
@@ -464,6 +500,13 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
+  if (isLoanProcessed(loan)) {
+    return res.status(400).json({ message: 'Photo upload is disabled once the loan has been processed by admin.' });
+  }
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'Photo upload is disabled after first EMI collection.' });
+  }
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
 
   const newItems = [];
@@ -500,6 +543,13 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
+  if (isLoanProcessed(loan)) {
+    return res.status(400).json({ message: 'Video upload is disabled once the loan has been processed by admin.' });
+  }
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'Video upload is disabled after first EMI collection.' });
+  }
   if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
 
   const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase().trim();
@@ -551,6 +601,10 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
 router.post('/loans/:loanId/agreement', upload.single('agreement'), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'Agreement upload is disabled after first EMI collection.' });
+  }
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
   const key = `loans/${loan.loanId}/agreement_${Date.now()}`;
@@ -588,6 +642,11 @@ router.post('/loans/:loanId/emi-change-request', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'EMI change requests cannot be submitted after first EMI has been collected. Only EMI/recovery collection is permitted.' });
+  }
+
   if (!['approved', 'active'].includes(loan.status)) {
     return res.status(400).json({ message: 'Loan is not in a valid status to request EMI changes' });
   }
@@ -614,6 +673,11 @@ router.post('/loans/:loanId/request-foreclosure', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   
+  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+  if (hasFirstEmi) {
+    return res.status(400).json({ message: 'Foreclosure cannot be requested by employee after first EMI has been collected. Only EMI/recovery collection is permitted.' });
+  }
+
   if (loan.status !== 'active') {
     return res.status(400).json({ message: 'Only active loans can be foreclosed' });
   }
@@ -657,6 +721,14 @@ router.post('/loans/:loanId/update-dates', async (req, res) => {
   try {
     const loan = await db.getLoanById(req.params.loanId);
     if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+    const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+    if (hasFirstEmi) {
+      return res.status(400).json({ message: 'Dates cannot be updated after first EMI has been collected.' });
+    }
+    if (isLoanProcessed(loan)) {
+      return res.status(400).json({ message: 'Dates cannot be updated by employee once the loan is processed.' });
+    }
 
     const { disbursementDate, emiStartDate } = req.body;
     const parsedDisbDate = parseDateInput(disbursementDate);

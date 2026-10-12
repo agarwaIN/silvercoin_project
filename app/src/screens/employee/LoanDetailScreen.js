@@ -136,6 +136,14 @@ export default function LoanDetailScreen({ route, navigation }) {
     );
   }
 
+  const isFirstEmiCollected = Boolean(
+    loan?.firstEmiCollected ||
+    loan?.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
+  );
+  const isProcessed = Boolean(
+    loan && ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(loan.status)
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <Header title={loan.displayLoanId || loan.applicationNumber || loan.loanId} onBack={() => navigation.goBack()} />
@@ -149,7 +157,16 @@ export default function LoanDetailScreen({ route, navigation }) {
           <StatusBadge status={loan.status} />
         </View>
 
-        {['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
+        {isFirstEmiCollected && (
+          <View style={styles.lockedBanner}>
+            <Ionicons name="lock-closed" size={18} color="#065F46" />
+            <Text style={styles.lockedBannerText}>
+              First EMI collected. Application details and terms are locked. You can collect EMI and recovery payments.
+            </Text>
+          </View>
+        )}
+
+        {!isProcessed && !isFirstEmiCollected && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
           <TouchableOpacity 
             style={styles.continueCardBtn} 
             onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
@@ -162,7 +179,14 @@ export default function LoanDetailScreen({ route, navigation }) {
         )}
 
         <LoanDetailsView loan={loan} />
-        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
+        <MediaViewer
+          fetchMedia={() => getLoanMediaPreview(loan.loanId)}
+          loanId={loan.loanId}
+          onDocumentUploaded={load}
+          allowUpload={!isProcessed && !isFirstEmiCollected}
+          loanStatus={loan.status}
+          isFirstEmiCollected={isFirstEmiCollected}
+        />
 
         {loan.emiChangeRequest && loan.emiChangeRequest.status === 'pending' && (
           <View style={styles.pendingBanner}>
@@ -190,7 +214,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
+        {!isProcessed && !isFirstEmiCollected && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
           <TouchableOpacity 
             style={styles.editBtn} 
             onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
@@ -200,7 +224,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
 
-        {['approved', 'active'].includes(loan.status) && (!loan.emiChangeRequest || loan.emiChangeRequest.status !== 'pending') && (
+        {['approved', 'active'].includes(loan.status) && !isFirstEmiCollected && (!loan.emiChangeRequest || loan.emiChangeRequest.status !== 'pending') && (
           <View style={{ flexDirection: 'row', gap: 12, marginTop: 16, marginBottom: 24 }}>
             <TouchableOpacity 
               style={[styles.emiBtn, { flex: 1, marginTop: 0, marginBottom: 0 }]} 
@@ -469,4 +493,22 @@ const styles = StyleSheet.create({
   modeChipActive: { borderColor: colors.dark, backgroundColor: colors.dark },
   modeTxt: { fontFamily: fonts.medium, fontSize: 12, color: colors.text },
   modeTxtActive: { color: colors.white, fontFamily: fonts.bold },
+  lockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  lockedBannerText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: '#065F46',
+    lineHeight: 16,
+  },
 });

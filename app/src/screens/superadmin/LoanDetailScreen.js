@@ -77,6 +77,10 @@ export default function LoanDetailScreen({ route }) {
   };
 
   const handleOpenEditDates = () => {
+    if (isFirstEmiCollected) {
+      showAlert('Dates Locked', 'Dates cannot be edited after first EMI has been collected.');
+      return;
+    }
     const rawDisbDate = loan?.disbursements?.[0]?.date || loan?.disbursementDate || new Date();
     const rawEmiDate = loan?.emiStartDate || loan?.loanStartDate || new Date();
     setDatesData({ disbursementDate: cleanDateStr(rawDisbDate), emiStartDate: cleanDateStr(rawEmiDate) });
@@ -110,6 +114,11 @@ export default function LoanDetailScreen({ route }) {
     );
   }
 
+  const isFirstEmiCollected = Boolean(
+    loan?.firstEmiCollected ||
+    loan?.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <Header title={loan.displayLoanId || loan.applicationNumber || loan.loanId} onBack={() => navigation.goBack()} />
@@ -122,6 +131,15 @@ export default function LoanDetailScreen({ route }) {
           <Text style={styles.statusLabel}>Application Status</Text>
           <StatusBadge status={loan.status} />
         </View>
+
+        {isFirstEmiCollected && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 12, marginBottom: 16, gap: 8 }}>
+            <Ionicons name="lock-closed" size={18} color="#1E293B" />
+            <Text style={{ flex: 1, fontFamily: fonts.medium, fontSize: 12, color: '#1E293B' }}>
+              First EMI collected. Application details, terms, dates, and media are locked from editing.
+            </Text>
+          </View>
+        )}
 
         {/* Creator & Admin Details Card */}
         <View style={styles.assignmentCard}>
@@ -147,10 +165,17 @@ export default function LoanDetailScreen({ route }) {
         </View>
 
         {/* Full Loan Details Component */}
-        <LoanDetailsView loan={loan} onEditDates={handleOpenEditDates} />
+        <LoanDetailsView loan={loan} onEditDates={isFirstEmiCollected ? null : handleOpenEditDates} />
 
         {/* Media & Documents Gallery Component */}
-        <MediaViewer fetchMedia={() => getMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
+        <MediaViewer
+          fetchMedia={() => getMediaPreview(loan.loanId)}
+          loanId={loan.loanId}
+          onDocumentUploaded={load}
+          allowUpload={!isFirstEmiCollected}
+          loanStatus={loan.status}
+          isFirstEmiCollected={isFirstEmiCollected}
+        />
 
         {/* EMI Repayment Schedule */}
         {loan.emis && loan.emis.length > 0 && (

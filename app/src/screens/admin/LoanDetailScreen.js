@@ -235,6 +235,10 @@ export default function LoanDetailScreen({ route, navigation }) {
   };
 
   const handleOpenEditDates = () => {
+    if (isFirstEmiCollected) {
+      showAlert('Dates Locked', 'Dates cannot be edited after first EMI has been collected.');
+      return;
+    }
     const rawDisbDate = loan.disbursements?.[0]?.date || loan.disbursementDate || new Date();
     const rawEmiDate = loan.emiStartDate || loan.loanStartDate || new Date();
     setDatesData({ disbursementDate: cleanDateStr(rawDisbDate), emiStartDate: cleanDateStr(rawEmiDate) });
@@ -267,6 +271,11 @@ export default function LoanDetailScreen({ route, navigation }) {
       </SafeAreaView>
     );
   }
+  const isFirstEmiCollected = Boolean(
+    loan?.firstEmiCollected ||
+    loan?.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0)
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
       <Header title={loan.displayLoanId || loan.applicationNumber || loan.loanId} onBack={() => navigation.goBack()} />
@@ -279,9 +288,26 @@ export default function LoanDetailScreen({ route, navigation }) {
           <Text style={styles.label}>Status</Text>
           <StatusBadge status={loan.status} />
         </View>
-        <LoanDetailsView loan={loan} onEditDates={handleOpenEditDates} />
 
-        <MediaViewer fetchMedia={() => getLoanMediaPreview(loan.loanId)} loanId={loan.loanId} onDocumentUploaded={load} />
+        {isFirstEmiCollected && (
+          <View style={styles.lockedBanner}>
+            <Ionicons name="lock-closed" size={18} color="#1E293B" />
+            <Text style={styles.lockedBannerText}>
+              First EMI collected. Application details, terms, dates, and media are locked from editing.
+            </Text>
+          </View>
+        )}
+
+        <LoanDetailsView loan={loan} onEditDates={isFirstEmiCollected ? null : handleOpenEditDates} />
+
+        <MediaViewer
+          fetchMedia={() => getLoanMediaPreview(loan.loanId)}
+          loanId={loan.loanId}
+          onDocumentUploaded={load}
+          allowUpload={!isFirstEmiCollected}
+          loanStatus={loan.status}
+          isFirstEmiCollected={isFirstEmiCollected}
+        />
 
         {loan.status === 'submitted' && (
           <View style={styles.actionContainer}>
@@ -366,17 +392,26 @@ export default function LoanDetailScreen({ route, navigation }) {
               </View>
             </View>
             
-            <View style={styles.actionContainer}>
-              <TouchableOpacity style={styles.rejectBtn} onPress={handleRejectEmiChange} disabled={processing}>
-                <Ionicons name="close-circle-outline" size={20} color={colors.error} />
-                <Text style={styles.rejectBtnText}>Reject Change</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.approveBtn} onPress={handleApproveEmiChange} disabled={processing}>
-                <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
-                <Text style={styles.approveBtnText}>Approve Change</Text>
-              </TouchableOpacity>
-            </View>
+            {isFirstEmiCollected ? (
+              <View style={{ backgroundColor: '#F1F5F9', padding: 12, borderRadius: 8, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="lock-closed" size={16} color={colors.muted} />
+                <Text style={{ fontSize: 12, color: colors.muted, fontFamily: fonts.medium }}>
+                  Cannot modify EMI terms: First EMI has already been collected.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.actionContainer}>
+                <TouchableOpacity style={styles.rejectBtn} onPress={handleRejectEmiChange} disabled={processing}>
+                  <Ionicons name="close-circle-outline" size={20} color={colors.error} />
+                  <Text style={styles.rejectBtnText}>Reject Change</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.approveBtn} onPress={handleApproveEmiChange} disabled={processing}>
+                  <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
+                  <Text style={styles.approveBtnText}>Approve Change</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
 
@@ -808,4 +843,22 @@ const styles = StyleSheet.create({
   statusStateSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, textAlign: 'center', marginBottom: 20 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
   retryBtnText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  lockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  lockedBannerText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: '#1E293B',
+    lineHeight: 16,
+  },
 });
