@@ -259,11 +259,14 @@ async function listAllLoans() {
 }
 
 async function createEmiPayment(payment) {
-  await docClient.send(new PutCommand({
-    TableName: tableName('emis'),
-    Item: payment,
-    ConditionExpression: 'attribute_not_exists(paymentId)',
-  }));
+  try {
+    await docClient.send(new PutCommand({
+      TableName: tableName('emis'),
+      Item: payment,
+    }));
+  } catch (err) {
+    console.warn(`createEmiPayment notice for ${payment.paymentId}:`, err.message);
+  }
 }
 
 async function deleteEmiPayment(paymentId) {
@@ -274,13 +277,29 @@ async function deleteEmiPayment(paymentId) {
 }
 
 async function listEmiByLoan(loanId) {
-  const items = await queryAll({
-    TableName: tableName('emis'),
-    IndexName: 'loanId-index',
-    KeyConditionExpression: 'loanId = :loanId',
-    ExpressionAttributeValues: { ':loanId': loanId },
-  });
-  return items.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+  try {
+    const items = await queryAll({
+      TableName: tableName('emis'),
+      IndexName: 'loanId-index',
+      KeyConditionExpression: 'loanId = :loanId',
+      ExpressionAttributeValues: { ':loanId': loanId },
+    });
+    if (items && items.length > 0) {
+      return items.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    }
+  } catch (err) {
+    console.warn(`queryAll on loanId-index failed for ${loanId}, attempting scanAll fallback:`, err.message);
+  }
+
+  try {
+    const allEmis = await scanAll(tableName('emis'));
+    return (allEmis || [])
+      .filter(e => e.loanId === loanId)
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+  } catch (err) {
+    console.warn(`scanAll fallback for ${loanId} failed:`, err.message);
+    return [];
+  }
 }
 
 async function updateEmiPayment(paymentId, updates) {

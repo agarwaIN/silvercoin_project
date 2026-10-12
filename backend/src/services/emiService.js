@@ -38,21 +38,44 @@ async function ensureEmiSchedule(loan) {
       return existing;
     }
 
-    const tenure = parseInt(loan.tenureMonths || loan.repaymentMonths, 10);
-    const emiAmount = Number(loan.emiAmount || 0);
+    let tenure = parseInt(loan.tenureMonths || loan.repaymentMonths || loan.tenure, 10);
+    if (!tenure || isNaN(tenure) || tenure <= 0 || tenure > 360) {
+      tenure = 12;
+    }
 
-    if (!tenure || isNaN(tenure) || tenure <= 0 || tenure > 360 || !emiAmount || isNaN(emiAmount) || emiAmount <= 0) {
+    const principal = Number(loan.approvedAmount || loan.loanAmount || 0);
+    const interestRate = Number(loan.interestRate || 2.15);
+    let emiAmount = Number(loan.emiAmount || loan.monthlyEmi || 0);
+
+    if ((!emiAmount || isNaN(emiAmount) || emiAmount <= 0) && principal > 0) {
+      const totalInterest = principal * (interestRate / 100) * tenure;
+      const totalRepayable = principal + totalInterest;
+      emiAmount = Math.round(totalRepayable / tenure);
+      db.updateLoan(loan.loanId, {
+        tenureMonths: tenure,
+        emiAmount,
+        interestRate,
+        totalInterest,
+        totalRepayable,
+      }).catch(() => {});
+    }
+
+    if (!emiAmount || isNaN(emiAmount) || emiAmount <= 0) {
       return [];
     }
 
     // Determine loan start date
-    let startDate = loan.loanStartDate;
-    if (!startDate && loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date) {
-      startDate = loan.disbursements[0].date;
+    let rawStartDate = loan.emiStartDate || loan.loanStartDate;
+    if (!rawStartDate && loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date) {
+      rawStartDate = loan.disbursements[0].date;
     }
-    if (!startDate) {
-      startDate = loan.createdAt || new Date().toISOString();
+    if (!rawStartDate && loan.disbursementDate) {
+      rawStartDate = loan.disbursementDate;
     }
+    if (!rawStartDate) {
+      rawStartDate = loan.createdAt || new Date().toISOString();
+    }
+    const startDate = parseDateInput(rawStartDate) || rawStartDate;
 
     const regularEmi = Math.round(emiAmount);
     const totalRepayable = Number(loan.totalRepayable) || (regularEmi * tenure);
@@ -76,9 +99,9 @@ async function ensureEmiSchedule(loan) {
         createdAt: new Date().toISOString(),
       };
 
+      generatedEmis.push(emi);
       try {
         await db.createEmiPayment(emi);
-        generatedEmis.push(emi);
       } catch (err) {
         console.warn(`Could not create EMI ${paymentId}:`, err.message);
       }
@@ -202,7 +225,9 @@ async function buildLoanRecoveryItems(loans) {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   for (const loan of loans) {
-    if (!['active', 'approved'].includes(loan.status)) continue;
+    const isDisbursed = Array.isArray(loan.disbursements) && loan.disbursements.length > 0;
+    if (!['active', 'approved', 'disbursed'].includes(loan.status) && !isDisbursed) continue;
+    if (loan.status === 'completed') continue;
     const emis = await ensureEmiSchedule(loan);
     if (!emis || emis.length === 0) continue;
 

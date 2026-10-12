@@ -462,11 +462,6 @@ router.post('/loans/:loanId/update-dates', async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-    if (hasFirstEmi) {
-      return res.status(400).json({ message: 'Loan application details and dates cannot be edited after first EMI has been collected.' });
-    }
-
     const { disbursementDate, emiStartDate } = req.body;
     const parsedDisbDate = parseDateInput(disbursementDate);
     const parsedEmiDate = parseDateInput(emiStartDate);
@@ -617,10 +612,6 @@ router.post('/loans/:loanId/send-qr-to-agent', (req, res) => res.json({ message:
 router.post('/loans/:loanId/approve-emi-change', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan) return res.status(404).json({ message: 'Loan not found' });
-  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'EMI change cannot be approved after first EMI has been collected.' });
-  }
   if (!loan.emiChangeRequest) return res.status(400).json({ message: 'No pending EMI change request' });
 
   const {
@@ -689,13 +680,73 @@ router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
   res.json({ message: 'Foreclosure approved and loan completed' });
 });
 
+router.post('/loans/:loanId/foreclose', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+  const foreclosureAmount = Number(req.body.foreclosureAmount) || Number(loan.approvedAmount || loan.loanAmount || 0);
+  const reason = req.body.reason || 'Admin direct foreclosure';
+
+  await db.updateLoan(loan.loanId, {
+    status: 'completed',
+    foreclosureRequest: {
+      foreclosureAmount,
+      reason,
+      status: 'approved',
+      requestedBy: req.user.userId,
+      approvedAt: new Date().toISOString()
+    }
+  });
+
+  await closeEmisForForeclosure(loan.loanId);
+  res.json({ message: 'Loan foreclosed and closed successfully' });
+});
+
+router.post('/loans/:loanId/change-emi', async (req, res) => {
+  const loan = await db.getLoanById(req.params.loanId);
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
+
+  const {
+    approvedAmount,
+    tenureMonths,
+    interestRate,
+    penaltyRate,
+    emiAmount,
+    totalInterest,
+    totalRepayable
+  } = req.body;
+
+  const updates = {
+    approvedAmount: Number(approvedAmount) || loan.approvedAmount,
+    tenureMonths: parseInt(tenureMonths, 10) || loan.tenureMonths,
+    interestRate: Number(interestRate) || loan.interestRate,
+    penaltyRate: Number(penaltyRate) || loan.penaltyRate,
+    emiAmount: Number(emiAmount) || loan.emiAmount,
+    totalInterest: Number(totalInterest) || loan.totalInterest,
+    totalRepayable: Number(totalRepayable) || loan.totalRepayable,
+    emiChangeRequest: {
+      approvedAmount: Number(approvedAmount) || loan.approvedAmount,
+      tenureMonths: parseInt(tenureMonths, 10) || loan.tenureMonths,
+      interestRate: Number(interestRate) || loan.interestRate,
+      penaltyRate: Number(penaltyRate) || loan.penaltyRate,
+      emiAmount: Number(emiAmount) || loan.emiAmount,
+      totalInterest: Number(totalInterest) || loan.totalInterest,
+      totalRepayable: Number(totalRepayable) || loan.totalRepayable,
+      status: 'approved',
+      requestedBy: req.user.userId,
+      approvedAt: new Date().toISOString()
+    }
+  };
+
+  await db.updateLoan(loan.loanId, updates);
+  await rescheduleEmis(loan, updates);
+
+  res.json({ message: 'Loan EMI terms updated and schedule recalculated successfully' });
+});
+
 router.post('/loans/:loanId/registry-document', upload.single('document'), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.adminId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
-  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Media and documents cannot be modified after first EMI collection.' });
-  }
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
   const fileMime = (req.file.mimetype || '').toLowerCase();
@@ -755,10 +806,6 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
 router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
-  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Media and photos cannot be modified after first EMI collection.' });
-  }
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
 
   const newItems = [];
@@ -793,10 +840,6 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
 router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
-  const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Media and videos cannot be modified after first EMI collection.' });
-  }
   if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
 
   const rawType = (req.query.videoType || req.body.videoType || '').toLowerCase().trim();

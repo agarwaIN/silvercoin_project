@@ -193,15 +193,12 @@ export default function MediaViewer({
   const [selectedMedia, setSelectedMedia] = useState(null);
 
   const isEmployee = user?.role === 'employee';
-  const isProcessedOrApproved = loanStatus && ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(loanStatus);
 
-  // If first EMI collected -> strictly no uploads for anyone
-  // If employee and loan processed/approved/active -> strictly no uploads
-  // If allowUpload is false -> no uploads
+  // Admin can upload media even after first EMI collection.
+  // Employee can upload/reupload media before first EMI is collected, but locked once first EMI is collected.
   const canUpload = Boolean(
     allowUpload &&
-    !isFirstEmiCollected &&
-    !(isEmployee && isProcessedOrApproved)
+    (isEmployee ? !isFirstEmiCollected : true)
   );
 
   // Custom Document Upload Modal State

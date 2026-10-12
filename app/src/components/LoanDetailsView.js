@@ -3,11 +3,14 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDate, formatDateTime, getLoanSubmissionInfo } from '../utils/date';
+import { useAuth } from '../context/AuthContext';
 import * as Location from 'expo-location';
 
 export default function LoanDetailsView({ loan, onEditDates }) {
   if (!loan) return null;
 
+  const { user } = useAuth();
+  const isEmployee = user?.role === 'employee';
   const changedFields = loan.changedFields || [];
   const isFirstEmiCollected = !!(loan.firstEmiCollected || loan.emis?.some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0));
 
@@ -159,7 +162,7 @@ export default function LoanDetailsView({ loan, onEditDates }) {
               <Text style={{ fontSize: 12, color: '#065F46', fontWeight: 'bold' }}>Final EMI</Text>
               <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
             </View>
-            {onEditDates && !isFirstEmiCollected && (
+            {onEditDates && (!isFirstEmiCollected || !isEmployee) && (
               <TouchableOpacity 
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#059669', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, gap: 4 }} 
                 onPress={onEditDates}
@@ -168,7 +171,7 @@ export default function LoanDetailsView({ loan, onEditDates }) {
                 <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Edit Dates</Text>
               </TouchableOpacity>
             )}
-            {isFirstEmiCollected && (
+            {isFirstEmiCollected && isEmployee && (
               <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, gap: 4 }}>
                 <Ionicons name="lock-closed" size={13} color="#059669" />
                 <Text style={{ fontSize: 11, color: '#065F46', fontWeight: '600' }}>Locked (EMI Collected)</Text>

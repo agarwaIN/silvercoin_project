@@ -433,9 +433,6 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
-  if (isLoanProcessed(loan)) {
-    return res.status(400).json({ message: 'Document upload is disabled once the loan has been processed by admin.' });
-  }
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
   if (hasFirstEmi) {
     return res.status(400).json({ message: 'Document upload is disabled after first EMI collection.' });
@@ -500,9 +497,6 @@ router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (re
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
-  if (isLoanProcessed(loan)) {
-    return res.status(400).json({ message: 'Photo upload is disabled once the loan has been processed by admin.' });
-  }
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
   if (hasFirstEmi) {
     return res.status(400).json({ message: 'Photo upload is disabled after first EMI collection.' });
@@ -543,9 +537,6 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
-  if (isLoanProcessed(loan)) {
-    return res.status(400).json({ message: 'Video upload is disabled once the loan has been processed by admin.' });
-  }
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
   if (hasFirstEmi) {
     return res.status(400).json({ message: 'Video upload is disabled after first EMI collection.' });

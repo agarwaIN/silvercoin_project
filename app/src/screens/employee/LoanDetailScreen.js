@@ -183,7 +183,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           fetchMedia={() => getLoanMediaPreview(loan.loanId)}
           loanId={loan.loanId}
           onDocumentUploaded={load}
-          allowUpload={!isProcessed && !isFirstEmiCollected}
+          allowUpload={!isFirstEmiCollected}
           loanStatus={loan.status}
           isFirstEmiCollected={isFirstEmiCollected}
         />

@@ -6,7 +6,7 @@ import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange, processLoan, returnLoan, disburseLoan, approveForeclosure, updateLoanDates } from '../../api/adminApi';
+import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange, processLoan, returnLoan, disburseLoan, approveForeclosure, updateLoanDates, forecloseLoan, changeLoanEmi } from '../../api/adminApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
@@ -39,6 +39,19 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
   const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
   const [activeDatePicker, setActiveDatePicker] = useState(null);
+
+  const [forecloseModalVisible, setForecloseModalVisible] = useState(false);
+  const [foreclosureData, setForeclosureData] = useState({ amount: '', reason: '' });
+  const [changeEmiModalVisible, setChangeEmiModalVisible] = useState(false);
+  const [changeEmiData, setChangeEmiData] = useState({
+    principal: '',
+    tenure: '',
+    interestRate: '',
+    penaltyRate: '',
+    emiAmount: 0,
+    totalInterest: 0,
+    totalRepayable: 0
+  });
 
 
   const load = useCallback(async () => {
@@ -211,6 +224,87 @@ export default function LoanDetailScreen({ route, navigation }) {
     }
   };
 
+  const calculateAdminEmi = (pVal, tVal, rVal) => {
+    const p = parseFloat(pVal) || 0;
+    const t = parseInt(tVal, 10) || 0;
+    const r = parseFloat(rVal) || 0;
+    const interest = p * (r / 100) * t;
+    const repayable = p + interest;
+    const emi = t > 0 ? Math.round(repayable / t) : 0;
+    return { emiAmount: emi, totalInterest: interest, totalRepayable: repayable };
+  };
+
+  const handleOpenChangeEmiModal = () => {
+    const p = loan.approvedAmount || loan.loanAmount || '';
+    const t = loan.tenureMonths || loan.repaymentMonths || '12';
+    const r = loan.interestRate || '2.15';
+    const pr = loan.penaltyRate || '0.5';
+    const calc = calculateAdminEmi(p, t, r);
+    setChangeEmiData({
+      principal: p ? p.toString() : '',
+      tenure: t ? t.toString() : '',
+      interestRate: r ? r.toString() : '',
+      penaltyRate: pr ? pr.toString() : '',
+      ...calc
+    });
+    setChangeEmiModalVisible(true);
+  };
+
+  const handleOpenForeclosureModal = () => {
+    setForeclosureData({
+      amount: (loan.approvedAmount || loan.loanAmount || '').toString(),
+      reason: 'Customer requested loan settlement'
+    });
+    setForecloseModalVisible(true);
+  };
+
+  const handleDirectForeclose = async () => {
+    if (!foreclosureData.amount || !foreclosureData.reason.trim()) {
+      showAlert('Error', 'Please enter foreclosure amount and reason.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await forecloseLoan(loanId, {
+        foreclosureAmount: parseFloat(foreclosureData.amount),
+        reason: foreclosureData.reason.trim()
+      });
+      setForecloseModalVisible(false);
+      await load();
+      showAlert('Success', 'Loan has been foreclosed and completed successfully.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to foreclose loan.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDirectChangeEmi = async () => {
+    if (!changeEmiData.principal || !changeEmiData.tenure || !changeEmiData.interestRate) {
+      showAlert('Error', 'Please fill in all calculation fields.');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await changeLoanEmi(loanId, {
+        approvedAmount: parseFloat(changeEmiData.principal),
+        tenureMonths: parseInt(changeEmiData.tenure, 10),
+        interestRate: parseFloat(changeEmiData.interestRate),
+        penaltyRate: parseFloat(changeEmiData.penaltyRate || '0.5'),
+        emiAmount: changeEmiData.emiAmount,
+        totalInterest: changeEmiData.totalInterest,
+        totalRepayable: changeEmiData.totalRepayable
+      });
+      setChangeEmiModalVisible(false);
+      await load();
+      showAlert('Success', 'EMI terms updated and remaining schedule recalculated.');
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to update EMI terms.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handleSaveDates = async () => {
     if (!datesData.disbursementDate && !datesData.emiStartDate) {
       showAlert('Error', 'Please enter at least one valid date.');
@@ -235,10 +329,6 @@ export default function LoanDetailScreen({ route, navigation }) {
   };
 
   const handleOpenEditDates = () => {
-    if (isFirstEmiCollected) {
-      showAlert('Dates Locked', 'Dates cannot be edited after first EMI has been collected.');
-      return;
-    }
     const rawDisbDate = loan.disbursements?.[0]?.date || loan.disbursementDate || new Date();
     const rawEmiDate = loan.emiStartDate || loan.loanStartDate || new Date();
     setDatesData({ disbursementDate: cleanDateStr(rawDisbDate), emiStartDate: cleanDateStr(rawEmiDate) });
@@ -290,23 +380,23 @@ export default function LoanDetailScreen({ route, navigation }) {
         </View>
 
         {isFirstEmiCollected && (
-          <View style={styles.lockedBanner}>
-            <Ionicons name="lock-closed" size={18} color="#1E293B" />
-            <Text style={styles.lockedBannerText}>
-              First EMI collected. Application details, terms, dates, and media are locked from editing.
+          <View style={[styles.lockedBanner, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+            <Ionicons name="checkmark-circle-outline" size={18} color="#15803D" />
+            <Text style={[styles.lockedBannerText, { color: '#15803D' }]}>
+              First EMI collected. Application details and media are locked for employees.
             </Text>
           </View>
         )}
 
-        <LoanDetailsView loan={loan} onEditDates={isFirstEmiCollected ? null : handleOpenEditDates} />
+        <LoanDetailsView loan={loan} onEditDates={handleOpenEditDates} />
 
         <MediaViewer
           fetchMedia={() => getLoanMediaPreview(loan.loanId)}
           loanId={loan.loanId}
           onDocumentUploaded={load}
-          allowUpload={!isFirstEmiCollected}
+          allowUpload={true}
           loanStatus={loan.status}
-          isFirstEmiCollected={isFirstEmiCollected}
+          isFirstEmiCollected={false}
         />
 
         {loan.status === 'submitted' && (
@@ -392,25 +482,42 @@ export default function LoanDetailScreen({ route, navigation }) {
               </View>
             </View>
             
-            {isFirstEmiCollected ? (
-              <View style={{ backgroundColor: '#F1F5F9', padding: 12, borderRadius: 8, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="lock-closed" size={16} color={colors.muted} />
-                <Text style={{ fontSize: 12, color: colors.muted, fontFamily: fonts.medium }}>
-                  Cannot modify EMI terms: First EMI has already been collected.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.actionContainer}>
-                <TouchableOpacity style={styles.rejectBtn} onPress={handleRejectEmiChange} disabled={processing}>
-                  <Ionicons name="close-circle-outline" size={20} color={colors.error} />
-                  <Text style={styles.rejectBtnText}>Reject Change</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.approveBtn} onPress={handleApproveEmiChange} disabled={processing}>
-                  <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
-                  <Text style={styles.approveBtnText}>Approve Change</Text>
-                </TouchableOpacity>
-              </View>
+            <View style={styles.actionContainer}>
+              <TouchableOpacity style={styles.rejectBtn} onPress={handleRejectEmiChange} disabled={processing}>
+                <Ionicons name="close-circle-outline" size={20} color={colors.error} />
+                <Text style={styles.rejectBtnText}>Reject Change</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.approveBtn} onPress={handleApproveEmiChange} disabled={processing}>
+                <Ionicons name="checkmark-circle-outline" size={20} color={colors.white} />
+                <Text style={styles.approveBtnText}>Approve Change</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {['approved', 'active'].includes(loan.status) && loan.status !== 'completed' && (
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, marginBottom: 16 }}>
+            {(!loan.emiChangeRequest || loan.emiChangeRequest.status !== 'pending') && (
+              <TouchableOpacity 
+                style={[styles.approveBtn, { flex: 1, backgroundColor: '#0284C7', minWidth: 120 }]} 
+                onPress={handleOpenChangeEmiModal}
+                disabled={processing}
+              >
+                <Ionicons name="calculator-outline" size={18} color={colors.white} />
+                <Text style={styles.approveBtnText}>Change EMI</Text>
+              </TouchableOpacity>
+            )}
+
+            {(!loan.foreclosureRequest || loan.foreclosureRequest.status !== 'pending') && (
+              <TouchableOpacity 
+                style={[styles.approveBtn, { flex: 1, backgroundColor: '#991B1B', minWidth: 120 }]} 
+                onPress={handleOpenForeclosureModal}
+                disabled={processing}
+              >
+                <Ionicons name="warning-outline" size={18} color={colors.white} />
+                <Text style={styles.approveBtnText}>Foreclose</Text>
+              </TouchableOpacity>
             )}
           </View>
         )}
@@ -797,6 +904,117 @@ export default function LoanDetailScreen({ route, navigation }) {
                 </View>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change EMI Modal */}
+      <Modal visible={changeEmiModalVisible} transparent animationType="fade" onRequestClose={() => setChangeEmiModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Change EMI Terms</Text>
+            <Text style={styles.modalSubtitle}>Adjust principal, tenure, or interest rate. Schedule will be recalculated.</Text>
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Principal Amount (₹)</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Principal (₹)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={changeEmiData.principal}
+              onChangeText={t => {
+                const updated = { ...changeEmiData, principal: t };
+                const calc = calculateAdminEmi(t, updated.tenure, updated.interestRate);
+                setChangeEmiData({ ...updated, ...calc });
+              }}
+              keyboardType="numeric"
+            />
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Tenure (Months)</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Tenure in months"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={changeEmiData.tenure}
+              onChangeText={t => {
+                const updated = { ...changeEmiData, tenure: t };
+                const calc = calculateAdminEmi(updated.principal, t, updated.interestRate);
+                setChangeEmiData({ ...updated, ...calc });
+              }}
+              keyboardType="numeric"
+            />
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Monthly Interest Rate (%)</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Interest rate (%)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={changeEmiData.interestRate}
+              onChangeText={t => {
+                const updated = { ...changeEmiData, interestRate: t };
+                const calc = calculateAdminEmi(updated.principal, updated.tenure, t);
+                setChangeEmiData({ ...updated, ...calc });
+              }}
+              keyboardType="numeric"
+            />
+
+            <View style={{ backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, marginVertical: 8 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ fontFamily: fonts.medium, fontSize: 13, color: '#166534' }}>Calculated EMI:</Text>
+                <Text style={{ fontFamily: fonts.bold, fontSize: 15, color: '#15803D' }}>₹{Number(changeEmiData.emiAmount || 0).toLocaleString('en-IN')}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: '#166534' }}>Total Repayable:</Text>
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 12, color: '#15803D' }}>₹{Number(changeEmiData.totalRepayable || 0).toLocaleString('en-IN')}</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setChangeEmiModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleDirectChangeEmi} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Apply EMI Terms</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Direct Foreclosure Modal */}
+      <Modal visible={forecloseModalVisible} transparent animationType="fade" onRequestClose={() => setForecloseModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Foreclose Loan</Text>
+            <Text style={styles.modalSubtitle}>Enter final settlement amount and reason to close this loan.</Text>
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Settlement Amount (₹) *</Text>
+            <TextInput
+              style={styles.modalInputSmall}
+              placeholder="Foreclosure Amount (₹)"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={foreclosureData.amount}
+              onChangeText={t => setForeclosureData({ ...foreclosureData, amount: t })}
+              keyboardType="numeric"
+            />
+
+            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Reason for Foreclosure *</Text>
+            <TextInput
+              style={[styles.modalInputSmall, { height: 70, textAlignVertical: 'top' }]}
+              placeholder="Enter reason or settlement details"
+              placeholderTextColor={colors.placeholder || '#4B5563'}
+              value={foreclosureData.reason}
+              onChangeText={t => setForeclosureData({ ...foreclosureData, reason: t })}
+              multiline
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setForecloseModalVisible(false)} disabled={processing}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: '#991B1B' }]} onPress={handleDirectForeclose} disabled={processing}>
+                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Confirm Foreclosure</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
