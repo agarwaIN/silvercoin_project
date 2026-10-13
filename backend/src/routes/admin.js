@@ -542,7 +542,9 @@ router.post('/loans/:loanId/return', async (req, res) => {
   const { reason } = req.body;
   await db.updateLoan(loan.loanId, { 
     status: 'returned',
-    rejectionReason: reason 
+    rejectionReason: reason,
+    returnReason: reason,
+    remark: reason,
   });
   res.json({ message: 'Loan returned to employee' });
 });

@@ -12,6 +12,19 @@ import { useAuth } from '../../context/AuthContext';
 import { getLoans, getEmiThisMonth } from '../../api/employeeApi';
 import { formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 
+const sortLoansWithReturnedFirst = (items) => {
+  if (!Array.isArray(items)) return [];
+  return [...items].sort((a, b) => {
+    const aRet = a.status === 'returned';
+    const bRet = b.status === 'returned';
+    if (aRet && !bRet) return -1;
+    if (!aRet && bRet) return 1;
+    const bDate = new Date(b.updatedAt || b.createdAt || 0);
+    const aDate = new Date(a.updatedAt || a.createdAt || 0);
+    return bDate - aDate;
+  });
+};
+
 export default function EmployeeDashboard({ navigation }) {
   const { user } = useAuth();
   const [loans, setLoans] = useState([]);
@@ -21,7 +34,7 @@ export default function EmployeeDashboard({ navigation }) {
   const load = useCallback(async () => {
     await Promise.all([
       getLoans()
-        .then((data) => setLoans(Array.isArray(data) ? [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : []))
+        .then((data) => setLoans(sortLoansWithReturnedFirst(data)))
         .catch(() => {}),
       getEmiThisMonth().then(setEmiThisMonth).catch(() => {}),
     ]);
@@ -37,7 +50,7 @@ export default function EmployeeDashboard({ navigation }) {
 
   const stats = {
     total: loans.length,
-    draft: loans.filter((l) => l.status === 'draft').length,
+    draft: loans.filter((l) => ['draft', 'returned'].includes(l.status)).length,
     pending: loans.filter((l) => ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'].includes(l.status)).length,
     approved: loans.filter((l) => ['approved', 'active', 'completed'].includes(l.status)).length,
   };
@@ -71,46 +84,64 @@ export default function EmployeeDashboard({ navigation }) {
 
         {}
         <Text style={styles.section}>Recent Applications</Text>
-        {loans.slice(0, 3).map((loan) => (
-          <TouchableOpacity key={loan.loanId} onPress={() =>
-            navigation.navigate('Loans', { screen: 'LoanDetail', params: { loanId: loan.loanId } })
-          }>
-            <Card>
-              <View style={styles.loanRow}>
-                <View style={styles.loanLeft}>
-                  <Text style={styles.loanId}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
-                  <Text style={styles.ownerName}>{loan.ownerName || 'No owner yet'}</Text>
-                  {(loan.approvedAmount || loan.loanAmount) ? (
-                    <Text style={styles.amount}>₹{Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}</Text>
-                  ) : null}
-                </View>
-                <StatusBadge status={loan.status} />
-              </View>
-              {(() => {
-                const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(loan);
-                if (!loan.employeeName && !submissionTime) return null;
-                return (
-                  <View style={styles.submittedByRow}>
-                    <Ionicons name="person" size={12} color="#047857" style={{ marginTop: 2 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.submittedByText}>
-                        Submitted / Filled By: <Text style={styles.submittedByName}>{loan.employeeName || 'Employee'}</Text>
-                      </Text>
-                      {submissionTime ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <Ionicons name="time-outline" size={11} color={colors.muted} />
-                          <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.muted }}>
-                            {timeLabel}: {formatDateTime(submissionTime)}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
+        {loans.slice(0, 3).map((loan) => {
+          const isReturned = loan.status === 'returned';
+          const returnRemark = loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark;
+
+          return (
+            <TouchableOpacity key={loan.loanId} onPress={() =>
+              navigation.navigate('Loans', { screen: 'LoanDetail', params: { loanId: loan.loanId } })
+            }>
+              <Card style={isReturned ? styles.returnedCard : undefined}>
+                <View style={styles.loanRow}>
+                  <View style={styles.loanLeft}>
+                    <Text style={styles.loanId}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
+                    <Text style={styles.ownerName}>{loan.ownerName || 'No owner yet'}</Text>
+                    {(loan.approvedAmount || loan.loanAmount) ? (
+                      <Text style={styles.amount}>₹{Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}</Text>
+                    ) : null}
                   </View>
-                );
-              })()}
-            </Card>
-          </TouchableOpacity>
-        ))}
+                  <StatusBadge status={loan.status} />
+                </View>
+
+                {isReturned && (
+                  <View style={styles.returnedRemarkBanner}>
+                    <View style={styles.returnedRemarkHeader}>
+                      <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                      <Text style={styles.returnedRemarkTitle}>RETURNED REMARK</Text>
+                    </View>
+                    <Text style={styles.returnedRemarkBold}>
+                      {returnRemark || 'Application returned by admin for corrections.'}
+                    </Text>
+                  </View>
+                )}
+
+                {(() => {
+                  const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(loan);
+                  if (!loan.employeeName && !submissionTime) return null;
+                  return (
+                    <View style={styles.submittedByRow}>
+                      <Ionicons name="person" size={12} color="#047857" style={{ marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.submittedByText}>
+                          Submitted / Filled By: <Text style={styles.submittedByName}>{loan.employeeName || 'Employee'}</Text>
+                        </Text>
+                        {submissionTime ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                            <Ionicons name="time-outline" size={11} color={colors.muted} />
+                            <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.muted }}>
+                              {timeLabel}: {formatDateTime(submissionTime)}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })()}
+              </Card>
+            </TouchableOpacity>
+          );
+        })}
 
         {loans.length === 0 && (
           <Card style={styles.emptyCard}>
@@ -196,5 +227,37 @@ const styles = StyleSheet.create({
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.dark, alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+  },
+  returnedCard: {
+    borderColor: '#F87171',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFDFD',
+  },
+  returnedRemarkBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  returnedRemarkHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  returnedRemarkTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  returnedRemarkBold: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: '#991B1B',
+    lineHeight: 19,
   },
 });

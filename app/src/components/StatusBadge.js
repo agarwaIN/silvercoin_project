@@ -10,6 +10,7 @@ const STATUS_MAP = {
   owner_not_interested: { label: 'Owner Not Interested', bg: '#FEF3C7', text: '#B45309' },
   agreement_submitted: { label: 'Awaiting Final Approval', bg: '#DBEAFE', text: '#2563EB' },
   approved: { label: 'Approved', bg: '#D1FAE5', text: colors.success },
+  returned: { label: 'Returned', bg: '#FEE2E2', text: '#DC2626' },
   rejected: { label: 'Rejected', bg: '#FEE2E2', text: colors.error },
   active: { label: 'Active', bg: '#DBEAFE', text: '#3B82F6' },
   completed: { label: 'Completed', bg: '#D1FAE5', text: colors.success },

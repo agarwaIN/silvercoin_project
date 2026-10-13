@@ -20,13 +20,27 @@ import { getLoans } from '../../api/employeeApi';
 import { formatDate, formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
-const FILTERS = ['All', 'In Progress', 'Pending', 'Approved', 'Rejected'];
+const FILTERS = ['All', 'Returned', 'In Progress', 'Pending', 'Approved', 'Rejected'];
 const filterMap = {
   All: null,
-  'In Progress': ['draft'],
+  Returned: ['returned'],
+  'In Progress': ['draft', 'returned'],
   Pending: ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'],
   Approved: ['approved', 'active', 'completed'],
   Rejected: ['rejected'],
+};
+
+export const sortLoansWithReturnedFirst = (items) => {
+  if (!Array.isArray(items)) return [];
+  return [...items].sort((a, b) => {
+    const aRet = a.status === 'returned';
+    const bRet = b.status === 'returned';
+    if (aRet && !bRet) return -1;
+    if (!aRet && bRet) return 1;
+    const bDate = new Date(b.updatedAt || b.createdAt || 0);
+    const aDate = new Date(a.updatedAt || a.createdAt || 0);
+    return bDate - aDate;
+  });
 };
 
 export default function LoanListScreen({ navigation }) {
@@ -37,7 +51,7 @@ export default function LoanListScreen({ navigation }) {
 
   const load = useCallback(async () => {
     const data = await getLoans();
-    setLoans(Array.isArray(data) ? [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : []);
+    setLoans(sortLoansWithReturnedFirst(data));
   }, []);
 
   useFocusEffect(
@@ -52,7 +66,8 @@ export default function LoanListScreen({ navigation }) {
 
   const filtered = useMemo(() => {
     const byStatus = filterMap[filter] ? loans.filter((l) => filterMap[filter].includes(l.status)) : loans;
-    return byStatus.filter((l) => loanMatchesSearch(l, search));
+    const searchFiltered = byStatus.filter((l) => loanMatchesSearch(l, search));
+    return sortLoansWithReturnedFirst(searchFiltered);
   }, [loans, filter, search]);
 
   return (
@@ -98,50 +113,68 @@ export default function LoanListScreen({ navigation }) {
         keyExtractor={(item) => item.loanId}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => navigation.navigate('LoanDetail', { loanId: item.loanId })}>
-            <Card>
-              <View style={styles.row}>
-                <View style={styles.left}>
-                  <Text style={styles.id}>{item.displayLoanId || item.applicationNumber || item.loanId}</Text>
-                  <Text style={styles.owner}>{item.ownerName || '—'}</Text>
-                  {(item.approvedAmount || item.loanAmount) ? (
-                    <Text style={styles.amount}>₹{Number(item.approvedAmount || item.loanAmount).toLocaleString('en-IN')}</Text>
-                  ) : null}
-                  <Text style={styles.date}>
-                    {item.createdAt ? formatDate(item.createdAt) : ''}
-                  </Text>
-                </View>
-                <View style={styles.right}>
-                  <StatusBadge status={item.status} />
-                  <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
-                </View>
-              </View>
-              {(() => {
-                const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(item);
-                if (!item.employeeName && !submissionTime) return null;
-                return (
-                  <View style={styles.submittedByRow}>
-                    <Ionicons name="person" size={12} color="#047857" style={{ marginTop: 2 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.submittedByText}>
-                        Submitted / Filled By: <Text style={styles.submittedByName}>{item.employeeName || 'Employee'}</Text>
-                      </Text>
-                      {submissionTime ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <Ionicons name="time-outline" size={11} color={colors.muted} />
-                          <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.muted }}>
-                            {timeLabel}: {formatDateTime(submissionTime)}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
+        renderItem={({ item }) => {
+          const isReturned = item.status === 'returned';
+          const returnRemark = item.returnReason || item.rejectionReason || item.rejectReason || item.remark;
+
+          return (
+            <TouchableOpacity onPress={() => navigation.navigate('LoanDetail', { loanId: item.loanId })}>
+              <Card style={isReturned ? styles.returnedCard : undefined}>
+                <View style={styles.row}>
+                  <View style={styles.left}>
+                    <Text style={styles.id}>{item.displayLoanId || item.applicationNumber || item.loanId}</Text>
+                    <Text style={styles.owner}>{item.ownerName || '—'}</Text>
+                    {(item.approvedAmount || item.loanAmount) ? (
+                      <Text style={styles.amount}>₹{Number(item.approvedAmount || item.loanAmount).toLocaleString('en-IN')}</Text>
+                    ) : null}
+                    <Text style={styles.date}>
+                      {item.createdAt ? formatDate(item.createdAt) : ''}
+                    </Text>
                   </View>
-                );
-              })()}
-            </Card>
-          </TouchableOpacity>
-        )}
+                  <View style={styles.right}>
+                    <StatusBadge status={item.status} />
+                    <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
+                  </View>
+                </View>
+
+                {isReturned && (
+                  <View style={styles.returnedRemarkBanner}>
+                    <View style={styles.returnedRemarkHeader}>
+                      <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                      <Text style={styles.returnedRemarkTitle}>RETURNED REMARK</Text>
+                    </View>
+                    <Text style={styles.returnedRemarkBold}>
+                      {returnRemark || 'Application returned by admin for corrections.'}
+                    </Text>
+                  </View>
+                )}
+
+                {(() => {
+                  const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(item);
+                  if (!item.employeeName && !submissionTime) return null;
+                  return (
+                    <View style={styles.submittedByRow}>
+                      <Ionicons name="person" size={12} color="#047857" style={{ marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.submittedByText}>
+                          Submitted / Filled By: <Text style={styles.submittedByName}>{item.employeeName || 'Employee'}</Text>
+                        </Text>
+                        {submissionTime ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                            <Ionicons name="time-outline" size={11} color={colors.muted} />
+                            <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.muted }}>
+                              {timeLabel}: {formatDateTime(submissionTime)}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })()}
+              </Card>
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="document-outline" size={48} color={colors.border} />
@@ -208,4 +241,36 @@ const styles = StyleSheet.create({
   },
   empty: { alignItems: 'center', marginTop: 80 },
   emptyText: { fontFamily: fonts.regular, fontSize: fontSize.base, color: colors.muted, marginTop: 12 },
+  returnedCard: {
+    borderColor: '#F87171',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFDFD',
+  },
+  returnedRemarkBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  returnedRemarkHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  returnedRemarkTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  returnedRemarkBold: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: '#991B1B',
+    lineHeight: 19,
+  },
 });

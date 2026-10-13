@@ -173,6 +173,22 @@ export default function LoanDetailScreen({ route, navigation }) {
                 : 'First EMI collected. Application details and terms are locked. You can collect EMI and recovery payments.'}
             </Text>
           </View>
+        {loan.status === 'returned' && (
+          <View style={styles.returnedDetailBanner}>
+            <View style={styles.returnedDetailHeader}>
+              <Ionicons name="alert-circle" size={20} color="#DC2626" />
+              <Text style={styles.returnedDetailTitle}>APPLICATION RETURNED BY ADMIN</Text>
+            </View>
+            <Text style={styles.returnedDetailSubtitle}>
+              Admin has returned this loan application for revision. Please review the remark below and update the details:
+            </Text>
+            <View style={styles.returnedDetailRemarkBox}>
+              <Text style={styles.returnedDetailRemarkLabel}>Admin Return Remark:</Text>
+              <Text style={styles.returnedDetailRemarkBold}>
+                {loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark || 'Application returned for corrections.'}
+              </Text>
+            </View>
+          </View>
         )}
 
         {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
@@ -529,5 +545,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#065F46',
     lineHeight: 16,
+  },
+  returnedDetailBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#F87171',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  returnedDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  returnedDetailTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  returnedDetailSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: '#7F1D1D',
+    marginBottom: 10,
+    lineHeight: 17,
+  },
+  returnedDetailRemarkBox: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    padding: 10,
+  },
+  returnedDetailRemarkLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+    color: '#991B1B',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  returnedDetailRemarkBold: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: '#7F1D1D',
+    lineHeight: 20,
   },
 });
