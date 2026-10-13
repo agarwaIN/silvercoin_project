@@ -549,7 +549,16 @@ export default function LoanDetailScreen({ route, navigation }) {
                     </View>
                     <View style={{ flex: 1, alignItems: 'flex-end' }}>
                       <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: isPaid ? colors.success : colors.error }}>₹{totalDue.toLocaleString('en-IN')}</Text>
-                      {emi.paidAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.success }}>Paid: ₹{Number(emi.paidAmount).toLocaleString('en-IN')}</Text>}
+                      {emi.paidAmount > 0 && (
+                        <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.success }}>
+                          Paid: ₹{Number(emi.paidAmount).toLocaleString('en-IN')}
+                        </Text>
+                      )}
+                      {emi.paidDate && emi.paidAmount > 0 && (
+                        <Text style={{ fontFamily: fonts.regular, fontSize: 10, color: '#047857' }}>
+                          Collected: {formatDate(emi.paidDate)}
+                        </Text>
+                      )}
                       {emi.penaltyAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.error }}>Penalty: ₹{Number(emi.penaltyAmount).toLocaleString('en-IN')}</Text>}
                     </View>
                     {!isPaid && loan.status === 'active' && (

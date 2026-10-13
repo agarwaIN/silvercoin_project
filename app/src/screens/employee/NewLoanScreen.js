@@ -159,22 +159,23 @@ const fl = StyleSheet.create({
   optional: { color: colors.muted, fontWeight: '400', fontSize: 11 },
 });
 
-function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline, editable = true, loading, autoCapitalize }) {
+function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline, editable = true, loading, autoCapitalize, style }) {
   const isEmailOrPhone = keyboardType === 'email-address' || keyboardType === 'phone-pad' || keyboardType === 'numeric' || keyboardType === 'decimal-pad';
   const autoCap = autoCapitalize !== undefined
     ? autoCapitalize
     : (isEmailOrPhone ? 'none' : (multiline ? 'sentences' : 'words'));
 
   return (
-    <View>
+    <View style={style}>
       <TextInput
         style={[si.input, multiline && si.multi, !editable && si.disabled]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={colors.muted}
+        placeholderTextColor={colors.placeholder || '#4B5563'}
         keyboardType={keyboardType || 'default'}
         multiline={multiline}
+        textAlignVertical={multiline ? 'top' : 'center'}
         editable={editable && !loading}
         autoCapitalize={autoCap}
       />
@@ -185,8 +186,24 @@ function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline
   );
 }
 const si = StyleSheet.create({
-  input: { backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 12, color: colors.text },
-  multi: { minHeight: 80, textAlignVertical: 'top' },
+  input: {
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#111827',
+  },
+  multi: {
+    minHeight: 96,
+    lineHeight: 22,
+    fontSize: 14,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
   disabled: { backgroundColor: colors.inputBg, color: colors.muted },
   spinner: { position: 'absolute', right: 12, top: 14 },
 });
@@ -1428,12 +1445,25 @@ function Step4({ data, loanId }) {
     }
   }, [loanId]);
 
-  const Row = ({ label, value }) => (
-    <View style={rv.row}>
-      <Text style={rv.label}>{label}</Text>
-      <Text style={rv.value}>{value || '—'}</Text>
-    </View>
-  );
+  const Row = ({ label, value }) => {
+    const isRemark = label && label.toLowerCase().includes('remark');
+    if (isRemark) {
+      return (
+        <View style={rv.remarkBlock}>
+          <Text style={rv.remarkLabel}>{label}</Text>
+          <View style={rv.remarkValueBox}>
+            <Text style={rv.remarkValue}>{value || '—'}</Text>
+          </View>
+        </View>
+      );
+    }
+    return (
+      <View style={rv.row}>
+        <Text style={rv.label}>{label}</Text>
+        <Text style={rv.value}>{value || '—'}</Text>
+      </View>
+    );
+  };
 
   const serverOwnerVideo = serverMedia.find(m => m.type === 'video' && (m.videoType === 'owner' || m.name?.toLowerCase().includes('owner')));
   const serverHouseVideo = serverMedia.find(m => m.type === 'video' && (m.videoType === 'house' || m.name?.toLowerCase().includes('house') || m.name?.toLowerCase().includes('property')));
@@ -1666,6 +1696,10 @@ const rv = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: colors.inputBg },
   label: { fontSize: 13, color: colors.muted, flex: 1 },
   value: { fontSize: 13, color: colors.text, fontWeight: '500', flex: 1.5, textAlign: 'right' },
+  remarkBlock: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.inputBg },
+  remarkLabel: { fontSize: 13, color: colors.muted, marginBottom: 4, fontWeight: '500' },
+  remarkValueBox: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginTop: 2 },
+  remarkValue: { fontSize: 13.5, lineHeight: 20, color: colors.text, fontWeight: '500', textAlign: 'left' },
   mediaHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   mediaCountBadge: { backgroundColor: '#E0F2FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   mediaCountBadgeTxt: { fontSize: 11, fontWeight: '700', color: colors.primary },

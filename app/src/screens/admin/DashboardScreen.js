@@ -47,6 +47,7 @@ export default function AdminDashboard({ navigation }) {
     ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'].includes(l.status),
   ).length;
   const approved = loans.filter((l) => ['approved', 'active', 'completed'].includes(l.status)).length;
+  const activeLoans = loans.filter((l) => l.status === 'active').length;
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
@@ -60,31 +61,31 @@ export default function AdminDashboard({ navigation }) {
         <View style={[styles.statsRow, !statsFourAcross && styles.statsRowWrap]}>
           <StatBox
             fourAcross={statsFourAcross}
-            icon="people"
-            label="Employees"
-            value={employees.length}
+            icon="document-text"
+            label="Total Loans"
+            value={loans.length}
             color={colors.dark}
           />
           <StatBox
             fourAcross={statsFourAcross}
-            icon="document-text"
-            label="Total Loans"
-            value={loans.length}
-            color={colors.accent}
-          />
-          <StatBox
-            fourAcross={statsFourAcross}
             icon="time"
-            label="Pending"
+            label="Pending Loans"
             value={pending}
             color="#D97706"
           />
           <StatBox
             fourAcross={statsFourAcross}
             icon="checkmark-circle"
-            label="Approved"
+            label="Approved Loans"
             value={approved}
             color={colors.success}
+          />
+          <StatBox
+            fourAcross={statsFourAcross}
+            icon="flash"
+            label="Active Loans"
+            value={activeLoans}
+            color={colors.accent}
           />
         </View>
 
@@ -200,14 +201,31 @@ export default function AdminDashboard({ navigation }) {
         )}
 
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Recent Employees</Text>
           <TouchableOpacity 
-            style={styles.createBtn}
-            onPress={() => navigation.navigate('Employees', { screen: 'CreateEmployee' })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            onPress={() => navigation.navigate('Employees')}
+            activeOpacity={0.7}
           >
-            <Ionicons name="add" size={16} color={colors.white} />
-            <Text style={styles.createBtnText}>Create</Text>
+            <Text style={styles.sectionTitle}>Employees ({employees.length})</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.dark} />
           </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <TouchableOpacity 
+              style={styles.employeeBtn}
+              onPress={() => navigation.navigate('Employees')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="people" size={14} color={colors.white} />
+              <Text style={styles.employeeBtnText}>Employees ({employees.length})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.createBtn}
+              onPress={() => navigation.navigate('Employees', { screen: 'CreateEmployee' })}
+            >
+              <Ionicons name="add" size={16} color={colors.white} />
+              <Text style={styles.createBtnText}>Create</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {employees.slice(0, 3).map((emp) => (
           <Card key={emp.userId}>
@@ -292,6 +310,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.base, color: colors.text },
   createBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.dark, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4 },
   createBtnText: { fontFamily: fonts.medium, fontSize: 12, color: colors.white },
+  employeeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4 },
+  employeeBtnText: { fontFamily: fonts.medium, fontSize: 12, color: colors.white },
   loanRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   loanLeft: { flex: 1 },
   loanId: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: colors.dark },

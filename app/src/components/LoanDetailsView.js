@@ -41,6 +41,19 @@ export default function LoanDetailsView({ loan, onEditDates }) {
 
   const Row = ({ label, value, fieldKey }) => {
     const isChanged = fieldKey && changedFields.includes(fieldKey);
+    const isRemarkField = label && label.toLowerCase().includes('remark');
+    if (isRemarkField) {
+      return (
+        <View style={[rv.remarkBlock, isChanged && rv.changedRow]}>
+          <Text style={[rv.remarkLabel, isChanged && rv.changedLabel]}>
+            {label} {isChanged && <Ionicons name="alert-circle" size={12} color="#B8860B" />}
+          </Text>
+          <View style={rv.remarkValueBox}>
+            <Text style={[rv.remarkValue, isChanged && rv.changedValue]}>{value || '—'}</Text>
+          </View>
+        </View>
+      );
+    }
     return (
       <View style={[rv.row, isChanged && rv.changedRow]}>
         <Text style={[rv.label, isChanged && rv.changedLabel]}>
@@ -215,4 +228,8 @@ const rv = StyleSheet.create({
   changedRow: { backgroundColor: '#FFF9C4', paddingHorizontal: 6, borderRadius: 6, marginHorizontal: -6 },
   changedLabel: { color: '#997000', fontWeight: '600' },
   changedValue: { color: '#B8860B', fontWeight: '700' },
+  remarkBlock: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  remarkLabel: { fontSize: 13, color: colors.muted, marginBottom: 4, fontWeight: '500' },
+  remarkValueBox: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginTop: 2 },
+  remarkValue: { fontSize: 13.5, lineHeight: 20, color: colors.text, fontWeight: '500', textAlign: 'left' },
 });

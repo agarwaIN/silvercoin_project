@@ -23,8 +23,19 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { usePopup } from '../context/PopupContext';
 import { useAuth } from '../context/AuthContext';
-import { uploadRegistryDocument as uploadAdminDoc, uploadVideo as uploadAdminVideo } from '../api/adminApi';
-import { uploadRegistryDocument as uploadEmpDoc, uploadVideo as uploadEmpVideo } from '../api/employeeApi';
+import {
+  uploadRegistryDocument as uploadAdminDoc,
+  uploadVideo as uploadAdminVideo,
+  deletePropertyDocument as deleteAdminDoc,
+} from '../api/adminApi';
+import {
+  uploadRegistryDocument as uploadEmpDoc,
+  uploadVideo as uploadEmpVideo,
+  deletePropertyDocument as deleteEmpDoc,
+} from '../api/employeeApi';
+import {
+  deletePropertyDocument as deleteSuperAdminDoc,
+} from '../api/superadminApi';
 import { WebView } from 'react-native-webview';
 import { formatDate } from '../utils/date';
 
@@ -210,6 +221,73 @@ export default function MediaViewer({
   const [pickedFile, setPickedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [deletingDocKey, setDeletingDocKey] = useState(null);
+
+  const canDelete = Boolean(
+    loanId &&
+    allowUpload &&
+    (isEmployee ? (!isDisbursed && !isFirstEmiCollected) : true)
+  );
+
+  const getDocIdentifier = (doc) => {
+    if (!doc) return '';
+    return (doc.id || doc.key || doc.uri || doc.url || doc.name || doc.docType || '').toString();
+  };
+
+  const handleDeleteDocument = (docItem) => {
+    if (!canDelete || !loanId || !docItem) return;
+    const docTitle = docItem.name || docItem.docType || 'Document';
+    showAlert(
+      'Delete Document',
+      `Are you sure you want to permanently delete "${docTitle}"?\n\nThis will remove the document from the database and allow you to upload a new one.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => performDeleteDocument(docItem),
+        },
+      ]
+    );
+  };
+
+  const performDeleteDocument = async (docItem) => {
+    const itemKey = getDocIdentifier(docItem);
+    setDeletingDocKey(itemKey);
+    try {
+      let deleter = deleteAdminDoc;
+      if (user?.role === 'employee') {
+        deleter = deleteEmpDoc;
+      } else if (user?.role === 'superadmin') {
+        deleter = deleteSuperAdminDoc;
+      }
+
+      await deleter(loanId, {
+        id: docItem.id,
+        key: docItem.key || docItem.uri,
+        uri: docItem.uri || docItem.key,
+        docType: docItem.docType,
+        name: docItem.name,
+      });
+
+      if (selectedMedia && (selectedMedia === docItem || selectedMedia.url === docItem.url)) {
+        setSelectedMedia(null);
+      }
+
+      showAlert('Deleted', `"${docItem.name || docItem.docType || 'Document'}" was successfully deleted from the database.`);
+
+      await load();
+
+      if (onDocumentUploaded) {
+        onDocumentUploaded();
+      }
+    } catch (err) {
+      console.error('Delete document error:', err);
+      showAlert('Delete Error', err.response?.data?.message || err.message || 'Failed to delete document from database.');
+    } finally {
+      setDeletingDocKey(null);
+    }
+  };
 
   // Video Upload Modal State
   const [videoUploadModalVisible, setVideoUploadModalVisible] = useState(false);
@@ -418,6 +496,15 @@ export default function MediaViewer({
     return `http://13.200.237.51:5000/api/files/download?key=${encodeURIComponent(cleanKey)}`;
   };
 
+  const extractKeyFromUrl = (url) => {
+    if (!url || typeof url !== 'string') return '';
+    try {
+      const match = url.match(/[?&]key=([^&]+)/);
+      if (match) return decodeURIComponent(match[1]);
+    } catch (_) {}
+    return '';
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -425,6 +512,8 @@ export default function MediaViewer({
       if (Array.isArray(data)) {
         const normalized = data.map((item) => ({
           ...item,
+          key: item.key || item.uri || extractKeyFromUrl(item.url),
+          uri: item.uri || item.key || extractKeyFromUrl(item.url),
           url: normalizeMediaUrl(item.url),
         }));
         setMedia(normalized);
@@ -891,6 +980,20 @@ export default function MediaViewer({
                     <Ionicons name="eye-outline" size={14} color={colors.primary} />
                     <Text style={styles.viewDocTxt}>View</Text>
                   </TouchableOpacity>
+                  {loanId && canDelete && (
+                    <TouchableOpacity
+                      style={styles.deleteIconBtn}
+                      onPress={() => handleDeleteDocument(docItem)}
+                      disabled={Boolean(deletingDocKey)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      {deletingDocKey && deletingDocKey === getDocIdentifier(docItem) ? (
+                        <ActivityIndicator size="small" color="#DC2626" />
+                      ) : (
+                        <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (loanId && canUpload) ? (
                 <TouchableOpacity
@@ -931,6 +1034,20 @@ export default function MediaViewer({
                   <Ionicons name="open-outline" size={14} color={colors.primary} />
                   <Text style={styles.viewDocTxt}>Open</Text>
                 </TouchableOpacity>
+                {loanId && canDelete && (
+                  <TouchableOpacity
+                    style={styles.deleteIconBtn}
+                    onPress={() => handleDeleteDocument(cDoc)}
+                    disabled={Boolean(deletingDocKey)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {deletingDocKey && deletingDocKey === getDocIdentifier(cDoc) ? (
+                      <ActivityIndicator size="small" color="#DC2626" />
+                    ) : (
+                      <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           ))}
@@ -1022,6 +1139,22 @@ export default function MediaViewer({
                 <Ionicons name="open-outline" size={16} color={colors.white} />
                 <Text style={styles.externalBtnTxt}>Open Externally</Text>
               </TouchableOpacity>
+              {loanId && canDelete && selectedMedia.type === 'document' && (
+                <TouchableOpacity
+                  style={[styles.externalBtn, { backgroundColor: '#DC2626' }]}
+                  onPress={() => handleDeleteDocument(selectedMedia)}
+                  disabled={Boolean(deletingDocKey)}
+                >
+                  {deletingDocKey && deletingDocKey === getDocIdentifier(selectedMedia) ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={16} color={colors.white} />
+                      <Text style={styles.externalBtnTxt}>Delete</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         ) : null}
@@ -1265,6 +1398,7 @@ const styles = StyleSheet.create({
   checkTitle: { fontFamily: fonts.semiBold, fontSize: fontSize.xs, color: colors.dark },
   checkSub: { fontFamily: fonts.regular, fontSize: 10, color: colors.muted, marginTop: 1 },
   downloadIconBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 6, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: colors.border },
+  deleteIconBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 6, borderRadius: 8, backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' },
   viewDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#E0F2FE' },
   viewDocTxt: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.primary },
   uploadDocBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.dark },

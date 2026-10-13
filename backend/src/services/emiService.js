@@ -35,6 +35,33 @@ async function ensureEmiSchedule(loan) {
   try {
     const existing = await db.listEmiByLoan(loan.loanId);
     if (existing && existing.length > 0) {
+      // Reconcile and fix any erroneous penalties or statuses for EMIs paid on time
+      let modified = false;
+      for (const emi of existing) {
+        if (Number(emi.paidAmount || 0) > 0 && emi.paidDate) {
+          const paidDateStr = String(emi.paidDate).slice(0, 10);
+          const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
+          if (dueDateStr) {
+            const paidD = new Date(paidDateStr);
+            const dueD = new Date(dueDateStr);
+            const daysLate = Math.max(0, Math.floor((paidD - dueD) / (1000 * 60 * 60 * 24)));
+            if (daysLate <= 3 && Number(emi.penaltyAmount || 0) > 0) {
+              emi.penaltyAmount = 0;
+              if (Number(emi.paidAmount) >= Number(emi.amount)) {
+                emi.status = 'paid';
+              }
+              await db.updateEmiPayment(emi.paymentId, { penaltyAmount: 0, status: emi.status }).catch(() => {});
+              modified = true;
+            }
+          }
+        }
+      }
+      if (modified) {
+        const allPaid = existing.every(e => e.status === 'paid');
+        if (allPaid && loan.status !== 'completed') {
+          await db.updateLoan(loan.loanId, { status: 'completed' }).catch(() => {});
+        }
+      }
       return existing;
     }
 
@@ -237,6 +264,24 @@ async function buildLoanRecoveryItems(loans) {
       const emis = await ensureEmiSchedule(loan);
       if (!emis || emis.length === 0) return null;
 
+      // Self-heal and clear unwarranted penalties on EMIs paid within grace period
+      for (const emi of emis) {
+        if (Number(emi.paidAmount || 0) > 0 && emi.paidDate) {
+          const paidDateStr = String(emi.paidDate).slice(0, 10);
+          const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
+          if (dueDateStr) {
+            const daysLate = Math.max(0, Math.floor((new Date(paidDateStr) - new Date(dueDateStr)) / (1000 * 60 * 60 * 24)));
+            if (daysLate <= 3 && Number(emi.penaltyAmount || 0) > 0) {
+              emi.penaltyAmount = 0;
+              if (Number(emi.paidAmount) >= Number(emi.amount)) {
+                emi.status = 'paid';
+              }
+              db.updateEmiPayment(emi.paymentId, { penaltyAmount: 0, status: emi.status }).catch(() => {});
+            }
+          }
+        }
+      }
+
       const unpaidEmis = emis.filter(e => e.status !== 'paid');
       if (unpaidEmis.length === 0) {
         if (loan.status !== 'completed') {
@@ -248,8 +293,8 @@ async function buildLoanRecoveryItems(loans) {
       // Sort unpaid EMIs by dueDate ascending
       unpaidEmis.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
-      // Overdue EMIs (due before today)
-      const overdueEmis = unpaidEmis.filter(e => e.dueDate < todayStr);
+      // Overdue EMIs (due before today and not fully paid)
+      const overdueEmis = unpaidEmis.filter(e => e.dueDate < todayStr && (Number(e.paidAmount || 0) < Number(e.amount || 0)));
 
       // Oldest unpaid EMI is the current target installment
       const currentEmi = unpaidEmis[0];
@@ -259,13 +304,19 @@ async function buildLoanRecoveryItems(loans) {
         daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
       }
 
-      // Apply penalty calculation if overdue beyond 3-day grace period
-      if (daysOverdue > 3) {
+      // Apply penalty calculation if overdue beyond 3-day grace period on unpaid balance
+      const unpaidPrincipal = Math.max(0, Number(currentEmi.amount || 0) - Number(currentEmi.paidAmount || 0));
+      if (daysOverdue > 3 && unpaidPrincipal > 0) {
         const penaltyRate = Number(loan.penaltyRate) || 0.1; // 0.1% per day default
-        const calcPenalty = Math.round(Number(currentEmi.amount || 0) * (penaltyRate / 100) * daysOverdue);
+        const calcPenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysOverdue);
         if (calcPenalty > Number(currentEmi.penaltyAmount || 0)) {
           currentEmi.penaltyAmount = calcPenalty;
           db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: calcPenalty, status: 'overdue' }).catch(() => {});
+        }
+      } else if (daysOverdue <= 3 || unpaidPrincipal === 0) {
+        if (Number(currentEmi.penaltyAmount || 0) > 0 && Number(currentEmi.paidAmount || 0) >= Number(currentEmi.amount || 0)) {
+          currentEmi.penaltyAmount = 0;
+          db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: 0 }).catch(() => {});
         }
       }
 
@@ -463,6 +514,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     }
   }
 
+  const loan = await db.getLoanById(loanId);
   const emis = await db.listEmiByLoan(loanId);
   if (!emis || emis.length === 0) {
     throw new Error('No EMI schedule found for this loan');
@@ -486,7 +538,24 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
 
   for (let i = startIndex; i < unpaidEmis.length && remainingAmount > 0; i++) {
     const emi = unpaidEmis[i];
-    const totalRequired = Number(emi.amount || 0) + Number(emi.penaltyAmount || 0);
+
+    // Determine overdue penalty based on the actual collection date (effectivePaidDate)
+    const paidDateOnly = effectivePaidDate.slice(0, 10);
+    const dueDateOnly = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
+    let daysLate = 0;
+    if (dueDateOnly && paidDateOnly > dueDateOnly) {
+      daysLate = Math.max(0, Math.floor((new Date(paidDateOnly) - new Date(dueDateOnly)) / (1000 * 60 * 60 * 24)));
+    }
+
+    let applicablePenalty = 0;
+    if (daysLate > 3) {
+      const penaltyRate = Number(loan?.penaltyRate || 0.1);
+      applicablePenalty = Math.round(Number(emi.amount || 0) * (penaltyRate / 100) * daysLate);
+    } else {
+      applicablePenalty = 0;
+    }
+
+    const totalRequired = Number(emi.amount || 0) + applicablePenalty;
     const currentPaid = Number(emi.paidAmount || 0);
     const needed = Math.max(0, totalRequired - currentPaid);
 
@@ -498,6 +567,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
 
     await db.updateEmiPayment(emi.paymentId, {
       paidAmount: newPaidAmount,
+      penaltyAmount: applicablePenalty,
       status: newStatus,
       paidDate: effectivePaidDate,
       markedBy: userId,
@@ -509,6 +579,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     updatedPayments.push({
       paymentId: emi.paymentId,
       paidAmount: newPaidAmount,
+      penaltyAmount: applicablePenalty,
       status: newStatus,
       paymentMode: mode,
       transactionRef: rawTxnRef,

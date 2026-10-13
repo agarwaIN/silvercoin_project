@@ -7,7 +7,7 @@ const { requireRole } = require('../middleware/roleCheck');
 const { auditLog } = require('../middleware/auditMiddleware');
 const { generateAppId } = require('../services/loanIdService');
 const multer = require('multer');
-const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
+const { uploadBuffer, getPresignedUrl, deleteFile } = require('../services/localFileStorageService');
 const { ensureEmiSchedule, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected } = require('../services/emiService');
 
 const upload = multer({
@@ -21,6 +21,16 @@ router.use(verifyToken, requireRole('employee'), auditLog);
 function isLoanProcessed(loan) {
   if (!loan) return false;
   return ['processing', 'initially_approved', 'agreement_submitted', 'approved', 'active', 'completed'].includes(loan.status);
+}
+
+function isLoanDisbursed(loan) {
+  if (!loan) return false;
+  return Boolean(
+    (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) ||
+    loan.disbursementDate ||
+    loan.status === 'active' ||
+    loan.status === 'completed'
+  );
 }
 
 function notImplemented(res) {
@@ -145,8 +155,8 @@ router.patch('/loans/:loanId', async (req, res) => {
   if (!loan || !isEmp) {
     return res.status(404).json({ message: 'Loan not found' });
   }
-  if (isLoanProcessed(loan)) {
-    return res.status(400).json({ message: 'Loan application details cannot be edited once the loan has been processed by admin.' });
+  if (isLoanDisbursed(loan) || isLoanProcessed(loan)) {
+    return res.status(400).json({ message: 'Loan application details cannot be edited once the loan has been processed or disbursement has been recorded.' });
   }
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
   if (hasFirstEmi) {
@@ -208,8 +218,8 @@ router.post('/loans/:loanId/submit', async (req, res) => {
     return res.status(404).json({ message: 'Loan not found' });
   }
 
-  if (isLoanProcessed(loan)) {
-    return res.status(400).json({ message: 'Cannot edit or resubmit: Loan application has already been processed by admin.' });
+  if (isLoanDisbursed(loan) || isLoanProcessed(loan)) {
+    return res.status(400).json({ message: 'Cannot edit or resubmit: Loan application has already been processed or disbursement has been recorded.' });
   }
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
   if (hasFirstEmi) {
@@ -374,7 +384,7 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
       try {
         const url = await getPresignedUrl(cleanUri);
         if (url) {
-          urls.push({ type, name, url, ...extra });
+          urls.push({ type, name, url, key: cleanUri, uri: cleanUri, ...extra });
           seenKeys.add(dedupeKey);
         }
       } catch (err) {
@@ -437,8 +447,8 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Document upload is disabled after first EMI collection.' });
+  if (isLoanDisbursed(loan) || hasFirstEmi) {
+    return res.status(400).json({ message: 'Document upload is disabled once disbursement has been recorded.' });
   }
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
@@ -496,13 +506,135 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   res.json({ message: 'Document uploaded', key, doc: newDocEntry });
 });
 
+const handleDeleteDocument = async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    const isEmp = loan && (
+      String(loan.employeeId || '') === String(req.user.userId) ||
+      String(loan.assignedEmployeeId || '') === String(req.user.userId) ||
+      (loan.adminId && req.user.creatorId && String(loan.adminId) === String(req.user.creatorId)) ||
+      (loan.adminId && req.user.adminId && String(loan.adminId) === String(req.user.adminId))
+    );
+    if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
+
+    const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
+    if (isLoanDisbursed(loan) || hasFirstEmi) {
+      return res.status(400).json({ message: 'Document deletion is disabled once disbursement has been recorded.' });
+    }
+
+    const targetKey = (req.body?.key || req.body?.uri || req.query?.key || req.query?.uri || '').trim();
+    const targetId = (req.body?.id || req.query?.id || '').toString().trim();
+    const targetDocType = (req.body?.docType || req.query?.docType || '').trim();
+    const targetName = (req.body?.name || req.query?.name || '').trim();
+
+    if (!targetKey && !targetId && !targetDocType && !targetName) {
+      return res.status(400).json({ message: 'Document identifier (key, id, docType, or name) is required' });
+    }
+
+    // Reload fresh loan state right before updating to avoid race conditions
+    const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
+    const existingDocs = Array.isArray(freshLoan.propertyDocs) ? [...freshLoan.propertyDocs] : [];
+
+    const getDocKey = (d) => {
+      if (!d) return '';
+      if (typeof d === 'string') return d.trim();
+      return (d.uri || d.key || d.url || '').toString().trim();
+    };
+
+    const getDocId = (d) => {
+      if (!d || typeof d !== 'object') return '';
+      return (d.id || '').toString().trim();
+    };
+
+    const cleanPath = (p) => {
+      if (!p) return '';
+      try {
+        const match = p.match(/[?&]key=([^&]+)/);
+        if (match) return decodeURIComponent(match[1]);
+      } catch (_) {}
+      return p.replace(/^[a-zA-Z]+:\/\/[^\/]+/, '').replace(/^\/+/, '');
+    };
+
+    const cleanTargetKey = cleanPath(targetKey);
+
+    let matchIndex = -1;
+
+    // 1. Match by ID if provided
+    if (targetId) {
+      matchIndex = existingDocs.findIndex((d) => getDocId(d) === targetId);
+    }
+
+    // 2. Match by clean storage key
+    if (matchIndex === -1 && cleanTargetKey) {
+      matchIndex = existingDocs.findIndex((d) => {
+        const dKey = cleanPath(getDocKey(d));
+        return dKey === cleanTargetKey || dKey.endsWith(cleanTargetKey) || cleanTargetKey.endsWith(dKey);
+      });
+    }
+
+    // 3. Match by docType & name (or docType)
+    if (matchIndex === -1 && targetDocType) {
+      matchIndex = existingDocs.findIndex((d) => {
+        if (typeof d !== 'object' || !d) return false;
+        const dType = (d.docType || '').trim().toLowerCase();
+        const tType = targetDocType.toLowerCase();
+        if (dType === tType) {
+          if (targetName && d.name) {
+            return d.name.trim().toLowerCase() === targetName.toLowerCase();
+          }
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // 4. Match by name
+    if (matchIndex === -1 && targetName) {
+      matchIndex = existingDocs.findIndex((d) => {
+        if (typeof d !== 'object' || !d) return false;
+        return (d.name || '').trim().toLowerCase() === targetName.toLowerCase();
+      });
+    }
+
+    if (matchIndex === -1) {
+      return res.status(404).json({ message: 'Document not found in loan records' });
+    }
+
+    const docToDelete = existingDocs[matchIndex];
+    const storageKey = cleanPath(getDocKey(docToDelete));
+
+    // Remove document from loan record
+    existingDocs.splice(matchIndex, 1);
+
+    await db.updateLoan(loan.loanId, { propertyDocs: existingDocs });
+
+    // Clean physical file if on local storage
+    if (storageKey && !storageKey.startsWith('http')) {
+      await deleteFile(storageKey).catch(() => {});
+    }
+
+    return res.json({
+      message: 'Document deleted successfully',
+      deletedDoc: docToDelete,
+      remainingCount: existingDocs.length,
+    });
+  } catch (err) {
+    console.error('Error deleting employee document:', err);
+    res.status(500).json({ message: 'Failed to delete document', error: err.message });
+  }
+};
+
+router.post('/loans/:loanId/delete-document', handleDeleteDocument);
+router.delete('/loans/:loanId/documents', handleDeleteDocument);
+
+
 router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Photo upload is disabled after first EMI collection.' });
+  if (isLoanDisbursed(loan) || hasFirstEmi) {
+    return res.status(400).json({ message: 'Photo upload is disabled once disbursement has been recorded.' });
   }
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded' });
 
@@ -541,8 +673,8 @@ router.post('/loans/:loanId/upload-video', upload.single('video'), async (req, r
   const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
   if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Video upload is disabled after first EMI collection.' });
+  if (isLoanDisbursed(loan) || hasFirstEmi) {
+    return res.status(400).json({ message: 'Video upload is disabled once disbursement has been recorded.' });
   }
   if (!req.file) return res.status(400).json({ message: 'No video uploaded' });
 
@@ -596,8 +728,8 @@ router.post('/loans/:loanId/agreement', upload.single('agreement'), async (req, 
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Agreement upload is disabled after first EMI collection.' });
+  if (isLoanDisbursed(loan) || hasFirstEmi) {
+    return res.status(400).json({ message: 'Agreement upload is disabled once disbursement has been recorded.' });
   }
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
@@ -637,8 +769,8 @@ router.post('/loans/:loanId/emi-change-request', async (req, res) => {
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'EMI change requests cannot be submitted after first EMI has been collected. Only EMI/recovery collection is permitted.' });
+  if (isLoanDisbursed(loan) || hasFirstEmi) {
+    return res.status(400).json({ message: 'EMI change requests cannot be submitted once disbursement has been recorded. Only EMI/recovery collection is permitted.' });
   }
 
   if (!['approved', 'active'].includes(loan.status)) {
@@ -668,8 +800,8 @@ router.post('/loans/:loanId/request-foreclosure', async (req, res) => {
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   
   const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-  if (hasFirstEmi) {
-    return res.status(400).json({ message: 'Foreclosure cannot be requested by employee after first EMI has been collected. Only EMI/recovery collection is permitted.' });
+  if (isLoanDisbursed(loan) || hasFirstEmi) {
+    return res.status(400).json({ message: 'Foreclosure cannot be requested by employee once disbursement has been recorded. Only EMI/recovery collection is permitted.' });
   }
 
   if (loan.status !== 'active') {
@@ -717,11 +849,8 @@ router.post('/loans/:loanId/update-dates', async (req, res) => {
     if (!loan) return res.status(404).json({ message: 'Loan not found' });
 
     const hasFirstEmi = await hasFirstEmiBeenCollected(loan.loanId);
-    if (hasFirstEmi) {
-      return res.status(400).json({ message: 'Dates cannot be updated after first EMI has been collected.' });
-    }
-    if (isLoanProcessed(loan)) {
-      return res.status(400).json({ message: 'Dates cannot be updated by employee once the loan is processed.' });
+    if (isLoanDisbursed(loan) || hasFirstEmi || isLoanProcessed(loan)) {
+      return res.status(400).json({ message: 'Dates cannot be updated by employee once disbursement has been recorded.' });
     }
 
     const { disbursementDate, emiStartDate } = req.body;

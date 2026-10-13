@@ -11,7 +11,7 @@ const { generateTempPassword } = require('../utils/password');
 const { mobileField } = require('../utils/phoneValidator');
 const { sendCredentials } = require('../services/emailService');
 const multer = require('multer');
-const { uploadBuffer, getPresignedUrl } = require('../services/localFileStorageService');
+const { uploadBuffer, getPresignedUrl, deleteFile } = require('../services/localFileStorageService');
 const { ensureEmiSchedule, updateEmiScheduleDates, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected } = require('../services/emiService');
 
 const employeeNameCache = new Map();
@@ -391,7 +391,7 @@ router.get('/loans/:loanId/media-preview', async (req, res) => {
       try {
         const url = await getPresignedUrl(cleanUri);
         if (url) {
-          urls.push({ type, name, url, ...extra });
+          urls.push({ type, name, url, key: cleanUri, uri: cleanUri, ...extra });
           seenKeys.add(dedupeKey);
         }
       } catch (e) {
@@ -812,6 +812,118 @@ router.post('/loans/:loanId/registry-document', upload.single('document'), async
   await db.updateLoan(loan.loanId, { propertyDocs: filtered });
   res.json({ message: 'Document uploaded', key, doc: newDocEntry });
 });
+
+const handleDeleteDocument = async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) {
+      return res.status(404).json({ message: 'Loan not found' });
+    }
+
+    const targetKey = (req.body?.key || req.body?.uri || req.query?.key || req.query?.uri || '').trim();
+    const targetId = (req.body?.id || req.query?.id || '').toString().trim();
+    const targetDocType = (req.body?.docType || req.query?.docType || '').trim();
+    const targetName = (req.body?.name || req.query?.name || '').trim();
+
+    if (!targetKey && !targetId && !targetDocType && !targetName) {
+      return res.status(400).json({ message: 'Document identifier (key, id, docType, or name) is required' });
+    }
+
+    const freshLoan = (await db.getLoanById(loan.loanId)) || loan;
+    const existingDocs = Array.isArray(freshLoan.propertyDocs) ? [...freshLoan.propertyDocs] : [];
+
+    const getDocKey = (d) => {
+      if (!d) return '';
+      if (typeof d === 'string') return d.trim();
+      return (d.uri || d.key || d.url || '').toString().trim();
+    };
+
+    const getDocId = (d) => {
+      if (!d || typeof d !== 'object') return '';
+      return (d.id || '').toString().trim();
+    };
+
+    const cleanPath = (p) => {
+      if (!p) return '';
+      try {
+        const match = p.match(/[?&]key=([^&]+)/);
+        if (match) return decodeURIComponent(match[1]);
+      } catch (_) {}
+      return p.replace(/^[a-zA-Z]+:\/\/[^\/]+/, '').replace(/^\/+/, '');
+    };
+
+    const cleanTargetKey = cleanPath(targetKey);
+
+    let matchIndex = -1;
+
+    // 1. Match by ID
+    if (targetId) {
+      matchIndex = existingDocs.findIndex((d) => getDocId(d) === targetId);
+    }
+
+    // 2. Match by clean storage key
+    if (matchIndex === -1 && cleanTargetKey) {
+      matchIndex = existingDocs.findIndex((d) => {
+        const dKey = cleanPath(getDocKey(d));
+        return dKey === cleanTargetKey || dKey.endsWith(cleanTargetKey) || cleanTargetKey.endsWith(dKey);
+      });
+    }
+
+    // 3. Match by docType & name (or docType)
+    if (matchIndex === -1 && targetDocType) {
+      matchIndex = existingDocs.findIndex((d) => {
+        if (typeof d !== 'object' || !d) return false;
+        const dType = (d.docType || '').trim().toLowerCase();
+        const tType = targetDocType.toLowerCase();
+        if (dType === tType) {
+          if (targetName && d.name) {
+            return d.name.trim().toLowerCase() === targetName.toLowerCase();
+          }
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // 4. Match by name
+    if (matchIndex === -1 && targetName) {
+      matchIndex = existingDocs.findIndex((d) => {
+        if (typeof d !== 'object' || !d) return false;
+        return (d.name || '').trim().toLowerCase() === targetName.toLowerCase();
+      });
+    }
+
+    if (matchIndex === -1) {
+      return res.status(404).json({ message: 'Document not found in loan records' });
+    }
+
+    const docToDelete = existingDocs[matchIndex];
+    const storageKey = cleanPath(getDocKey(docToDelete));
+
+    // Remove document from loan record
+    existingDocs.splice(matchIndex, 1);
+
+    await db.updateLoan(loan.loanId, { propertyDocs: existingDocs });
+
+    // Clean physical file if on local storage
+    if (storageKey && !storageKey.startsWith('http')) {
+      await deleteFile(storageKey).catch(() => {});
+    }
+
+    return res.json({
+      message: 'Document deleted successfully',
+      deletedDoc: docToDelete,
+      remainingCount: existingDocs.length,
+    });
+  } catch (err) {
+    console.error('Error deleting document:', err);
+    res.status(500).json({ message: 'Failed to delete document', error: err.message });
+  }
+};
+
+router.post('/loans/:loanId/delete-document', handleDeleteDocument);
+router.delete('/loans/:loanId/documents', handleDeleteDocument);
+
 
 router.post('/loans/:loanId/upload-photo', upload.array('photos', 15), async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);

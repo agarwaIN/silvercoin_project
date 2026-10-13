@@ -18,6 +18,8 @@ export const uploadRegistryDocument = (loanId, formData, meta = {}) => {
   const qs = params.length > 0 ? `?${params.join('&')}` : '';
   return api.post(`/admin/loans/${loanId}/registry-document${qs}`, formData).then((r) => r.data);
 };
+export const deletePropertyDocument = (loanId, payload = {}) =>
+  api.post(`/admin/loans/${loanId}/delete-document`, payload).then((r) => r.data);
 export const initialApproveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/initial-approve`, data).then((r) => r.data);
 export const approveLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/approve`, data).then((r) => r.data);
 export const rejectLoan = (loanId, reason) => api.post(`/admin/loans/${loanId}/reject`, { reason }).then((r) => r.data);

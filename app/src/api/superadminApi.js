@@ -24,5 +24,7 @@ export const deleteUser = (userId) => api.delete(`/superadmin/users/${userId}`).
 
 export const getMediaPreview = (loanId) => api.get(`/superadmin/loans/${loanId}/media-preview`).then((r) => r.data);
 export const updateLoanDates = (loanId, data) => api.post(`/superadmin/loans/${loanId}/update-dates`, data).then((r) => r.data);
+export const deletePropertyDocument = (loanId, payload = {}) =>
+  api.post(`/superadmin/loans/${loanId}/delete-document`, payload).then((r) => r.data);
 
 

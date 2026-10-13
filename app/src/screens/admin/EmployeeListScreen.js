@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, StatusBar, Modal, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
@@ -25,10 +26,10 @@ export default function EmployeeListScreen({ navigation }) {
 
   const load = useCallback(async () => {
     const data = await getEmployees();
-    setEmployees(data);
+    setEmployees(Array.isArray(data) ? data : []);
   }, []);
 
-  useEffect(() => { load(); }, []);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const handleOpenEditRights = (user) => {
@@ -87,7 +88,7 @@ export default function EmployeeListScreen({ navigation }) {
     <View style={styles.safe} edges={['top']}>
       <StatusBar barStyle={'light-content'} translucent={true} backgroundColor={colors.dark} />
       <Header
-        title="Employees"
+        title={Array.isArray(employees) && employees.length > 0 ? `Employees (${employees.length})` : 'Employees'}
         rightAction={
           <TouchableOpacity onPress={() => navigation.navigate('CreateEmployee')} style={styles.addBtn}>
             <Ionicons name="person-add-outline" size={22} color={colors.white} />

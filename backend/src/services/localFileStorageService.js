@@ -91,10 +91,21 @@ async function getPresignedUrl(key, expiresIn = 3600) {
   }
 }
 
+async function deleteFile(key) {
+  if (!key || typeof key !== 'string') return;
+  try {
+    const filePath = absPath(key);
+    await fsp.unlink(filePath);
+  } catch (err) {
+    // Silently continue if file already deleted or doesn't exist
+  }
+}
+
 module.exports = {
   uploadBuffer,
   getPresignedUrl,
   openDownloadStream,
   getFileInfo,
+  deleteFile,
 };
 
