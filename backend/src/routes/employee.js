@@ -59,8 +59,8 @@ router.get('/loans', async (req, res) => {
     submittedAt: l.submittedAt || (l.status !== 'draft' ? (l.createdAt || l.updatedAt) : null),
   }));
   enriched.sort((a, b) => {
-    const aRet = a.status === 'returned';
-    const bRet = b.status === 'returned';
+    const aRet = a.status === 'returned' || a.status === 'rejected';
+    const bRet = b.status === 'returned' || b.status === 'rejected';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
     return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);

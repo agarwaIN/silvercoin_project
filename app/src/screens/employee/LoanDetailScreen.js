@@ -173,17 +173,19 @@ export default function LoanDetailScreen({ route, navigation }) {
                 : 'First EMI collected. Application details and terms are locked. You can collect EMI and recovery payments.'}
             </Text>
           </View>
-        {loan.status === 'returned' && (
+        {(loan.status === 'returned' || loan.status === 'rejected') && (
           <View style={styles.returnedDetailBanner}>
             <View style={styles.returnedDetailHeader}>
               <Ionicons name="alert-circle" size={20} color="#DC2626" />
-              <Text style={styles.returnedDetailTitle}>APPLICATION RETURNED BY ADMIN</Text>
+              <Text style={styles.returnedDetailTitle}>
+                {loan.status === 'returned' ? 'APPLICATION RETURNED BY ADMIN' : 'APPLICATION REJECTED / RETURNED BY ADMIN'}
+              </Text>
             </View>
             <Text style={styles.returnedDetailSubtitle}>
               Admin has returned this loan application for revision. Please review the remark below and update the details:
             </Text>
             <View style={styles.returnedDetailRemarkBox}>
-              <Text style={styles.returnedDetailRemarkLabel}>Admin Return Remark:</Text>
+              <Text style={styles.returnedDetailRemarkLabel}>Admin Remark:</Text>
               <Text style={styles.returnedDetailRemarkBold}>
                 {loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark || 'Application returned for corrections.'}
               </Text>
@@ -191,7 +193,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
+        {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned', 'rejected'].includes(loan.status) && (
           <TouchableOpacity 
             style={styles.continueCardBtn} 
             onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}

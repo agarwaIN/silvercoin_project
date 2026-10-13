@@ -27,7 +27,20 @@ const filterMap = {
   Draft: ['draft'],
   Pending: ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'],
   Approved: ['approved', 'active', 'completed'],
-  Rejected: ['rejected'],
+  Rejected: ['rejected', 'returned'],
+};
+
+export const sortLoansWithReturnedFirst = (items) => {
+  if (!Array.isArray(items)) return [];
+  return [...items].sort((a, b) => {
+    const aRet = a.status === 'returned' || a.status === 'rejected';
+    const bRet = b.status === 'returned' || b.status === 'rejected';
+    if (aRet && !bRet) return -1;
+    if (!aRet && bRet) return 1;
+    const bDate = new Date(b.updatedAt || b.createdAt || 0);
+    const aDate = new Date(a.updatedAt || a.createdAt || 0);
+    return bDate - aDate;
+  });
 };
 
 export default function AdminLoanListScreen({ navigation }) {
@@ -38,7 +51,7 @@ export default function AdminLoanListScreen({ navigation }) {
 
   const load = useCallback(async () => {
     const data = await getLoans();
-    setLoans(data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    setLoans(sortLoansWithReturnedFirst(data));
   }, []);
 
   useFocusEffect(
@@ -52,7 +65,8 @@ export default function AdminLoanListScreen({ navigation }) {
 
   const filtered = useMemo(() => {
     const byStatus = filterMap[filter] ? loans.filter((l) => filterMap[filter].includes(l.status)) : loans;
-    return byStatus.filter((l) => loanMatchesSearch(l, search));
+    const searchFiltered = byStatus.filter((l) => loanMatchesSearch(l, search));
+    return sortLoansWithReturnedFirst(searchFiltered);
   }, [loans, filter, search]);
 
   return (
@@ -91,9 +105,12 @@ export default function AdminLoanListScreen({ navigation }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />}
         renderItem={({ item }) => {
           const hasPendingEmi = item.emiChangeRequest && item.emiChangeRequest.status === 'pending';
+          const isReturned = item.status === 'returned' || item.status === 'rejected';
+          const returnRemark = item.returnReason || item.rejectionReason || item.rejectReason || item.remark;
+
           return (
             <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('LoanDetail', { loanId: item.loanId })}>
-              <Card>
+              <Card style={isReturned ? styles.returnedCard : undefined}>
                 <View style={styles.row}>
                   <View style={styles.left}>
                     <Text style={styles.id}>{item.displayLoanId || item.applicationNumber || item.loanId}</Text>
@@ -110,6 +127,20 @@ export default function AdminLoanListScreen({ navigation }) {
                     <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
                   </View>
                 </View>
+
+                {isReturned && (
+                  <View style={styles.returnedRemarkBanner}>
+                    <View style={styles.returnedRemarkHeader}>
+                      <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                      <Text style={styles.returnedRemarkTitle}>
+                        {item.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION / RETURN REMARK'}
+                      </Text>
+                    </View>
+                    <Text style={styles.returnedRemarkBold}>
+                      {returnRemark || 'Application returned to employee for corrections.'}
+                    </Text>
+                  </View>
+                )}
 
                 {(() => {
                   const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(item);
@@ -247,4 +278,36 @@ const styles = StyleSheet.create({
   diffLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.text, width: 70 },
   diffOld: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted, textDecorationLine: 'line-through' },
   diffNew: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.success },
+  returnedCard: {
+    borderColor: '#F87171',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFDFD',
+  },
+  returnedRemarkBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  returnedRemarkHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  returnedRemarkTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  returnedRemarkBold: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: '#991B1B',
+    lineHeight: 19,
+  },
 });

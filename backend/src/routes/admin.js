@@ -129,6 +129,13 @@ router.get('/loans', async (req, res) => {
   try {
     const loans = await db.listLoansByAdmin(req.user.userId);
     const enriched = await Promise.all((loans || []).map(l => enrichLoanWithEmployeeName(l)));
+    enriched.sort((a, b) => {
+      const aRet = a.status === 'returned' || a.status === 'rejected';
+      const bRet = b.status === 'returned' || b.status === 'rejected';
+      if (aRet && !bRet) return -1;
+      if (!aRet && bRet) return 1;
+      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+    });
     res.json(enriched);
   } catch (err) {
     console.error('Error fetching admin loans:', err);
@@ -544,6 +551,7 @@ router.post('/loans/:loanId/return', async (req, res) => {
     status: 'returned',
     rejectionReason: reason,
     returnReason: reason,
+    rejectReason: reason,
     remark: reason,
   });
   res.json({ message: 'Loan returned to employee' });
@@ -612,7 +620,15 @@ router.post('/loans/:loanId/approve', async (req, res) => {
 router.post('/loans/:loanId/reject', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan) return res.status(404).json({ message: 'Loan not found' });
-  await db.updateLoan(loan.loanId, { status: 'rejected', rejectReason: req.body.reason, changedFields: null });
+  const reason = req.body.reason || '';
+  await db.updateLoan(loan.loanId, { 
+    status: 'rejected', 
+    rejectReason: reason,
+    rejectionReason: reason,
+    returnReason: reason,
+    remark: reason,
+    changedFields: null 
+  });
   res.json({ message: 'Loan rejected' });
 });
 

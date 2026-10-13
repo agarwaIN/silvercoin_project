@@ -20,21 +20,20 @@ import { getLoans } from '../../api/employeeApi';
 import { formatDate, formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
-const FILTERS = ['All', 'Returned', 'In Progress', 'Pending', 'Approved', 'Rejected'];
+const FILTERS = ['All', 'In Progress', 'Pending', 'Approved', 'Rejected'];
 const filterMap = {
   All: null,
-  Returned: ['returned'],
-  'In Progress': ['draft', 'returned'],
+  'In Progress': ['draft'],
   Pending: ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'],
   Approved: ['approved', 'active', 'completed'],
-  Rejected: ['rejected'],
+  Rejected: ['rejected', 'returned'],
 };
 
 export const sortLoansWithReturnedFirst = (items) => {
   if (!Array.isArray(items)) return [];
   return [...items].sort((a, b) => {
-    const aRet = a.status === 'returned';
-    const bRet = b.status === 'returned';
+    const aRet = a.status === 'returned' || a.status === 'rejected';
+    const bRet = b.status === 'returned' || b.status === 'rejected';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
     const bDate = new Date(b.updatedAt || b.createdAt || 0);
@@ -43,9 +42,9 @@ export const sortLoansWithReturnedFirst = (items) => {
   });
 };
 
-export default function LoanListScreen({ navigation }) {
+export default function LoanListScreen({ navigation, route }) {
   const [loans, setLoans] = useState([]);
-  const [filter, setFilter] = useState('All');
+  const [filter, setFilter] = useState(route?.params?.initialFilter || 'All');
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -55,7 +54,12 @@ export default function LoanListScreen({ navigation }) {
   }, []);
 
   useFocusEffect(
-    useCallback(() => { load(); }, [load])
+    useCallback(() => {
+      if (route?.params?.initialFilter) {
+        setFilter(route.params.initialFilter);
+      }
+      load();
+    }, [load, route?.params?.initialFilter])
   );
 
   const onRefresh = async () => {
@@ -114,7 +118,7 @@ export default function LoanListScreen({ navigation }) {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />}
         renderItem={({ item }) => {
-          const isReturned = item.status === 'returned';
+          const isReturned = item.status === 'returned' || item.status === 'rejected';
           const returnRemark = item.returnReason || item.rejectionReason || item.rejectReason || item.remark;
 
           return (
@@ -141,7 +145,9 @@ export default function LoanListScreen({ navigation }) {
                   <View style={styles.returnedRemarkBanner}>
                     <View style={styles.returnedRemarkHeader}>
                       <Ionicons name="alert-circle" size={16} color="#DC2626" />
-                      <Text style={styles.returnedRemarkTitle}>RETURNED REMARK</Text>
+                      <Text style={styles.returnedRemarkTitle}>
+                        {item.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION / RETURN REMARK'}
+                      </Text>
                     </View>
                     <Text style={styles.returnedRemarkBold}>
                       {returnRemark || 'Application returned by admin for corrections.'}

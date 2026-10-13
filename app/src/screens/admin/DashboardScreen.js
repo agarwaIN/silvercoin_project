@@ -12,6 +12,19 @@ import { useAuth } from '../../context/AuthContext';
 import { getLoans, getEmployees, getEmiThisMonth } from '../../api/adminApi';
 import { formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 
+const sortLoansWithReturnedFirst = (items) => {
+  if (!Array.isArray(items)) return [];
+  return [...items].sort((a, b) => {
+    const aRet = a.status === 'returned' || a.status === 'rejected';
+    const bRet = b.status === 'returned' || b.status === 'rejected';
+    if (aRet && !bRet) return -1;
+    if (!aRet && bRet) return 1;
+    const bDate = new Date(b.updatedAt || b.createdAt || 0);
+    const aDate = new Date(a.updatedAt || a.createdAt || 0);
+    return bDate - aDate;
+  });
+};
+
 export default function AdminDashboard({ navigation }) {
   const { width } = useWindowDimensions();
   const statsFourAcross = width >= 480;
@@ -24,7 +37,7 @@ export default function AdminDashboard({ navigation }) {
   const load = useCallback(async () => {
     await Promise.all([
       getLoans()
-        .then((data) => setLoans(Array.isArray(data) ? [...data].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : []))
+        .then((data) => setLoans(sortLoansWithReturnedFirst(data)))
         .catch(() => {}),
       getEmployees().then(setEmployees).catch(() => {}),
       getEmiThisMonth().then(setEmiThisMonth).catch(() => {}),
@@ -110,13 +123,16 @@ export default function AdminDashboard({ navigation }) {
         )}
 
         <Text style={styles.section}>Recent Loans</Text>
-        {loans.slice(0, 4).map((loan) => {
+        {loans.slice(0, 6).map((loan) => {
           const hasPendingEmi = loan.emiChangeRequest && loan.emiChangeRequest.status === 'pending';
+          const isReturned = loan.status === 'returned' || loan.status === 'rejected';
+          const returnRemark = loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark;
+
           return (
             <TouchableOpacity key={loan.loanId} onPress={() =>
               navigation.navigate('Loans', { screen: 'LoanDetail', params: { loanId: loan.loanId } })
             }>
-              <Card>
+              <Card style={isReturned ? styles.returnedCard : undefined}>
                 <View style={styles.loanRow}>
                   <View style={styles.loanLeft}>
                     <Text style={styles.loanId}>{loan.displayLoanId || loan.applicationNumber || loan.loanId}</Text>
@@ -127,6 +143,20 @@ export default function AdminDashboard({ navigation }) {
                   </View>
                   <StatusBadge status={loan.status} />
                 </View>
+
+                {isReturned && (
+                  <View style={styles.returnedRemarkBanner}>
+                    <View style={styles.returnedRemarkHeader}>
+                      <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                      <Text style={styles.returnedRemarkTitle}>
+                        {loan.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION / RETURN REMARK'}
+                      </Text>
+                    </View>
+                    <Text style={styles.returnedRemarkBold}>
+                      {returnRemark || 'Application returned to employee for corrections.'}
+                    </Text>
+                  </View>
+                )}
 
                 {(() => {
                   const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(loan);
@@ -346,4 +376,36 @@ const styles = StyleSheet.create({
   diffLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.text, width: 70 },
   diffOld: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted, textDecorationLine: 'line-through' },
   diffNew: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.success },
+  returnedCard: {
+    borderColor: '#F87171',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFDFD',
+  },
+  returnedRemarkBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  returnedRemarkHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  returnedRemarkTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  returnedRemarkBold: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: '#991B1B',
+    lineHeight: 19,
+  },
 });
