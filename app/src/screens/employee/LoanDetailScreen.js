@@ -173,6 +173,8 @@ export default function LoanDetailScreen({ route, navigation }) {
                 : 'First EMI collected. Application details and terms are locked. You can collect EMI and recovery payments.'}
             </Text>
           </View>
+        )}
+
         {(loan.status === 'returned' || loan.status === 'rejected') && (
           <View style={styles.returnedDetailBanner}>
             <View style={styles.returnedDetailHeader}>
