@@ -189,23 +189,29 @@ export default function LoanDetailScreen({ route, navigation }) {
             <View style={styles.returnedDetailRemarkBox}>
               <Text style={styles.returnedDetailRemarkLabel}>Admin Remark:</Text>
               <Text style={styles.returnedDetailRemarkBold}>
-                {loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark || 'Application returned for corrections.'}
+                {loan.returnReason ||
+                  loan.rejectionReason ||
+                  loan.rejectReason ||
+                  loan.remark ||
+                  'Application returned for corrections.'}
               </Text>
             </View>
           </View>
         )}
 
-        {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned', 'rejected'].includes(loan.status) && (
-          <TouchableOpacity 
-            style={styles.continueCardBtn} 
-            onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="arrow-forward-circle" size={24} color={colors.white} />
-            <Text style={styles.continueCardBtnText}>Continue Filling Application</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.white} />
-          </TouchableOpacity>
-        )}
+        {!isProcessed &&
+          !isLockedForEmployee &&
+          ['draft', 'in_progress', 'saved', 'returned', 'rejected'].includes(loan.status) && (
+            <TouchableOpacity
+              style={styles.continueCardBtn}
+              onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="arrow-forward-circle" size={24} color={colors.white} />
+              <Text style={styles.continueCardBtnText}>Continue Filling Application</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.white} />
+            </TouchableOpacity>
+          )}
 
         <LoanDetailsView loan={loan} />
         <MediaViewer
@@ -242,16 +248,6 @@ export default function LoanDetailScreen({ route, navigation }) {
             <Ionicons name="close-circle-outline" size={20} color="#B91C1C" />
             <Text style={[styles.pendingText, { color: '#991B1B' }]}>Admin rejected your EMI change request.</Text>
           </View>
-        )}
-
-        {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned'].includes(loan.status) && (
-          <TouchableOpacity 
-            style={styles.editBtn} 
-            onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
-          >
-            <Ionicons name="create-outline" size={20} color={colors.white} />
-            <Text style={styles.editBtnText}>Continue Filling Application</Text>
-          </TouchableOpacity>
         )}
 
         {['approved', 'active'].includes(loan.status) && !isLockedForEmployee && (!loan.emiChangeRequest || loan.emiChangeRequest.status !== 'pending') && (
