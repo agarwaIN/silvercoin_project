@@ -66,6 +66,8 @@ export const uploadVideo = (loanId, formData, videoType, name) => {
   const qs = params.length > 0 ? `?${params.join('&')}` : '';
   return api.post(`/admin/loans/${loanId}/upload-video${qs}`, formData).then((r) => r.data);
 };
+export const getForeclosureQuote = (loanId, date) =>
+  api.get(`/admin/loans/${loanId}/foreclosure-quote${date ? `?date=${encodeURIComponent(date)}` : ''}`).then((r) => r.data);
 export const forecloseLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/foreclose`, data).then((r) => r.data);
 export const changeLoanEmi = (loanId, data) => api.post(`/admin/loans/${loanId}/change-emi`, data).then((r) => r.data);
 

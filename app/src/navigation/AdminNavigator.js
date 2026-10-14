@@ -9,6 +9,7 @@ import CreateEmployeeScreen from '../screens/admin/CreateEmployeeScreen';
 import LoanListScreen from '../screens/admin/LoanListScreen';
 import LoanDetailScreen from '../screens/admin/LoanDetailScreen';
 import InitialApproveScreen from '../screens/admin/InitialApproveScreen';
+import ForecloseLoanScreen from '../screens/admin/ForecloseLoanScreen';
 import OrganizationSettingsScreen from '../screens/admin/OrganizationSettingsScreen';
 import ReportsScreen from '../screens/admin/ReportsScreen';
 import RecoveryScreen from '../screens/admin/RecoveryScreen';
@@ -36,6 +37,7 @@ function LoansStack() {
       <LoansNav.Screen name="LoanList" component={LoanListScreen} />
       <LoansNav.Screen name="LoanDetail" component={LoanDetailScreen} />
       <LoansNav.Screen name="InitialApprove" component={InitialApproveScreen} />
+      <LoansNav.Screen name="ForecloseLoan" component={ForecloseLoanScreen} />
     </LoansNav.Navigator>
   );
 }

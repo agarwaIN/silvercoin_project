@@ -228,18 +228,116 @@ async function rescheduleEmis(loan, newTerms) {
 }
 
 /**
- * Marks all pending EMIs as closed/paid upon loan foreclosure.
- * @param {string} loanId 
+ * Calculates foreclosure breakdown according to foreclosure date and EMIs paid.
+ * @param {Object} loan 
+ * @param {string} foreclosureDateStr 
+ * @returns {Promise<Object>}
  */
-async function closeEmisForForeclosure(loanId) {
+async function calculateForeclosureDetails(loan, foreclosureDateStr = null) {
+  if (!loan) return null;
+
+  const totalPrincipal = Number(loan.approvedAmount || loan.loanAmount || 0);
+  const tenure = parseInt(loan.tenureMonths || loan.tenure || 12, 10) || 12;
+  const interestRate = Number(loan.interestRate || 2.15); // Monthly %
+  const penaltyRate = Number(loan.penaltyRate || 0); // %
+
+  const emis = await db.listEmiByLoan(loan.loanId);
+  const sortedEmis = [...(emis || [])].sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+
+  const paidEmis = sortedEmis.filter(e => e.status === 'paid');
+  const paidCount = paidEmis.length;
+  const unpaidCount = Math.max(0, tenure - paidCount);
+
+  // 1. Outstanding Principal: (P / T) * unpaidCount
+  const principalPerMonth = totalPrincipal / tenure;
+  const outstandingPrincipal = Math.max(0, Math.round(principalPerMonth * unpaidCount));
+
+  // 2. Determine loan start date and last covered date
+  let rawStartDate = loan.loanStartDate || loan.emiStartDate || loan.disbursementDate || loan.createdAt;
+  if (loan.disbursements && loan.disbursements.length > 0 && loan.disbursements[0].date) {
+    rawStartDate = loan.disbursements[0].date;
+  }
+  const startDateStr = parseDateInput(rawStartDate) || String(rawStartDate).slice(0, 10);
+  const startDate = new Date(startDateStr);
+
+  // Target foreclosure date
+  const effectiveCloseStr = parseDateInput(foreclosureDateStr) || new Date().toISOString().slice(0, 10);
+  const closeDate = new Date(effectiveCloseStr);
+
+  // Last covered date: due date of the last paid EMI, or loan start date
+  let lastCoveredDateStr = startDateStr;
+  if (paidEmis.length > 0) {
+    const lastPaid = paidEmis[paidEmis.length - 1];
+    lastCoveredDateStr = parseDateInput(lastPaid.dueDate) || String(lastPaid.dueDate).slice(0, 10);
+  }
+  const lastCoveredDate = new Date(lastCoveredDateStr);
+
+  // Days elapsed between lastCoveredDate and closeDate
+  const diffMs = closeDate.getTime() - lastCoveredDate.getTime();
+  const daysElapsed = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+  // Accrued interest on outstanding principal up to foreclosure date:
+  // Monthly interest = outstandingPrincipal * (interestRate / 100)
+  // Daily interest = Monthly interest / 30
+  // Interest = Daily interest * daysElapsed
+  const monthlyInterest = outstandingPrincipal * (interestRate / 100);
+  const dailyInterest = monthlyInterest / 30;
+  const accruedInterest = Math.max(0, Math.round(dailyInterest * daysElapsed));
+
+  // 3. Months elapsed from loan start date to check 6-month rule
+  const totalDaysSinceStart = Math.max(0, Math.floor((closeDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const monthsElapsed = Number((totalDaysSinceStart / 30.4375).toFixed(1));
+  const isBeforeSixMonths = monthsElapsed < 6.0;
+
+  // Suggested penalty if before 6 months
+  let suggestedPenalty = 0;
+  if (isBeforeSixMonths && penaltyRate > 0) {
+    suggestedPenalty = Math.round(outstandingPrincipal * (penaltyRate / 100));
+  }
+
+  const totalSettlement = outstandingPrincipal + accruedInterest + suggestedPenalty;
+
+  return {
+    loanId: loan.loanId,
+    totalPrincipal,
+    tenure,
+    interestRate,
+    penaltyRate,
+    paidEmiCount: paidCount,
+    unpaidEmiCount: unpaidCount,
+    outstandingPrincipal,
+    startDate: startDateStr,
+    foreclosureDate: effectiveCloseStr,
+    lastCoveredDate: lastCoveredDateStr,
+    daysElapsed,
+    monthlyInterest: Math.round(monthlyInterest),
+    dailyInterest: Number(dailyInterest.toFixed(2)),
+    accruedInterest,
+    totalDaysSinceStart,
+    monthsElapsed,
+    isBeforeSixMonths,
+    suggestedPenalty,
+    totalSettlement,
+  };
+}
+
+/**
+ * Marks all pending EMIs as foreclosed upon loan foreclosure.
+ * @param {string} loanId 
+ * @param {string} foreclosureDate 
+ * @param {string} reason 
+ */
+async function closeEmisForForeclosure(loanId, foreclosureDate = null, reason = '') {
   const emis = await db.listEmiByLoan(loanId);
+  const dateStr = foreclosureDate || new Date().toISOString().slice(0, 10);
   for (const emi of emis) {
     if (emi.status !== 'paid') {
       await db.updateEmiPayment(emi.paymentId, {
-        status: 'paid',
-        paidAmount: emi.amount,
-        paidDate: new Date().toISOString(),
-        note: 'Foreclosed / Settled'
+        status: 'foreclosed',
+        paidAmount: 0,
+        paidDate: dateStr,
+        penaltyAmount: 0,
+        note: `Loan Foreclosed on ${dateStr}${reason ? ` (${reason})` : ''}`
       });
     }
   }
@@ -648,4 +746,5 @@ module.exports = {
   buildLoanRecoveryItems,
   recordLoanPayment,
   hasFirstEmiBeenCollected,
+  calculateForeclosureDetails,
 };

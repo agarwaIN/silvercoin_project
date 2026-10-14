@@ -264,7 +264,7 @@ export default function LoanDetailScreen({ route, navigation }) {
               <Text style={styles.emiBtnText}>Change EMI</Text>
             </TouchableOpacity>
 
-            {(!loan.foreclosureRequest || loan.foreclosureRequest.status !== 'pending') && (
+            {(!loan.foreclosureRequest || loan.foreclosureRequest.status !== 'pending') && loan.status !== 'completed' && !loan.isForeclosed && (
               <TouchableOpacity 
                 style={[styles.emiBtn, { flex: 1, marginTop: 0, marginBottom: 0, backgroundColor: '#991B1B' }]} 
                 onPress={() => setForeclosureModalVisible(true)}
@@ -295,14 +295,19 @@ export default function LoanDetailScreen({ route, navigation }) {
               {[...(loan.emis || [])].sort((a, b) => new Date(a?.dueDate || 0) - new Date(b?.dueDate || 0)).map((emi, idx) => {
                 const totalDue = Number(emi.amount) + Number(emi.penaltyAmount || 0);
                 const isPaid = emi.status === 'paid';
+                const isForeclosed = emi.status === 'foreclosed';
                 return (
                   <View key={emi.paymentId || idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: idx !== loan.emis.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark }}>Due: {formatDate(emi.dueDate)}</Text>
-                      <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: colors.muted }}>Status: {emi.status.toUpperCase()}</Text>
+                      <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: isForeclosed ? '#D97706' : colors.muted }}>
+                        Status: {emi.status.toUpperCase()}
+                      </Text>
                     </View>
                     <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: isPaid ? colors.success : colors.error }}>₹{totalDue.toLocaleString('en-IN')}</Text>
+                      <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: isPaid ? colors.success : isForeclosed ? '#D97706' : colors.error }}>
+                        {isForeclosed ? 'Foreclosed' : `₹${totalDue.toLocaleString('en-IN')}`}
+                      </Text>
                       {emi.paidAmount > 0 && (
                         <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.success }}>
                           Paid: ₹{Number(emi.paidAmount).toLocaleString('en-IN')}
@@ -315,7 +320,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                       )}
                       {emi.penaltyAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.error }}>Penalty: ₹{Number(emi.penaltyAmount).toLocaleString('en-IN')}</Text>}
                     </View>
-                    {!isPaid && (loan.status === 'active' || loan.status === 'approved') && (
+                    {!isPaid && !isForeclosed && (loan.status === 'active' || loan.status === 'approved') && (
                       <TouchableOpacity 
                         style={{ marginLeft: 12, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
                         onPress={() => {

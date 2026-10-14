@@ -12,7 +12,7 @@ const { mobileField } = require('../utils/phoneValidator');
 const { sendCredentials } = require('../services/emailService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl, deleteFile } = require('../services/localFileStorageService');
-const { ensureEmiSchedule, updateEmiScheduleDates, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected } = require('../services/emiService');
+const { ensureEmiSchedule, updateEmiScheduleDates, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected, calculateForeclosureDetails } = require('../services/emiService');
 
 const employeeNameCache = new Map();
 
@@ -685,6 +685,18 @@ router.post('/loans/:loanId/reject-emi-change', async (req, res) => {
   res.json({ message: 'EMI change request rejected' });
 });
 
+router.get('/loans/:loanId/foreclosure-quote', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    const quote = await calculateForeclosureDetails(loan, req.query.date);
+    res.json(quote);
+  } catch (err) {
+    console.error('Error calculating foreclosure quote:', err);
+    res.status(500).json({ message: 'Failed to calculate foreclosure quote' });
+  }
+});
+
 router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan) return res.status(404).json({ message: 'Loan not found' });
@@ -693,9 +705,14 @@ router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
     return res.status(400).json({ message: 'No pending foreclosure request' });
   }
 
+  const effectiveCloseDate = req.body.foreclosureDate || new Date().toISOString().slice(0, 10);
+  const totalAmount = Number(req.body.totalAmount || loan.foreclosureRequest.foreclosureAmount || 0);
+
   // Update loan status to completed (foreclosed)
   await db.updateLoan(loan.loanId, {
     status: 'completed',
+    isForeclosed: true,
+    foreclosureDate: effectiveCloseDate,
     foreclosureRequest: {
       ...loan.foreclosureRequest,
       status: 'approved',
@@ -703,31 +720,124 @@ router.post('/loans/:loanId/approve-foreclosure', async (req, res) => {
     }
   });
 
-  await closeEmisForForeclosure(loan.loanId);
+  await closeEmisForForeclosure(loan.loanId, effectiveCloseDate, loan.foreclosureRequest.reason);
 
   res.json({ message: 'Foreclosure approved and loan completed' });
 });
 
 router.post('/loans/:loanId/foreclose', async (req, res) => {
-  const loan = await db.getLoanById(req.params.loanId);
-  if (!loan) return res.status(404).json({ message: 'Loan not found' });
-
-  const foreclosureAmount = Number(req.body.foreclosureAmount) || Number(loan.approvedAmount || loan.loanAmount || 0);
-  const reason = req.body.reason || 'Admin direct foreclosure';
-
-  await db.updateLoan(loan.loanId, {
-    status: 'completed',
-    foreclosureRequest: {
-      foreclosureAmount,
-      reason,
-      status: 'approved',
-      requestedBy: req.user.userId,
-      approvedAt: new Date().toISOString()
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    if (loan.status === 'completed') {
+      return res.status(400).json({ message: 'Loan is already completed/foreclosed' });
     }
-  });
 
-  await closeEmisForForeclosure(loan.loanId);
-  res.json({ message: 'Loan foreclosed and closed successfully' });
+    const {
+      foreclosureDate,
+      principalAmount,
+      interestAmount,
+      penaltyAmount,
+      totalAmount,
+      penaltyApplicable,
+      monthsElapsed,
+      daysInterestCalculated,
+      lastCoveredDate,
+      paymentModes,
+      reason
+    } = req.body;
+
+    const principal = Math.round(Number(principalAmount || 0));
+    const interest = Math.round(Number(interestAmount || 0));
+    const penalty = Math.round(Number(penaltyAmount || 0));
+    const total = Math.round(Number(totalAmount !== undefined ? totalAmount : (principal + interest + penalty)));
+
+    if (principal < 0 || interest < 0 || penalty < 0 || total <= 0) {
+      return res.status(400).json({ message: 'Invalid foreclosure settlement amount breakdown' });
+    }
+
+    // Validate payment modes
+    const modes = Array.isArray(paymentModes) && paymentModes.length > 0 ? paymentModes : [
+      { mode: 'Cash', amount: total, txnRef: req.body.txnRef || `FC-${Date.now()}` }
+    ];
+
+    let allocatedTotal = 0;
+    const cleanPaymentModes = [];
+
+    for (let i = 0; i < modes.length; i++) {
+      const p = modes[i];
+      const pAmt = Number(p.amount || 0);
+      const pRef = String(p.txnRef || p.reference || '').trim();
+      const pMode = String(p.mode || 'Cash').trim();
+      const pBank = p.bankName ? String(p.bankName).trim() : null;
+      const pDate = p.date || foreclosureDate || new Date().toISOString().slice(0, 10);
+
+      if (isNaN(pAmt) || pAmt <= 0) {
+        return res.status(400).json({ message: `Payment mode #${i + 1} has an invalid amount: ₹${p.amount}` });
+      }
+      if (!pRef) {
+        return res.status(400).json({ message: `Receipt / Reference number is required for payment mode #${i + 1} (${pMode})` });
+      }
+
+      allocatedTotal += pAmt;
+      cleanPaymentModes.push({
+        mode: pMode,
+        amount: pAmt,
+        txnRef: pRef,
+        bankName: pBank,
+        date: pDate,
+      });
+    }
+
+    // Check if total allocated matches total settlement amount (allow ₹1 rounding margin)
+    if (Math.abs(allocatedTotal - total) > 1) {
+      return res.status(400).json({
+        message: `Sum of payment modes (₹${allocatedTotal.toLocaleString('en-IN')}) does not match total settlement amount (₹${total.toLocaleString('en-IN')})`
+      });
+    }
+
+    const effectiveCloseDate = foreclosureDate || new Date().toISOString().slice(0, 10);
+    const foreclosureDetails = {
+      foreclosureDate: effectiveCloseDate,
+      principalAmount: principal,
+      interestAmount: interest,
+      penaltyAmount: penalty,
+      totalAmount: total,
+      penaltyApplicable: Boolean(penaltyApplicable),
+      monthsElapsed: Number(monthsElapsed || 0),
+      daysInterestCalculated: Number(daysInterestCalculated || 0),
+      lastCoveredDate: lastCoveredDate || null,
+      paymentModes: cleanPaymentModes,
+      reason: reason ? String(reason).trim() : 'Loan foreclosed by admin',
+      foreclosedBy: req.user.userId,
+      foreclosedByName: req.user.name,
+      foreclosedAt: new Date().toISOString()
+    };
+
+    await db.updateLoan(loan.loanId, {
+      status: 'completed',
+      isForeclosed: true,
+      foreclosureDate: effectiveCloseDate,
+      foreclosureDetails,
+      foreclosureRequest: {
+        status: 'approved',
+        foreclosureAmount: total,
+        reason: reason || 'Admin direct foreclosure',
+        approvedBy: req.user.userId,
+        approvedAt: new Date().toISOString()
+      }
+    });
+
+    await closeEmisForForeclosure(loan.loanId, effectiveCloseDate, reason);
+
+    res.json({
+      message: 'Loan foreclosed and settled successfully',
+      foreclosureDetails
+    });
+  } catch (err) {
+    console.error('Error foreclosing loan:', err);
+    res.status(500).json({ message: err.message || 'Failed to foreclose loan' });
+  }
 });
 
 router.post('/loans/:loanId/change-emi', async (req, res) => {

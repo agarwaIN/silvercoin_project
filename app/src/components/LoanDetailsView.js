@@ -213,6 +213,71 @@ export default function LoanDetailsView({ loan, onEditDates }) {
           ))}
         </View>
       )}
+
+      {(loan.isForeclosed || loan.foreclosureDetails) && (
+        <View style={[rv.card, { borderColor: '#FDE68A', backgroundColor: '#FFFDF5' }]}>
+          <View style={[rv.headerRow, { borderBottomColor: '#FEF3C7' }]}>
+            <Ionicons name="shield-checkmark" size={18} color="#B45309" />
+            <Text style={[rv.section, { color: '#B45309' }]}>Foreclosure Settlement</Text>
+            <View style={{ marginLeft: 'auto', backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>Foreclosed & Settled</Text>
+            </View>
+          </View>
+
+          <Row label="Foreclosure Date" value={formatDate(loan.foreclosureDetails?.foreclosureDate || loan.foreclosureDate)} />
+          {loan.foreclosureDetails?.lastCoveredDate && (
+            <Row label="Last Covered Due Date" value={formatDate(loan.foreclosureDetails.lastCoveredDate)} />
+          )}
+          {loan.foreclosureDetails?.daysInterestCalculated !== undefined && (
+            <Row label="Interest Accrual Period" value={`${loan.foreclosureDetails.daysInterestCalculated} Days`} />
+          )}
+          {loan.foreclosureDetails?.monthsElapsed !== undefined && (
+            <Row label="Tenure Served" value={`${loan.foreclosureDetails.monthsElapsed} Months`} />
+          )}
+          <Row
+            label="Principal Outstanding"
+            value={`₹${Number(loan.foreclosureDetails?.principalAmount || 0).toLocaleString('en-IN')}`}
+          />
+          <Row
+            label="Accrued Interest"
+            value={`₹${Number(loan.foreclosureDetails?.interestAmount || 0).toLocaleString('en-IN')}`}
+          />
+          <Row
+            label="Pre-Closure Penalty"
+            value={Number(loan.foreclosureDetails?.penaltyAmount || 0) > 0 ? `₹${Number(loan.foreclosureDetails.penaltyAmount).toLocaleString('en-IN')}` : 'Exempt / Waived (₹0)'}
+          />
+          <Row
+            label="Total Settled Amount"
+            value={`₹${Number(loan.foreclosureDetails?.totalAmount || loan.foreclosureRequest?.foreclosureAmount || 0).toLocaleString('en-IN')}`}
+          />
+          {loan.foreclosureDetails?.reason && (
+            <Row label="Settlement Reason" value={loan.foreclosureDetails.reason} />
+          )}
+          {loan.foreclosureDetails?.foreclosedByName && (
+            <Row label="Closed By" value={loan.foreclosureDetails.foreclosedByName} />
+          )}
+
+          {loan.foreclosureDetails?.paymentModes && loan.foreclosureDetails.paymentModes.length > 0 && (
+            <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#FEF3C7', paddingTop: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', marginBottom: 6, textTransform: 'uppercase' }}>
+                Payment Mode Breakdown ({loan.foreclosureDetails.paymentModes.length}):
+              </Text>
+              {loan.foreclosureDetails.paymentModes.map((pm, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 12.5, color: colors.text, fontWeight: '600' }}>
+                    {idx + 1}. {pm.mode} {pm.bankName ? `(${pm.bankName})` : ''}
+                    {pm.txnRef ? ` • Ref: ${pm.txnRef}` : ''}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: '#059669', fontWeight: '700' }}>
+                    ₹{Number(pm.amount || 0).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
     </View>
   );
 }

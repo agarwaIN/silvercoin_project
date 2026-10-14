@@ -17,6 +17,7 @@ const STATUS_MAP = {
   pending: { label: 'Pending', bg: '#FEF3C7', text: '#D97706' },
   paid: { label: 'Paid', bg: '#D1FAE5', text: colors.success },
   overdue: { label: 'Overdue', bg: '#FEE2E2', text: colors.error },
+  foreclosed: { label: 'Foreclosed', bg: '#FEF3C7', text: '#B45309' },
 };
 
 export default function StatusBadge({ status }) {

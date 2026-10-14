@@ -141,17 +141,14 @@ export default function LoanDetailScreen({ route, navigation }) {
     }
   };
 
-  const handleApproveForeclosure = async () => {
-    setProcessing(true);
-    try {
-      await approveForeclosure(loanId);
-      await load();
-      showAlert('Success', 'Foreclosure approved and loan completed.');
-    } catch (error) {
-      showAlert('Error', error.response?.data?.message || 'Failed to approve foreclosure.');
-    } finally {
-      setProcessing(false);
-    }
+  const handleApproveForeclosure = () => {
+    navigation.navigate('ForecloseLoan', {
+      loan,
+      loanId,
+      onSettled: () => {
+        load();
+      }
+    });
   };
 
   const handlePayEmi = async () => {
@@ -251,32 +248,13 @@ export default function LoanDetailScreen({ route, navigation }) {
   };
 
   const handleOpenForeclosureModal = () => {
-    setForeclosureData({
-      amount: (loan.approvedAmount || loan.loanAmount || '').toString(),
-      reason: 'Customer requested loan settlement'
+    navigation.navigate('ForecloseLoan', {
+      loan,
+      loanId,
+      onSettled: () => {
+        load();
+      }
     });
-    setForecloseModalVisible(true);
-  };
-
-  const handleDirectForeclose = async () => {
-    if (!foreclosureData.amount || !foreclosureData.reason.trim()) {
-      showAlert('Error', 'Please enter foreclosure amount and reason.');
-      return;
-    }
-    setProcessing(true);
-    try {
-      await forecloseLoan(loanId, {
-        foreclosureAmount: parseFloat(foreclosureData.amount),
-        reason: foreclosureData.reason.trim()
-      });
-      setForecloseModalVisible(false);
-      await load();
-      showAlert('Success', 'Loan has been foreclosed and completed successfully.');
-    } catch (error) {
-      showAlert('Error', error.response?.data?.message || 'Failed to foreclose loan.');
-    } finally {
-      setProcessing(false);
-    }
   };
 
   const handleDirectChangeEmi = async () => {
@@ -541,14 +519,19 @@ export default function LoanDetailScreen({ route, navigation }) {
               {[...(loan.emis || [])].sort((a, b) => new Date(a?.dueDate || 0) - new Date(b?.dueDate || 0)).map((emi, idx) => {
                 const totalDue = Number(emi.amount) + Number(emi.penaltyAmount || 0);
                 const isPaid = emi.status === 'paid';
+                const isForeclosed = emi.status === 'foreclosed';
                 return (
                   <View key={emi.paymentId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: idx !== loan.emis.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark }}>Due: {formatDate(emi.dueDate)}</Text>
-                      <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: colors.muted }}>Status: {emi.status.toUpperCase()}</Text>
+                      <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: isForeclosed ? '#D97706' : colors.muted }}>
+                        Status: {emi.status.toUpperCase()}
+                      </Text>
                     </View>
                     <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: isPaid ? colors.success : colors.error }}>₹{totalDue.toLocaleString('en-IN')}</Text>
+                      <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: isPaid ? colors.success : isForeclosed ? '#D97706' : colors.error }}>
+                        {isForeclosed ? 'Foreclosed' : `₹${totalDue.toLocaleString('en-IN')}`}
+                      </Text>
                       {emi.paidAmount > 0 && (
                         <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.success }}>
                           Paid: ₹{Number(emi.paidAmount).toLocaleString('en-IN')}
@@ -561,7 +544,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                       )}
                       {emi.penaltyAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.error }}>Penalty: ₹{Number(emi.penaltyAmount).toLocaleString('en-IN')}</Text>}
                     </View>
-                    {!isPaid && loan.status === 'active' && (
+                    {!isPaid && !isForeclosed && loan.status === 'active' && (
                       <TouchableOpacity 
                         style={{ marginLeft: 12, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
                         onPress={() => {
@@ -989,44 +972,6 @@ export default function LoanDetailScreen({ route, navigation }) {
         </View>
       </Modal>
 
-      {/* Direct Foreclosure Modal */}
-      <Modal visible={forecloseModalVisible} transparent animationType="fade" onRequestClose={() => setForecloseModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Foreclose Loan</Text>
-            <Text style={styles.modalSubtitle}>Enter final settlement amount and reason to close this loan.</Text>
-
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Settlement Amount (₹) *</Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Foreclosure Amount (₹)"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={foreclosureData.amount}
-              onChangeText={t => setForeclosureData({ ...foreclosureData, amount: t })}
-              keyboardType="numeric"
-            />
-
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Reason for Foreclosure *</Text>
-            <TextInput
-              style={[styles.modalInputSmall, { height: 70, textAlignVertical: 'top' }]}
-              placeholder="Enter reason or settlement details"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={foreclosureData.reason}
-              onChangeText={t => setForeclosureData({ ...foreclosureData, reason: t })}
-              multiline
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setForecloseModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: '#991B1B' }]} onPress={handleDirectForeclose} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Confirm Foreclosure</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
 
   );
