@@ -189,29 +189,23 @@ export default function LoanDetailScreen({ route, navigation }) {
             <View style={styles.returnedDetailRemarkBox}>
               <Text style={styles.returnedDetailRemarkLabel}>Admin Remark:</Text>
               <Text style={styles.returnedDetailRemarkBold}>
-                {loan.returnReason ||
-                  loan.rejectionReason ||
-                  loan.rejectReason ||
-                  loan.remark ||
-                  'Application returned for corrections.'}
+                {loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark || 'Application returned for corrections.'}
               </Text>
             </View>
           </View>
         )}
 
-        {!isProcessed &&
-          !isLockedForEmployee &&
-          ['draft', 'in_progress', 'saved', 'returned', 'rejected'].includes(loan.status) && (
-            <TouchableOpacity
-              style={styles.continueCardBtn}
-              onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="arrow-forward-circle" size={24} color={colors.white} />
-              <Text style={styles.continueCardBtnText}>Continue Filling Application</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.white} />
-            </TouchableOpacity>
-          )}
+        {!isProcessed && !isLockedForEmployee && ['draft', 'in_progress', 'saved', 'returned', 'rejected'].includes(loan.status) && (
+          <TouchableOpacity
+            style={styles.continueCardBtn}
+            onPress={() => navigation.navigate('NewLoan', { existingLoan: loan })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="arrow-forward-circle" size={24} color={colors.white} />
+            <Text style={styles.continueCardBtnText}>Continue Filling Application</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.white} />
+          </TouchableOpacity>
+        )}
 
         <LoanDetailsView loan={loan} />
         <MediaViewer
@@ -252,8 +246,8 @@ export default function LoanDetailScreen({ route, navigation }) {
 
         {['approved', 'active'].includes(loan.status) && !isLockedForEmployee && (!loan.emiChangeRequest || loan.emiChangeRequest.status !== 'pending') && (
           <View style={{ flexDirection: 'row', gap: 12, marginTop: 16, marginBottom: 24 }}>
-            <TouchableOpacity 
-              style={[styles.emiBtn, { flex: 1, marginTop: 0, marginBottom: 0 }]} 
+            <TouchableOpacity
+              style={[styles.emiBtn, { flex: 1, marginTop: 0, marginBottom: 0 }]}
               onPress={() => navigation.navigate('EmiChangeRequest', { loan })}
             >
               <Ionicons name="calculator-outline" size={20} color={colors.white} />
@@ -261,8 +255,8 @@ export default function LoanDetailScreen({ route, navigation }) {
             </TouchableOpacity>
 
             {(!loan.foreclosureRequest || loan.foreclosureRequest.status !== 'pending') && loan.status !== 'completed' && !loan.isForeclosed && (
-              <TouchableOpacity 
-                style={[styles.emiBtn, { flex: 1, marginTop: 0, marginBottom: 0, backgroundColor: '#991B1B' }]} 
+              <TouchableOpacity
+                style={[styles.emiBtn, { flex: 1, marginTop: 0, marginBottom: 0, backgroundColor: '#991B1B' }]}
                 onPress={() => setForeclosureModalVisible(true)}
               >
                 <Ionicons name="warning-outline" size={20} color={colors.white} />
@@ -317,7 +311,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                       {emi.penaltyAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.error }}>Penalty: ₹{Number(emi.penaltyAmount).toLocaleString('en-IN')}</Text>}
                     </View>
                     {!isPaid && !isForeclosed && (loan.status === 'active' || loan.status === 'approved') && (
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={{ marginLeft: 12, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
                         onPress={() => {
                           setPayEmiData({
@@ -354,7 +348,7 @@ export default function LoanDetailScreen({ route, navigation }) {
               placeholder="Amount (₹)"
               placeholderTextColor={colors.placeholder || '#4B5563'}
               value={foreclosureData.amount}
-              onChangeText={t => setForeclosureData({...foreclosureData, amount: t})}
+              onChangeText={t => setForeclosureData({ ...foreclosureData, amount: t })}
               keyboardType="numeric"
             />
             <TextInput
@@ -362,7 +356,7 @@ export default function LoanDetailScreen({ route, navigation }) {
               placeholder="Reason for foreclosure"
               placeholderTextColor={colors.placeholder || '#4B5563'}
               value={foreclosureData.reason}
-              onChangeText={t => setForeclosureData({...foreclosureData, reason: t})}
+              onChangeText={t => setForeclosureData({ ...foreclosureData, reason: t })}
               multiline
             />
             <View style={styles.modalActions}>
