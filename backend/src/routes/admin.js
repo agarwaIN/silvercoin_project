@@ -564,7 +564,7 @@ router.post('/loans/:loanId/disburse', async (req, res) => {
     return res.status(400).json({ message: 'Loan must be approved to disburse' });
   }
 
-  const { date, amount, bankName, transactionNumber } = req.body;
+  const { date, amount, bankName, transactionNumber, remark } = req.body;
   if (!date || !amount || !bankName || !transactionNumber) {
     return res.status(400).json({ message: 'Missing disbursement details' });
   }
@@ -576,9 +576,14 @@ router.post('/loans/:loanId/disburse', async (req, res) => {
 
   const disbursements = loan.disbursements || [];
   const normalizedDate = parseDateInput(date) || date;
-  disbursements.push({ date: normalizedDate, amount, bankName, transactionNumber });
+  disbursements.push({ date: normalizedDate, amount, bankName, transactionNumber, remark: remark ? remark.trim() : '' });
 
-  const updates = { disbursements, status: 'active', disbursementDate: normalizedDate };
+  const updates = { 
+    disbursements, 
+    status: 'active', 
+    disbursementDate: normalizedDate,
+    ...(remark ? { disbursementRemark: remark.trim() } : {})
+  };
   
   // Generate displayLoanId on first disbursement if not exists
   if (!loan.displayLoanId && !loan.officialLoanId) {

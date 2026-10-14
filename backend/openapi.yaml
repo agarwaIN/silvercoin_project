@@ -653,6 +653,8 @@ paths:
                   type: string
                 transactionNumber:
                   type: string
+                remark:
+                  type: string
       responses:
         '200':
           description: OK

@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/Header';
@@ -33,7 +33,7 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [internalRemarks, setInternalRemarks] = useState('');
   const [riskAssessment, setRiskAssessment] = useState('');
   const [disburseModalVisible, setDisburseModalVisible] = useState(false);
-  const [disburseData, setDisburseData] = useState({ date: formatDate(new Date()), amount: '', bankName: '', transactionNumber: '' });
+  const [disburseData, setDisburseData] = useState({ date: formatDate(new Date()), amount: '', bankName: '', transactionNumber: '', remark: '' });
   const [payEmiModalVisible, setPayEmiModalVisible] = useState(false);
   const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0, paymentMode: 'Cash', txnRef: '', paymentDate: '' });
   const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
@@ -407,7 +407,7 @@ export default function LoanDetailScreen({ route, navigation }) {
 
         {loan.status === 'approved' && (
           <View style={styles.actionContainer}>
-            <TouchableOpacity style={styles.approveBtn} onPress={() => { setDisburseData({ date: formatDate(new Date()), amount: loan.approvedAmount || '', bankName: '', transactionNumber: '' }); setDisburseModalVisible(true); }} disabled={processing}>
+            <TouchableOpacity style={styles.approveBtn} onPress={() => { setDisburseData({ date: formatDate(new Date()), amount: loan.approvedAmount || '', bankName: '', transactionNumber: '', remark: '' }); setDisburseModalVisible(true); }} disabled={processing}>
               <Ionicons name="cash-outline" size={20} color={colors.white} />
               <Text style={styles.approveBtnText}>Record Disbursement</Text>
             </TouchableOpacity>
@@ -573,7 +573,7 @@ export default function LoanDetailScreen({ route, navigation }) {
       </ScrollView>
 
       <Modal visible={rejectModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Reject Loan</Text>
             <Text style={styles.modalSubtitle}>Please enter the remarks/reason for rejection. This will be visible to the employee.</Text>
@@ -594,10 +594,11 @@ export default function LoanDetailScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
+
       <Modal visible={returnModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Return Application</Text>
             <Text style={styles.modalSubtitle}>Enter the reason for returning the application to the employee.</Text>
@@ -618,11 +619,11 @@ export default function LoanDetailScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={processModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Process Application</Text>
             <Text style={styles.modalSubtitle}>Enter internal verification and risk assessment details.</Text>
@@ -649,12 +650,15 @@ export default function LoanDetailScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={disburseModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setDisburseModalVisible(false); }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             {activeDatePicker === 'disburseDate' ? (
               <CalendarPicker
                 title="Select Disbursement Date"
@@ -666,11 +670,15 @@ export default function LoanDetailScreen({ route, navigation }) {
                 onClose={() => setActiveDatePicker(null)}
               />
             ) : (
-              <>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 8 }}
+              >
                 <Text style={styles.modalTitle}>Record Disbursement</Text>
                 <Text style={styles.modalSubtitle}>Enter bank transaction details to mark this loan as Active.</Text>
                 <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
-                  Disbursement Date (DD-MM-YYYY)
+                  Disbursement Date (DD-MM-YYYY) *
                 </Text>
                 <TouchableOpacity
                   style={styles.datePickerInput}
@@ -682,6 +690,10 @@ export default function LoanDetailScreen({ route, navigation }) {
                   </Text>
                   <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
                 </TouchableOpacity>
+
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Disbursement Amount (₹) *
+                </Text>
                 <TextInput
                   style={styles.modalInputSmall}
                   placeholder="Amount (₹)"
@@ -690,6 +702,10 @@ export default function LoanDetailScreen({ route, navigation }) {
                   onChangeText={t => setDisburseData({...disburseData, amount: t})}
                   keyboardType="numeric"
                 />
+
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Bank Name *
+                </Text>
                 <TextInput
                   style={styles.modalInputSmall}
                   placeholder="Bank Name"
@@ -697,6 +713,10 @@ export default function LoanDetailScreen({ route, navigation }) {
                   value={disburseData.bankName}
                   onChangeText={t => setDisburseData({...disburseData, bankName: t})}
                 />
+
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Transaction Number / UTR *
+                </Text>
                 <TextInput
                   style={styles.modalInputSmall}
                   placeholder="Transaction Number / UTR"
@@ -704,7 +724,19 @@ export default function LoanDetailScreen({ route, navigation }) {
                   value={disburseData.transactionNumber}
                   onChangeText={t => setDisburseData({...disburseData, transactionNumber: t})}
                 />
-                <View style={styles.modalActions}>
+
+                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
+                  Remark / Notes
+                </Text>
+                <TextInput
+                  style={styles.modalInputSmall}
+                  placeholder="e.g. Disbursed via RTGS / Bank Transfer..."
+                  placeholderTextColor={colors.placeholder || '#4B5563'}
+                  value={disburseData.remark}
+                  onChangeText={t => setDisburseData({...disburseData, remark: t})}
+                />
+
+                <View style={[styles.modalActions, { marginTop: 8 }]}>
                   <TouchableOpacity style={styles.modalCancel} onPress={() => { setActiveDatePicker(null); setDisburseModalVisible(false); }} disabled={processing}>
                     <Text style={styles.modalCancelText}>Cancel</Text>
                   </TouchableOpacity>
@@ -712,15 +744,18 @@ export default function LoanDetailScreen({ route, navigation }) {
                     {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Disburse</Text>}
                   </TouchableOpacity>
                 </View>
-              </>
+              </ScrollView>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={payEmiModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setPayEmiModalVisible(false); }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             {activeDatePicker === 'payDate' ? (
               <CalendarPicker
                 title="Select Payment Received Date"
@@ -732,7 +767,11 @@ export default function LoanDetailScreen({ route, navigation }) {
                 onClose={() => setActiveDatePicker(null)}
               />
             ) : (
-              <>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 8 }}
+              >
                 <Text style={styles.modalTitle}>Receive Payment</Text>
                 <Text style={styles.modalSubtitle}>
                   Enter the amount received from the customer. Remaining due: ₹{payEmiData.dueAmount}
@@ -830,15 +869,15 @@ export default function LoanDetailScreen({ route, navigation }) {
                     )}
                   </TouchableOpacity>
                 </View>
-              </>
+              </ScrollView>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             {activeDatePicker ? (
               <CalendarPicker
                 title={activeDatePicker === 'disbursementDate' ? 'Select Disbursement Date' : 'Select EMI Start Date'}
@@ -897,79 +936,81 @@ export default function LoanDetailScreen({ route, navigation }) {
               </>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Change EMI Modal */}
       <Modal visible={changeEmiModalVisible} transparent animationType="fade" onRequestClose={() => setChangeEmiModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Change EMI Terms</Text>
-            <Text style={styles.modalSubtitle}>Adjust principal, tenure, or interest rate. Schedule will be recalculated.</Text>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+              <Text style={styles.modalTitle}>Change EMI Terms</Text>
+              <Text style={styles.modalSubtitle}>Adjust principal, tenure, or interest rate. Schedule will be recalculated.</Text>
 
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Principal Amount (₹)</Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Principal (₹)"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={changeEmiData.principal}
-              onChangeText={t => {
-                const updated = { ...changeEmiData, principal: t };
-                const calc = calculateAdminEmi(t, updated.tenure, updated.interestRate);
-                setChangeEmiData({ ...updated, ...calc });
-              }}
-              keyboardType="numeric"
-            />
+              <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Principal Amount (₹)</Text>
+              <TextInput
+                style={styles.modalInputSmall}
+                placeholder="Principal (₹)"
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={changeEmiData.principal}
+                onChangeText={t => {
+                  const updated = { ...changeEmiData, principal: t };
+                  const calc = calculateAdminEmi(t, updated.tenure, updated.interestRate);
+                  setChangeEmiData({ ...updated, ...calc });
+                }}
+                keyboardType="numeric"
+              />
 
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Tenure (Months)</Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Tenure in months"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={changeEmiData.tenure}
-              onChangeText={t => {
-                const updated = { ...changeEmiData, tenure: t };
-                const calc = calculateAdminEmi(updated.principal, t, updated.interestRate);
-                setChangeEmiData({ ...updated, ...calc });
-              }}
-              keyboardType="numeric"
-            />
+              <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Tenure (Months)</Text>
+              <TextInput
+                style={styles.modalInputSmall}
+                placeholder="Tenure in months"
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={changeEmiData.tenure}
+                onChangeText={t => {
+                  const updated = { ...changeEmiData, tenure: t };
+                  const calc = calculateAdminEmi(updated.principal, t, updated.interestRate);
+                  setChangeEmiData({ ...updated, ...calc });
+                }}
+                keyboardType="numeric"
+              />
 
-            <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Monthly Interest Rate (%)</Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Interest rate (%)"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={changeEmiData.interestRate}
-              onChangeText={t => {
-                const updated = { ...changeEmiData, interestRate: t };
-                const calc = calculateAdminEmi(updated.principal, updated.tenure, t);
-                setChangeEmiData({ ...updated, ...calc });
-              }}
-              keyboardType="numeric"
-            />
+              <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 }}>Monthly Interest Rate (%)</Text>
+              <TextInput
+                style={styles.modalInputSmall}
+                placeholder="Interest rate (%)"
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={changeEmiData.interestRate}
+                onChangeText={t => {
+                  const updated = { ...changeEmiData, interestRate: t };
+                  const calc = calculateAdminEmi(updated.principal, updated.tenure, t);
+                  setChangeEmiData({ ...updated, ...calc });
+                }}
+                keyboardType="numeric"
+              />
 
-            <View style={{ backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, marginVertical: 8 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={{ fontFamily: fonts.medium, fontSize: 13, color: '#166534' }}>Calculated EMI:</Text>
-                <Text style={{ fontFamily: fonts.bold, fontSize: 15, color: '#15803D' }}>₹{Number(changeEmiData.emiAmount || 0).toLocaleString('en-IN')}</Text>
+              <View style={{ backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, marginVertical: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontFamily: fonts.medium, fontSize: 13, color: '#166534' }}>Calculated EMI:</Text>
+                  <Text style={{ fontFamily: fonts.bold, fontSize: 15, color: '#15803D' }}>₹{Number(changeEmiData.emiAmount || 0).toLocaleString('en-IN')}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: '#166534' }}>Total Repayable:</Text>
+                  <Text style={{ fontFamily: fonts.semiBold, fontSize: 12, color: '#15803D' }}>₹{Number(changeEmiData.totalRepayable || 0).toLocaleString('en-IN')}</Text>
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: '#166534' }}>Total Repayable:</Text>
-                <Text style={{ fontFamily: fonts.semiBold, fontSize: 12, color: '#15803D' }}>₹{Number(changeEmiData.totalRepayable || 0).toLocaleString('en-IN')}</Text>
-              </View>
-            </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setChangeEmiModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleDirectChangeEmi} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Apply EMI Terms</Text>}
-              </TouchableOpacity>
-            </View>
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setChangeEmiModalVisible(false)} disabled={processing}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleDirectChangeEmi} disabled={processing}>
+                  {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Apply EMI Terms</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

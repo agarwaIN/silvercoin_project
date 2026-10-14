@@ -209,6 +209,7 @@ export default function LoanDetailsView({ loan, onEditDates }) {
               <Row label="Amount" value={`₹${Number(d.amount).toLocaleString('en-IN')}`} />
               <Row label="Bank" value={d.bankName} />
               <Row label="Txn No" value={d.transactionNumber} />
+              {Boolean(d.remark) && <Row label="Remark" value={d.remark} />}
             </View>
           ))}
         </View>
