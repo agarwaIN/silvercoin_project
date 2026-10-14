@@ -241,8 +241,14 @@ async function calculateForeclosureDetails(loan, foreclosureDateStr = null) {
   const interestRate = Number(loan.interestRate || 2.15); // Monthly %
   const penaltyRate = Number(loan.penaltyRate || 0); // %
 
+  const toTimestamp = (d) => {
+    if (!d) return 0;
+    const parsed = parseDateInput(d);
+    return parsed ? new Date(parsed).getTime() : 0;
+  };
+
   const emis = await db.listEmiByLoan(loan.loanId);
-  const sortedEmis = [...(emis || [])].sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+  const sortedEmis = [...(emis || [])].sort((a, b) => toTimestamp(a.dueDate) - toTimestamp(b.dueDate));
 
   const paidEmis = sortedEmis.filter(e => e.status === 'paid');
   const paidCount = paidEmis.length;
