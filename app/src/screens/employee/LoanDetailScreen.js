@@ -374,7 +374,7 @@ export default function LoanDetailScreen({ route, navigation }) {
       {/* Pay EMI Modal */}
       <Modal visible={payEmiModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setPayEmiModalVisible(false); }}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             {activeDatePicker === 'payEmiDate' ? (
               <CalendarPicker
                 title="Select Payment Received Date"
@@ -386,7 +386,13 @@ export default function LoanDetailScreen({ route, navigation }) {
                 onClose={() => setActiveDatePicker(null)}
               />
             ) : (
-              <>
+              <ScrollView
+                style={{ flexShrink: 1 }}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled={true}
+                contentContainerStyle={{ paddingBottom: 16 }}
+              >
                 <Text style={styles.modalTitle}>Receive EMI Payment</Text>
                 <Text style={styles.modalSubtitle}>Record EMI installment repayment from borrower.</Text>
 
@@ -444,7 +450,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                     {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Confirm Payment</Text>}
                   </TouchableOpacity>
                 </View>
-              </>
+              </ScrollView>
             )}
           </View>
         </View>

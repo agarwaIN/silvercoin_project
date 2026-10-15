@@ -1,5 +1,5 @@
-import React, { useCallback, useState, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/Header';
@@ -16,6 +16,34 @@ import { formatDate, getTodayFormatted } from '../../utils/date';
 import CalendarPicker from '../../components/CalendarPicker';
 
 export default function LoanDetailScreen({ route, navigation }) {
+  const { height: windowHeight } = useWindowDimensions();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const disburseScrollRef = useRef(null);
+  const payEmiScrollRef = useRef(null);
+  const changeEmiScrollRef = useRef(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates ? e.endCoordinates.height : 280);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const isKeyboardVisible = keyboardHeight > 0;
+  const modalMaxHeight = isKeyboardVisible
+    ? Math.max(220, windowHeight - keyboardHeight - (Platform.OS === 'android' ? 48 : 64))
+    : Math.min(windowHeight * 0.88, 620);
+
   const { showAlert } = usePopup();
   const rawParams = route.params || {};
   const scrollRef = useRef(null);
@@ -573,82 +601,115 @@ export default function LoanDetailScreen({ route, navigation }) {
       </ScrollView>
 
       <Modal visible={rejectModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reject Loan</Text>
-            <Text style={styles.modalSubtitle}>Please enter the remarks/reason for rejection. This will be visible to the employee.</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Incomplete documents, mismatch in address..."
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              multiline
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setRejectModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSubmit} onPress={handleReject} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Reject Loan</Text>}
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
+        >
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
+              <Text style={styles.modalTitle}>Reject Loan</Text>
+              <Text style={styles.modalSubtitle}>Please enter the remarks/reason for rejection. This will be visible to the employee.</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Incomplete documents, mismatch in address..."
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={rejectReason}
+                onChangeText={setRejectReason}
+                multiline
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setRejectModalVisible(false)} disabled={processing}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalSubmit} onPress={handleReject} disabled={processing}>
+                  {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Reject Loan</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={returnModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Return Application</Text>
-            <Text style={styles.modalSubtitle}>Enter the reason for returning the application to the employee.</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Needs clearer photos of property..."
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={returnReason}
-              onChangeText={setReturnReason}
-              multiline
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setReturnModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSubmit} onPress={handleReturn} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Return</Text>}
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
+        >
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
+              <Text style={styles.modalTitle}>Return Application</Text>
+              <Text style={styles.modalSubtitle}>Enter the reason for returning the application to the employee.</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Needs clearer photos of property..."
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={returnReason}
+                onChangeText={setReturnReason}
+                multiline
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setReturnModalVisible(false)} disabled={processing}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalSubmit} onPress={handleReturn} disabled={processing}>
+                  {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Return</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={processModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Process Application</Text>
-            <Text style={styles.modalSubtitle}>Enter internal verification and risk assessment details.</Text>
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Internal Remarks"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={internalRemarks}
-              onChangeText={setInternalRemarks}
-            />
-            <TextInput
-              style={styles.modalInputSmall}
-              placeholder="Risk Assessment (e.g. Low, Medium, High)"
-              placeholderTextColor={colors.placeholder || '#4B5563'}
-              value={riskAssessment}
-              onChangeText={setRiskAssessment}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setProcessModalVisible(false)} disabled={processing}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleProcess} disabled={processing}>
-                {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Process</Text>}
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
+        >
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
+              <Text style={styles.modalTitle}>Process Application</Text>
+              <Text style={styles.modalSubtitle}>Enter internal verification and risk assessment details.</Text>
+              <TextInput
+                style={styles.modalInputSmall}
+                placeholder="Internal Remarks"
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={internalRemarks}
+                onChangeText={setInternalRemarks}
+              />
+              <TextInput
+                style={styles.modalInputSmall}
+                placeholder="Risk Assessment (e.g. Low, Medium, High)"
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={riskAssessment}
+                onChangeText={setRiskAssessment}
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setProcessModalVisible(false)} disabled={processing}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalSubmit, { backgroundColor: colors.primary }]} onPress={handleProcess} disabled={processing}>
+                  {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Process</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -656,9 +717,9 @@ export default function LoanDetailScreen({ route, navigation }) {
       <Modal visible={disburseModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setDisburseModalVisible(false); }}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
         >
-          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
             {activeDatePicker === 'disburseDate' ? (
               <CalendarPicker
                 title="Select Disbursement Date"
@@ -671,9 +732,12 @@ export default function LoanDetailScreen({ route, navigation }) {
               />
             ) : (
               <ScrollView
-                showsVerticalScrollIndicator={false}
+                ref={disburseScrollRef}
+                style={{ flexShrink: 1 }}
+                showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: 8 }}
+                nestedScrollEnabled={true}
+                contentContainerStyle={{ paddingBottom: 28 }}
               >
                 <Text style={styles.modalTitle}>Record Disbursement</Text>
                 <Text style={styles.modalSubtitle}>Enter bank transaction details to mark this loan as Active.</Text>
@@ -712,6 +776,9 @@ export default function LoanDetailScreen({ route, navigation }) {
                   placeholderTextColor={colors.placeholder || '#4B5563'}
                   value={disburseData.bankName}
                   onChangeText={t => setDisburseData({...disburseData, bankName: t})}
+                  onFocus={() => {
+                    setTimeout(() => disburseScrollRef.current?.scrollTo({ y: 120, animated: true }), 150);
+                  }}
                 />
 
                 <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
@@ -723,6 +790,9 @@ export default function LoanDetailScreen({ route, navigation }) {
                   placeholderTextColor={colors.placeholder || '#4B5563'}
                   value={disburseData.transactionNumber}
                   onChangeText={t => setDisburseData({...disburseData, transactionNumber: t})}
+                  onFocus={() => {
+                    setTimeout(() => disburseScrollRef.current?.scrollTo({ y: 220, animated: true }), 150);
+                  }}
                 />
 
                 <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
@@ -734,6 +804,9 @@ export default function LoanDetailScreen({ route, navigation }) {
                   placeholderTextColor={colors.placeholder || '#4B5563'}
                   value={disburseData.remark}
                   onChangeText={t => setDisburseData({...disburseData, remark: t})}
+                  onFocus={() => {
+                    setTimeout(() => disburseScrollRef.current?.scrollToEnd({ animated: true }), 150);
+                  }}
                 />
 
                 <View style={[styles.modalActions, { marginTop: 8 }]}>
@@ -753,9 +826,9 @@ export default function LoanDetailScreen({ route, navigation }) {
       <Modal visible={payEmiModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setPayEmiModalVisible(false); }}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
         >
-          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
             {activeDatePicker === 'payDate' ? (
               <CalendarPicker
                 title="Select Payment Received Date"
@@ -768,9 +841,12 @@ export default function LoanDetailScreen({ route, navigation }) {
               />
             ) : (
               <ScrollView
-                showsVerticalScrollIndicator={false}
+                ref={payEmiScrollRef}
+                style={{ flexShrink: 1 }}
+                showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: 8 }}
+                nestedScrollEnabled={true}
+                contentContainerStyle={{ paddingBottom: 28 }}
               >
                 <Text style={styles.modalTitle}>Receive Payment</Text>
                 <Text style={styles.modalSubtitle}>
@@ -784,6 +860,9 @@ export default function LoanDetailScreen({ route, navigation }) {
                   value={payEmiData.amount?.toString()}
                   onChangeText={t => setPayEmiData({...payEmiData, amount: t})}
                   keyboardType="numeric"
+                  onFocus={() => {
+                    setTimeout(() => payEmiScrollRef.current?.scrollTo({ y: 80, animated: true }), 150);
+                  }}
                 />
 
                 <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 4, marginBottom: 6 }}>
@@ -844,6 +923,9 @@ export default function LoanDetailScreen({ route, navigation }) {
                   placeholderTextColor={colors.placeholder || '#4B5563'}
                   value={payEmiData.txnRef}
                   onChangeText={t => setPayEmiData({ ...payEmiData, txnRef: t })}
+                  onFocus={() => {
+                    setTimeout(() => payEmiScrollRef.current?.scrollToEnd({ animated: true }), 150);
+                  }}
                 />
 
                 <View style={styles.modalActions}>
@@ -876,8 +958,11 @@ export default function LoanDetailScreen({ route, navigation }) {
       </Modal>
 
       <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
+        >
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
             {activeDatePicker ? (
               <CalendarPicker
                 title={activeDatePicker === 'disbursementDate' ? 'Select Disbursement Date' : 'Select EMI Start Date'}
@@ -893,7 +978,13 @@ export default function LoanDetailScreen({ route, navigation }) {
                 onClose={() => setActiveDatePicker(null)}
               />
             ) : (
-              <>
+              <ScrollView
+                style={{ flexShrink: 1 }}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled={true}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              >
                 <Text style={styles.modalTitle}>Edit Loan Dates</Text>
                 <Text style={styles.modalSubtitle}>Update Disbursement Date and EMI Schedule Start Date</Text>
 
@@ -933,7 +1024,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                     {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Save Dates</Text>}
                   </TouchableOpacity>
                 </View>
-              </>
+              </ScrollView>
             )}
           </View>
         </KeyboardAvoidingView>
@@ -941,9 +1032,19 @@ export default function LoanDetailScreen({ route, navigation }) {
 
       {/* Change EMI Modal */}
       <Modal visible={changeEmiModalVisible} transparent animationType="fade" onRequestClose={() => setChangeEmiModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
+        >
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
+            <ScrollView
+              ref={changeEmiScrollRef}
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              contentContainerStyle={{ paddingBottom: 28 }}
+            >
               <Text style={styles.modalTitle}>Change EMI Terms</Text>
               <Text style={styles.modalSubtitle}>Adjust principal, tenure, or interest rate. Schedule will be recalculated.</Text>
 
@@ -987,6 +1088,9 @@ export default function LoanDetailScreen({ route, navigation }) {
                   setChangeEmiData({ ...updated, ...calc });
                 }}
                 keyboardType="numeric"
+                onFocus={() => {
+                  setTimeout(() => changeEmiScrollRef.current?.scrollToEnd({ animated: true }), 150);
+                }}
               />
 
               <View style={{ backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, marginVertical: 8 }}>
@@ -1031,7 +1135,11 @@ const styles = StyleSheet.create({
   approveBtn: { flex: 1, minWidth: 90, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.success, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 12 },
   approveBtnText: { fontFamily: fonts.semiBold, fontSize: fontSize.sm, color: colors.white, textAlign: 'center', flexShrink: 1 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalContent: { backgroundColor: colors.white, borderRadius: 16, padding: 20 },
+  modalOverlayKeyboard: {
+    justifyContent: 'flex-start',
+    paddingTop: Platform.OS === 'android' ? 24 : 44,
+  },
+  modalContent: { backgroundColor: colors.white, borderRadius: 16, padding: 20, overflow: 'hidden' },
   modalTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.text, marginBottom: 8 },
   modalSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 16 },
   modalInput: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, minHeight: 80, textAlignVertical: 'top', fontSize: 14, color: colors.text, marginBottom: 20 },
