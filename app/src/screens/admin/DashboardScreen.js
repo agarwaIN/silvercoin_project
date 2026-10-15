@@ -62,12 +62,11 @@ export default function AdminDashboard({ navigation }) {
       >
         <View style={[styles.statsRow, !statsFourAcross && styles.statsRowWrap]}>
           <TouchableOpacity
-            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            style={statsFourAcross ? styles.statTouchFlex : styles.statTouchHalf}
             onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'All' } })}
             activeOpacity={0.7}
           >
             <StatBox
-              fourAcross={statsFourAcross}
               icon="document-text"
               label="Total Loans"
               value={loans.length}
@@ -75,12 +74,11 @@ export default function AdminDashboard({ navigation }) {
             />
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            style={statsFourAcross ? styles.statTouchFlex : styles.statTouchHalf}
             onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Pending' } })}
             activeOpacity={0.7}
           >
             <StatBox
-              fourAcross={statsFourAcross}
               icon="time"
               label="Pending Loans"
               value={pending}
@@ -88,12 +86,11 @@ export default function AdminDashboard({ navigation }) {
             />
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            style={statsFourAcross ? styles.statTouchFlex : styles.statTouchHalf}
             onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Approved' } })}
             activeOpacity={0.7}
           >
             <StatBox
-              fourAcross={statsFourAcross}
               icon="checkmark-circle"
               label="Approved Loans"
               value={approved}
@@ -101,12 +98,11 @@ export default function AdminDashboard({ navigation }) {
             />
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            style={statsFourAcross ? styles.statTouchFlex : styles.statTouchHalf}
             onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Approved' } })}
             activeOpacity={0.7}
           >
             <StatBox
-              fourAcross={statsFourAcross}
               icon="flash"
               label="Active Loans"
               value={activeLoans}
@@ -304,18 +300,12 @@ export default function AdminDashboard({ navigation }) {
   );
 }
 
-function StatBox({ icon, label, value, color, fourAcross }) {
+function StatBox({ icon, label, value, color }) {
   return (
-    <View
-      style={[
-        styles.statBox,
-        fourAcross ? styles.statBoxFlex : styles.statBoxHalf,
-        { borderTopColor: color },
-      ]}
-    >
-      <Ionicons name={icon} size={20} color={color} />
+    <View style={[styles.statBox, { borderTopColor: color }]}>
+      <Ionicons name={icon} size={22} color={color} />
       <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}>
+      <Text style={styles.statLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
         {label}
       </Text>
     </View>
@@ -325,29 +315,31 @@ function StatBox({ icon, label, value, color, fourAcross }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1, padding: 16 },
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20, marginTop: 8 },
-  statsRowWrap: { flexWrap: 'wrap', justifyContent: 'space-between' },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, marginTop: 8 },
+  statsRowWrap: { flexWrap: 'wrap', justifyContent: 'space-between', gap: 0 },
+  statTouchFlex: { flex: 1, minWidth: 100 },
+  statTouchHalf: { width: '48.5%', marginBottom: 12 },
   statBox: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: 'center',
-    borderTopWidth: 3,
+    justifyContent: 'center',
+    borderTopWidth: 3.5,
+    width: '100%',
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    minWidth: 0,
+    elevation: 3,
   },
-  statBoxFlex: { flex: 1, minWidth: 0 },
-  statBoxHalf: { width: '47%', maxWidth: '47%', flexGrow: 0 },
-  statValue: { fontFamily: fonts.bold, fontSize: fontSize.lg, marginTop: 6 },
+  statValue: { fontFamily: fonts.bold, fontSize: fontSize.xl, marginTop: 6, lineHeight: 26 },
   statLabel: {
-    fontFamily: fonts.regular,
-    fontSize: 10,
+    fontFamily: fonts.medium,
+    fontSize: 12,
     color: colors.muted,
-    marginTop: 2,
+    marginTop: 4,
     textAlign: 'center',
     alignSelf: 'stretch',
     width: '100%',
