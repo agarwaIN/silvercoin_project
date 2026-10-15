@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -33,8 +33,8 @@ const filterMap = {
 export const sortLoansWithReturnedFirst = (items) => {
   if (!Array.isArray(items)) return [];
   return [...items].sort((a, b) => {
-    const aRet = a.status === 'returned' || a.status === 'rejected';
-    const bRet = b.status === 'returned' || b.status === 'rejected';
+    const aRet = a.status === 'returned';
+    const bRet = b.status === 'returned';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
     const bDate = new Date(b.updatedAt || b.createdAt || 0);
@@ -43,11 +43,19 @@ export const sortLoansWithReturnedFirst = (items) => {
   });
 };
 
-export default function AdminLoanListScreen({ navigation }) {
+export default function AdminLoanListScreen({ navigation, route }) {
   const [loans, setLoans] = useState([]);
-  const [filter, setFilter] = useState('All');
+  const initialFilter = route?.params?.initialFilter || route?.params?.params?.initialFilter || 'All';
+  const [filter, setFilter] = useState(initialFilter);
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    const targetFilter = route?.params?.initialFilter || route?.params?.params?.initialFilter;
+    if (targetFilter) {
+      setFilter(targetFilter);
+    }
+  }, [route?.params?.initialFilter, route?.params?.params?.initialFilter]);
 
   const load = useCallback(async () => {
     const data = await getLoans();
@@ -133,11 +141,11 @@ export default function AdminLoanListScreen({ navigation }) {
                     <View style={styles.returnedRemarkHeader}>
                       <Ionicons name="alert-circle" size={16} color="#DC2626" />
                       <Text style={styles.returnedRemarkTitle}>
-                        {item.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION / RETURN REMARK'}
+                        {item.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION REMARK'}
                       </Text>
                     </View>
                     <Text style={styles.returnedRemarkBold}>
-                      {returnRemark || 'Application returned to employee for corrections.'}
+                      {returnRemark || (item.status === 'returned' ? 'Application returned to employee for corrections.' : 'Application rejected.')}
                     </Text>
                   </View>
                 )}

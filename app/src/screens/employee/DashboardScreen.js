@@ -15,8 +15,8 @@ import { formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 const sortLoansWithReturnedFirst = (items) => {
   if (!Array.isArray(items)) return [];
   return [...items].sort((a, b) => {
-    const aRet = a.status === 'returned' || a.status === 'rejected';
-    const bRet = b.status === 'returned' || b.status === 'rejected';
+    const aRet = a.status === 'returned';
+    const bRet = b.status === 'returned';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
     const bDate = new Date(b.updatedAt || b.createdAt || 0);
@@ -54,6 +54,7 @@ export default function EmployeeDashboard({ navigation }) {
     pending: loans.filter((l) => ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'].includes(l.status)).length,
     approved: loans.filter((l) => ['approved', 'active', 'completed'].includes(l.status)).length,
     rejected: loans.filter((l) => ['rejected', 'returned'].includes(l.status)).length,
+    returned: loans.filter((l) => l.status === 'returned').length,
   };
 
   return (
@@ -98,7 +99,7 @@ export default function EmployeeDashboard({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {stats.rejected > 0 && (
+        {stats.returned > 0 && (
           <TouchableOpacity
             style={styles.returnedAlertBanner}
             onPress={() => navigation.navigate('Loans', { initialFilter: 'Rejected' })}
@@ -109,7 +110,7 @@ export default function EmployeeDashboard({ navigation }) {
             </View>
             <View style={styles.returnedAlertContent}>
               <Text style={styles.returnedAlertTitle}>
-                {stats.rejected} Loan Application{stats.rejected > 1 ? 's' : ''} Returned by Admin
+                {stats.returned} Loan Application{stats.returned > 1 ? 's' : ''} Returned by Admin
               </Text>
               <Text style={styles.returnedAlertSubtitle}>
                 Action required: Tap to review remarks and correct
@@ -130,9 +131,9 @@ export default function EmployeeDashboard({ navigation }) {
         )}
 
         <Text style={styles.section}>Recent Applications</Text>
-        {loans.slice(0, 6).map((loan) => {
-          const isReturned = loan.status === 'returned' || loan.status === 'rejected';
-          const returnRemark = loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark;
+        {loans.filter((l) => l.status !== 'rejected').slice(0, 6).map((loan) => {
+          const isReturned = loan.status === 'returned';
+          const returnRemark = loan.returnReason || loan.remark;
 
           return (
             <TouchableOpacity key={loan.loanId} onPress={() =>
@@ -155,7 +156,7 @@ export default function EmployeeDashboard({ navigation }) {
                     <View style={styles.returnedRemarkHeader}>
                       <Ionicons name="alert-circle" size={16} color="#DC2626" />
                       <Text style={styles.returnedRemarkTitle}>
-                        {loan.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION / RETURN REMARK'}
+                        RETURNED REMARK
                       </Text>
                     </View>
                     <Text style={styles.returnedRemarkBold}>

@@ -32,8 +32,8 @@ const filterMap = {
 export const sortLoansWithReturnedFirst = (items) => {
   if (!Array.isArray(items)) return [];
   return [...items].sort((a, b) => {
-    const aRet = a.status === 'returned' || a.status === 'rejected';
-    const bRet = b.status === 'returned' || b.status === 'rejected';
+    const aRet = a.status === 'returned';
+    const bRet = b.status === 'returned';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
     const bDate = new Date(b.updatedAt || b.createdAt || 0);
@@ -146,11 +146,11 @@ export default function LoanListScreen({ navigation, route }) {
                     <View style={styles.returnedRemarkHeader}>
                       <Ionicons name="alert-circle" size={16} color="#DC2626" />
                       <Text style={styles.returnedRemarkTitle}>
-                        {item.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION / RETURN REMARK'}
+                        {item.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION REMARK'}
                       </Text>
                     </View>
                     <Text style={styles.returnedRemarkBold}>
-                      {returnRemark || 'Application returned by admin for corrections.'}
+                      {returnRemark || (item.status === 'returned' ? 'Application returned by admin for corrections.' : 'Application rejected.')}
                     </Text>
                   </View>
                 )}

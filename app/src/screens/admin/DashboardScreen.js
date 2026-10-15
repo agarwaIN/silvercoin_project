@@ -15,8 +15,8 @@ import { formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
 const sortLoansWithReturnedFirst = (items) => {
   if (!Array.isArray(items)) return [];
   return [...items].sort((a, b) => {
-    const aRet = a.status === 'returned' || a.status === 'rejected';
-    const bRet = b.status === 'returned' || b.status === 'rejected';
+    const aRet = a.status === 'returned';
+    const bRet = b.status === 'returned';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
     const bDate = new Date(b.updatedAt || b.createdAt || 0);
@@ -72,41 +72,65 @@ export default function AdminDashboard({ navigation }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />}
       >
         <View style={[styles.statsRow, !statsFourAcross && styles.statsRowWrap]}>
-          <StatBox
-            fourAcross={statsFourAcross}
-            icon="document-text"
-            label="Total Loans"
-            value={loans.length}
-            color={colors.dark}
-          />
-          <StatBox
-            fourAcross={statsFourAcross}
-            icon="time"
-            label="Pending Loans"
-            value={pending}
-            color="#D97706"
-          />
-          <StatBox
-            fourAcross={statsFourAcross}
-            icon="checkmark-circle"
-            label="Approved Loans"
-            value={approved}
-            color={colors.success}
-          />
-          <StatBox
-            fourAcross={statsFourAcross}
-            icon="flash"
-            label="Active Loans"
-            value={activeLoans}
-            color={colors.accent}
-          />
+          <TouchableOpacity
+            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'All' } })}
+            activeOpacity={0.7}
+          >
+            <StatBox
+              fourAcross={statsFourAcross}
+              icon="document-text"
+              label="Total Loans"
+              value={loans.length}
+              color={colors.dark}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Pending' } })}
+            activeOpacity={0.7}
+          >
+            <StatBox
+              fourAcross={statsFourAcross}
+              icon="time"
+              label="Pending Loans"
+              value={pending}
+              color="#D97706"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Approved' } })}
+            activeOpacity={0.7}
+          >
+            <StatBox
+              fourAcross={statsFourAcross}
+              icon="checkmark-circle"
+              label="Approved Loans"
+              value={approved}
+              color={colors.success}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ flex: 1, minWidth: statsFourAcross ? 100 : '48%' }}
+            onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Approved' } })}
+            activeOpacity={0.7}
+          >
+            <StatBox
+              fourAcross={statsFourAcross}
+              icon="flash"
+              label="Active Loans"
+              value={activeLoans}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
         </View>
 
         {actionNeeded > 0 && (
           <View style={styles.alertBanner}>
             <Ionicons name="alert-circle" size={18} color="#D97706" />
             <Text style={styles.alertText}>{actionNeeded} loan{actionNeeded > 1 ? 's' : ''} awaiting your action</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Loans')}>
+            <TouchableOpacity onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Pending' } })}>
               <Text style={styles.alertAction}>Review →</Text>
             </TouchableOpacity>
           </View>
@@ -122,11 +146,22 @@ export default function AdminDashboard({ navigation }) {
           </View>
         )}
 
-        <Text style={styles.section}>Recent Loans</Text>
-        {loans.slice(0, 6).map((loan) => {
+        <View style={[styles.sectionHeaderRow, { marginTop: 4 }]}>
+          <Text style={styles.sectionTitle}>Recent Loans</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'All' } })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontFamily: fonts.medium, fontSize: 13, color: colors.dark }}>View All</Text>
+            <Ionicons name="arrow-forward" size={14} color={colors.dark} />
+          </TouchableOpacity>
+        </View>
+
+        {loans.filter((l) => l.status !== 'rejected').slice(0, 6).map((loan) => {
           const hasPendingEmi = loan.emiChangeRequest && loan.emiChangeRequest.status === 'pending';
-          const isReturned = loan.status === 'returned' || loan.status === 'rejected';
-          const returnRemark = loan.returnReason || loan.rejectionReason || loan.rejectReason || loan.remark;
+          const isReturned = loan.status === 'returned';
+          const returnRemark = loan.returnReason || loan.remark;
 
           return (
             <TouchableOpacity key={loan.loanId} onPress={() =>
@@ -149,7 +184,7 @@ export default function AdminDashboard({ navigation }) {
                     <View style={styles.returnedRemarkHeader}>
                       <Ionicons name="alert-circle" size={16} color="#DC2626" />
                       <Text style={styles.returnedRemarkTitle}>
-                        {loan.status === 'returned' ? 'RETURNED REMARK' : 'REJECTION / RETURN REMARK'}
+                        RETURNED REMARK
                       </Text>
                     </View>
                     <Text style={styles.returnedRemarkBold}>
@@ -223,7 +258,7 @@ export default function AdminDashboard({ navigation }) {
           );
         })}
 
-        {loans.length === 0 && (
+        {loans.filter((l) => l.status !== 'rejected').length === 0 && (
           <Card style={styles.emptyCard}>
             <Ionicons name="document-outline" size={40} color={colors.border} />
             <Text style={styles.emptyText}>No loan applications yet</Text>
