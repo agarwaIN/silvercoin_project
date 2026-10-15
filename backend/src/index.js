@@ -17,6 +17,7 @@ const superadminRoutes = patchRouter(require('./routes/superadmin'));
 const adminRoutes = patchRouter(require('./routes/admin'));
 const employeeRoutes = patchRouter(require('./routes/employee'));
 const filesRoutes = patchRouter(require('./routes/files'));
+const notificationsRoutes = patchRouter(require('./routes/notifications'));
 
 const OPENAPI_PATH = path.join(__dirname, '..', 'openapi.yaml');
 
@@ -87,6 +88,7 @@ app.use('/api/superadmin', superadminRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/employee', employeeRoutes);
 app.use('/api/files', filesRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });

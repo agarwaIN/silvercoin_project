@@ -397,6 +397,63 @@ async function createAuditLog(log) {
   }));
 }
 
+async function createNotification(notification) {
+  await docClient.send(new PutCommand({
+    TableName: tableName('notifications'),
+    Item: notification,
+  }));
+}
+
+async function getNotificationById(notificationId) {
+  const result = await docClient.send(new GetCommand({
+    TableName: tableName('notifications'),
+    Key: { notificationId },
+  }));
+  return result.Item || null;
+}
+
+async function listNotificationsForRecipient(recipientId) {
+  try {
+    return await queryAll({
+      TableName: tableName('notifications'),
+      IndexName: 'recipientId-createdAt-index',
+      KeyConditionExpression: '#r = :r',
+      ExpressionAttributeNames: { '#r': 'recipientId' },
+      ExpressionAttributeValues: { ':r': recipientId },
+      ScanIndexForward: false,
+    });
+  } catch (err) {
+    if (err.name === 'ValidationException' || err.name === 'ResourceNotFoundException') {
+      const all = await scanAll(tableName('notifications')).catch(() => []);
+      return all
+        .filter(n => n.recipientId === recipientId || n.recipientRole === recipientId)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+    throw err;
+  }
+}
+
+async function listAllNotifications() {
+  return scanAll(tableName('notifications'));
+}
+
+async function updateNotification(notificationId, updates) {
+  const expr = buildUpdateExpr(updates);
+  if (!expr) return;
+  await docClient.send(new UpdateCommand({
+    TableName: tableName('notifications'),
+    Key: { notificationId },
+    ...expr,
+  }));
+}
+
+async function deleteNotification(notificationId) {
+  await docClient.send(new DeleteCommand({
+    TableName: tableName('notifications'),
+    Key: { notificationId },
+  }));
+}
+
 module.exports = {
   getUserById,
   getUserByEmail,
@@ -430,4 +487,10 @@ module.exports = {
   updateOtpSession,
   deleteOtpSession,
   createAuditLog,
+  createNotification,
+  getNotificationById,
+  listNotificationsForRecipient,
+  listAllNotifications,
+  updateNotification,
+  deleteNotification,
 };

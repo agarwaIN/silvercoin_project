@@ -148,6 +148,26 @@ async function ensureAllTables({ verbose = true } = {}) {
     ],
   });
 
+  await ensure(tableName('notifications'), {
+    ...billing,
+    AttributeDefinitions: [
+      { AttributeName: 'notificationId', AttributeType: 'S' },
+      { AttributeName: 'recipientId', AttributeType: 'S' },
+      { AttributeName: 'createdAt', AttributeType: 'S' },
+    ],
+    KeySchema: [{ AttributeName: 'notificationId', KeyType: 'HASH' }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: 'recipientId-createdAt-index',
+        KeySchema: [
+          { AttributeName: 'recipientId', KeyType: 'HASH' },
+          { AttributeName: 'createdAt', KeyType: 'RANGE' },
+        ],
+        Projection: { ProjectionType: 'ALL' },
+      },
+    ],
+  });
+
   log('DynamoDB tables ready:', Object.values(TABLE_DEFAULTS).join(', '));
 }
 

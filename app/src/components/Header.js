@@ -8,6 +8,7 @@ import { fonts, fontSize } from '../theme/typography';
 import DrawerMenuButton from './DrawerMenuButton';
 import SilvercoinLogoMark from './SilvercoinLogoMark';
 import { useHeaderBranding } from '../context/HeaderBrandingContext';
+import NotificationBell from './NotificationBell';
 
 export default function Header({
   title,
@@ -19,6 +20,7 @@ export default function Header({
   headerLogoSource,
   compact,
   showLogoMark,
+  hideNotificationBell = false,
 }) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -36,11 +38,25 @@ export default function Header({
     }
   };
 
+  const displayBell = !hideNotificationBell;
+
   const rightSlot = hideDrawerMenu ? (
-    rightAction ?? <View style={[styles.placeholder, compact && styles.placeholderCompact]} />
+    rightAction ? (
+      <View style={styles.rightRow}>
+        {displayBell ? <NotificationBell /> : null}
+        {rightAction}
+      </View>
+    ) : displayBell ? (
+      <View style={styles.rightRow}>
+        <NotificationBell />
+      </View>
+    ) : (
+      <View style={[styles.placeholder, compact && styles.placeholderCompact]} />
+    )
   ) : (
     <View style={styles.rightRow}>
       {rightAction}
+      {displayBell ? <NotificationBell /> : null}
       <DrawerMenuButton />
     </View>
   );

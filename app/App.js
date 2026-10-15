@@ -13,6 +13,7 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { NotificationProvider } from './src/context/NotificationContext';
 import { PopupProvider } from './src/context/PopupContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import CustomSplash from './src/components/CustomSplash';
@@ -77,9 +78,11 @@ export default function App() {
     <SafeAreaProvider>
       <PopupProvider>
         <AuthProvider>
-          <SessionGuard>
-            <AppContent />
-          </SessionGuard>
+          <NotificationProvider>
+            <SessionGuard>
+              <AppContent />
+            </SessionGuard>
+          </NotificationProvider>
         </AuthProvider>
       </PopupProvider>
     </SafeAreaProvider>

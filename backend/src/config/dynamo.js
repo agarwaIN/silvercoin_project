@@ -8,6 +8,7 @@ const TABLE_DEFAULTS = {
   counters: 'silvercoin-counters',
   otpSessions: 'silvercoin-otp-sessions',
   auditLogs: 'silvercoin-audit-logs',
+  notifications: 'silvercoin-notifications',
 };
 
 const TABLE_ENV_KEYS = {
@@ -17,6 +18,7 @@ const TABLE_ENV_KEYS = {
   counters: 'DYNAMODB_COUNTERS_TABLE',
   otpSessions: 'DYNAMODB_OTP_SESSIONS_TABLE',
   auditLogs: 'DYNAMODB_AUDIT_LOGS_TABLE',
+  notifications: 'DYNAMODB_NOTIFICATIONS_TABLE',
 };
 
 const DEFAULT_DYNAMODB_HOST = '127.0.0.1';

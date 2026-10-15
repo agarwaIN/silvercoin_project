@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
+import { useNotifications } from '../context/NotificationContext';
 
 const win = Dimensions.get('window');
 
@@ -49,6 +50,7 @@ export default function RightMenuModal({
 }) {
   const insets = useSafeAreaInsets();
   const topPad = Math.max(insets.top, 10);
+  const { unreadCount } = useNotifications();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -119,6 +121,13 @@ export default function RightMenuModal({
                   <Text style={styles.label} numberOfLines={1}>
                     {item.label}
                   </Text>
+                  {item.key === 'notifications' && unreadCount > 0 ? (
+                    <View style={styles.drawerBadge}>
+                      <Text style={styles.drawerBadgeText}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Text>
+                    </View>
+                  ) : null}
                   <Ionicons name="chevron-forward" size={16} color={colors.border} />
                 </TouchableOpacity>
               ))}
@@ -242,6 +251,22 @@ const styles = StyleSheet.create({
   labelFocused: {
     fontFamily: fonts.semiBold,
     color: colors.dark,
+  },
+  drawerBadge: {
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerBadgeText: {
+    color: colors.white,
+    fontFamily: fonts.bold || fonts.semiBold,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
   },
   logoutRule: {
     height: StyleSheet.hairlineWidth,

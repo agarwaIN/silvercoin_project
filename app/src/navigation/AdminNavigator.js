@@ -14,6 +14,7 @@ import OrganizationSettingsScreen from '../screens/admin/OrganizationSettingsScr
 import ReportsScreen from '../screens/admin/ReportsScreen';
 import RecoveryScreen from '../screens/admin/RecoveryScreen';
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
+import NotificationScreen from '../screens/common/NotificationScreen';
 import { useAuth } from '../context/AuthContext';
 import { usePopup } from '../context/PopupContext';
 
@@ -60,6 +61,12 @@ function AdminMainLayout() {
   const extraMenuItems = useMemo(
     () => [
       {
+        key: 'notifications',
+        label: 'Notifications',
+        icon: 'notifications-outline',
+        onPress: () => navigation.navigate('Notifications'),
+      },
+      {
         key: 'org',
         label: 'Organization',
         icon: 'business-outline',
@@ -90,6 +97,7 @@ export default function AdminNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Main" component={AdminMainLayout} />
+      <RootStack.Screen name="Notifications" component={NotificationScreen} />
       <RootStack.Screen name="OrganizationSettings" component={OrganizationSettingsScreen} />
       <RootStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     </RootStack.Navigator>

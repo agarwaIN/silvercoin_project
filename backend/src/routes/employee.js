@@ -9,6 +9,7 @@ const { generateAppId } = require('../services/loanIdService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl, deleteFile } = require('../services/localFileStorageService');
 const { ensureEmiSchedule, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected } = require('../services/emiService');
+const notificationService = require('../services/notificationService');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -303,7 +304,11 @@ router.post('/loans/:loanId/submit', async (req, res) => {
   }
 
   await db.updateLoan(loan.loanId, updates);
-  res.json(await db.getLoanById(loan.loanId));
+  const updatedLoan = await db.getLoanById(loan.loanId);
+  notificationService.notifyLoanSubmitted(updatedLoan, req.user).catch(err => {
+    console.warn('[Notification] Failed to emit loan submitted notification:', err.message);
+  });
+  res.json(updatedLoan);
 });
 
 
@@ -357,6 +362,9 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
       paymentDate: paymentDate || date,
       date: paymentDate || date,
     });
+    db.getLoanById(loan.loanId).then(l => {
+      if (l) notificationService.notifyEmiPaymentCollected(l, req.user, amount, result?.emi || { emiNumber: req.body?.emiNumber }).catch(() => {});
+    }).catch(() => {});
     res.json({ message: 'Payment recorded successfully', ...result });
   } catch (err) {
     console.error('Employee Pay EMI Error:', err);
@@ -744,6 +752,9 @@ router.post('/loans/:loanId/agreement', upload.single('agreement'), async (req, 
   await uploadBuffer(key, req.file.buffer);
   
   await db.updateLoan(loan.loanId, { agreementUri: key, status: 'agreement_submitted' });
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyAgreementSubmitted(l, req.user).catch(() => {});
+  }).catch(() => {});
   res.json({ message: 'Agreement uploaded', key });
 });
 
@@ -752,6 +763,9 @@ router.post('/loans/:loanId/owner-not-interested', async (req, res) => {
   if (!loan || loan.employeeId !== req.user.userId) return res.status(404).json({ message: 'Loan not found' });
   
   await db.updateLoan(loan.loanId, { status: 'owner_not_interested' });
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyOwnerNotInterested(l, req.user).catch(() => {});
+  }).catch(() => {});
   res.json({ message: 'Marked as not interested' });
 });
 
@@ -798,6 +812,10 @@ router.post('/loans/:loanId/emi-change-request', async (req, res) => {
       status: 'pending'
     }
   });
+
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyEmiChangeRequested(l, req.user, req.body).catch(() => {});
+  }).catch(() => {});
   
   res.json({ message: 'EMI change request submitted for approval' });
 });

@@ -12,6 +12,7 @@ import EmiChangeRequestScreen from '../screens/employee/EmiChangeRequestScreen';
 import EmployeeAccountScreen from '../screens/employee/EmployeeAccountScreen';
 import RecoveryScreen from '../screens/admin/RecoveryScreen';
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
+import NotificationScreen from '../screens/common/NotificationScreen';
 
 const RootStack = createStackNavigator();
 const MainStack = createStackNavigator();
@@ -45,6 +46,12 @@ function EmployeeMainLayout() {
   const extraMenuItems = useMemo(
     () => [
       {
+        key: 'notifications',
+        label: 'Notifications',
+        icon: 'notifications-outline',
+        onPress: () => navigation.navigate('Notifications'),
+      },
+      {
         key: 'account',
         label: 'Account',
         icon: 'person-outline',
@@ -69,6 +76,7 @@ export default function EmployeeNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Main" component={EmployeeMainLayout} />
+      <RootStack.Screen name="Notifications" component={NotificationScreen} />
       <RootStack.Screen name="Account" component={EmployeeAccountScreen} />
       <RootStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     </RootStack.Navigator>

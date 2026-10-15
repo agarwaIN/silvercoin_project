@@ -13,6 +13,7 @@ const { sendCredentials } = require('../services/emailService');
 const multer = require('multer');
 const { uploadBuffer, getPresignedUrl, deleteFile } = require('../services/localFileStorageService');
 const { ensureEmiSchedule, updateEmiScheduleDates, rescheduleEmis, closeEmisForForeclosure, buildLoanRecoveryItems, recordLoanPayment, hasFirstEmiBeenCollected, calculateForeclosureDetails } = require('../services/emiService');
+const notificationService = require('../services/notificationService');
 
 const employeeNameCache = new Map();
 
@@ -526,6 +527,9 @@ router.post('/loans/:loanId/initial-approve', async (req, res) => {
   const loan = await db.getLoanById(req.params.loanId);
   if (!loan) return res.status(404).json({ message: 'Loan not found' });
   await db.updateLoan(loan.loanId, { status: 'initially_approved', approvedAmount: req.body.approvedAmount });
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyLoanInitiallyApproved(l, req.user).catch(() => {});
+  }).catch(() => {});
   res.json({ message: 'Loan initially approved' });
 });
 
@@ -554,6 +558,9 @@ router.post('/loans/:loanId/return', async (req, res) => {
     rejectReason: reason,
     remark: reason,
   });
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyLoanReturned(l, req.user, reason).catch(() => {});
+  }).catch(() => {});
   res.json({ message: 'Loan returned to employee' });
 });
 
@@ -596,6 +603,9 @@ router.post('/loans/:loanId/disburse', async (req, res) => {
   await db.updateLoan(loan.loanId, updates);
   const updatedLoan = await db.getLoanById(loan.loanId);
   await ensureEmiSchedule(updatedLoan);
+  notificationService.notifyLoanDisbursed(updatedLoan, req.user, amount).catch(err => {
+    console.warn('[Notification] Failed to emit loan disbursed notification:', err.message);
+  });
   res.json({ message: 'Disbursement recorded', displayLoanId: updates.displayLoanId || loan.displayLoanId });
 });
 
@@ -619,6 +629,9 @@ router.post('/loans/:loanId/approve', async (req, res) => {
   });
   const updatedLoan = await db.getLoanById(loan.loanId);
   await ensureEmiSchedule(updatedLoan);
+  notificationService.notifyLoanApproved(updatedLoan, req.user).catch(err => {
+    console.warn('[Notification] Failed to emit loan approved notification:', err.message);
+  });
   res.json({ message: 'Loan fully approved' });
 });
 
@@ -634,6 +647,9 @@ router.post('/loans/:loanId/reject', async (req, res) => {
     remark: reason,
     changedFields: null 
   });
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyLoanRejected(l, req.user, reason).catch(() => {});
+  }).catch(() => {});
   res.json({ message: 'Loan rejected' });
 });
 
@@ -672,6 +688,9 @@ router.post('/loans/:loanId/approve-emi-change', async (req, res) => {
   });
 
   await rescheduleEmis(loan, loan.emiChangeRequest);
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyEmiChangeApproved(l, req.user).catch(() => {});
+  }).catch(() => {});
 
   res.json({ message: 'EMI change request approved' });
 });
@@ -687,6 +706,9 @@ router.post('/loans/:loanId/reject-emi-change', async (req, res) => {
       status: 'rejected'
     }
   });
+  db.getLoanById(loan.loanId).then(l => {
+    if (l) notificationService.notifyEmiChangeRejected(l, req.user).catch(() => {});
+  }).catch(() => {});
   res.json({ message: 'EMI change request rejected' });
 });
 
@@ -834,6 +856,9 @@ router.post('/loans/:loanId/foreclose', async (req, res) => {
     });
 
     await closeEmisForForeclosure(loan.loanId, effectiveCloseDate, reason);
+    db.getLoanById(loan.loanId).then(l => {
+      if (l) notificationService.notifyLoanForeclosed(l, req.user, total).catch(() => {});
+    }).catch(() => {});
 
     res.json({
       message: 'Loan foreclosed and settled successfully',
