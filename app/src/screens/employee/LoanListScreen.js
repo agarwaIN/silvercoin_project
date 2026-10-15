@@ -17,7 +17,7 @@ import Card from '../../components/Card';
 import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { getLoans } from '../../api/employeeApi';
-import { formatDate, formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
+import { formatDate, formatDateTime, getLoanSubmissionInfo, getLoanSubmissionTimestamp, getLoanNumericSeq } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
 const FILTERS = ['All', 'In Progress', 'Pending', 'Approved', 'Rejected'];
@@ -36,9 +36,13 @@ export const sortLoansWithReturnedFirst = (items) => {
     const bRet = b.status === 'returned';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
-    const bDate = new Date(b.updatedAt || b.createdAt || 0);
-    const aDate = new Date(a.updatedAt || a.createdAt || 0);
-    return bDate - aDate;
+    const bTime = getLoanSubmissionTimestamp(b);
+    const aTime = getLoanSubmissionTimestamp(a);
+    if (bTime !== aTime) return bTime - aTime;
+    const bAlt = new Date(b.createdAt || b.updatedAt || 0).getTime();
+    const aAlt = new Date(a.createdAt || a.updatedAt || 0).getTime();
+    if (bAlt !== aAlt) return bAlt - aAlt;
+    return getLoanNumericSeq(b) - getLoanNumericSeq(a);
   });
 };
 

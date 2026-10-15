@@ -10,20 +10,9 @@ import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getLoans, getEmployees, getEmiThisMonth } from '../../api/adminApi';
-import { formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
+import { formatDateTime, getLoanSubmissionInfo, sortLoansByLatestSubmitted } from '../../utils/date';
 
-const sortLoansWithReturnedFirst = (items) => {
-  if (!Array.isArray(items)) return [];
-  return [...items].sort((a, b) => {
-    const aRet = a.status === 'returned';
-    const bRet = b.status === 'returned';
-    if (aRet && !bRet) return -1;
-    if (!aRet && bRet) return 1;
-    const bDate = new Date(b.updatedAt || b.createdAt || 0);
-    const aDate = new Date(a.updatedAt || a.createdAt || 0);
-    return bDate - aDate;
-  });
-};
+const sortLoansWithReturnedFirst = (items) => sortLoansByLatestSubmitted(items);
 
 export default function AdminDashboard({ navigation }) {
   const { width } = useWindowDimensions();

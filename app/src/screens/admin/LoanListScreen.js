@@ -18,7 +18,7 @@ import Card from '../../components/Card';
 import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { getLoans } from '../../api/adminApi';
-import { formatDate, formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
+import { formatDate, formatDateTime, getLoanSubmissionInfo, sortLoansByLatestSubmitted } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
 const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Rejected'];
@@ -30,18 +30,7 @@ const filterMap = {
   Rejected: ['rejected', 'returned'],
 };
 
-export const sortLoansWithReturnedFirst = (items) => {
-  if (!Array.isArray(items)) return [];
-  return [...items].sort((a, b) => {
-    const aRet = a.status === 'returned';
-    const bRet = b.status === 'returned';
-    if (aRet && !bRet) return -1;
-    if (!aRet && bRet) return 1;
-    const bDate = new Date(b.updatedAt || b.createdAt || 0);
-    const aDate = new Date(a.updatedAt || a.createdAt || 0);
-    return bDate - aDate;
-  });
-};
+export const sortLoansWithReturnedFirst = (items) => sortLoansByLatestSubmitted(items);
 
 export default function AdminLoanListScreen({ navigation, route }) {
   const [loans, setLoans] = useState([]);

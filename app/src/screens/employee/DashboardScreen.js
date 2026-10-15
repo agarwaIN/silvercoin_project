@@ -10,7 +10,7 @@ import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getLoans, getEmiThisMonth } from '../../api/employeeApi';
-import { formatDateTime, getLoanSubmissionInfo } from '../../utils/date';
+import { formatDateTime, getLoanSubmissionInfo, getLoanSubmissionTimestamp, getLoanNumericSeq } from '../../utils/date';
 
 const sortLoansWithReturnedFirst = (items) => {
   if (!Array.isArray(items)) return [];
@@ -19,9 +19,13 @@ const sortLoansWithReturnedFirst = (items) => {
     const bRet = b.status === 'returned';
     if (aRet && !bRet) return -1;
     if (!aRet && bRet) return 1;
-    const bDate = new Date(b.updatedAt || b.createdAt || 0);
-    const aDate = new Date(a.updatedAt || a.createdAt || 0);
-    return bDate - aDate;
+    const bTime = getLoanSubmissionTimestamp(b);
+    const aTime = getLoanSubmissionTimestamp(a);
+    if (bTime !== aTime) return bTime - aTime;
+    const bAlt = new Date(b.createdAt || b.updatedAt || 0).getTime();
+    const aAlt = new Date(a.createdAt || a.updatedAt || 0).getTime();
+    if (bAlt !== aAlt) return bAlt - aAlt;
+    return getLoanNumericSeq(b) - getLoanNumericSeq(a);
   });
 };
 

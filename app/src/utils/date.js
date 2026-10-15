@@ -156,3 +156,58 @@ export function getLoanSubmissionInfo(loan) {
   return { time, label };
 }
 
+/**
+ * Resolves the numeric submission timestamp (in ms) for any loan.
+ */
+export function getLoanSubmissionTimestamp(loan) {
+  if (!loan) return 0;
+  const rawTime = loan.submittedAt || loan.submissionDate;
+  if (rawTime) {
+    const t = new Date(rawTime).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (loan.status === 'draft') {
+    const t = new Date(loan.createdAt || loan.updatedAt || 0).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  if (loan.status === 'submitted' && loan.updatedAt) {
+    const t = new Date(loan.updatedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  const cTime = new Date(loan.createdAt || 0).getTime();
+  if (!isNaN(cTime) && cTime > 0) return cTime;
+  const uTime = new Date(loan.updatedAt || 0).getTime();
+  return isNaN(uTime) ? 0 : uTime;
+}
+
+/**
+ * Extracts numeric sequence from APP-X or SL-X for tie-breaking.
+ */
+export function getLoanNumericSeq(loan) {
+  if (!loan) return 0;
+  const str = String(loan.applicationNumber || loan.displayLoanId || loan.loanId || '');
+  const m = str.match(/\d+/);
+  return m ? parseInt(m[0], 10) : 0;
+}
+
+/**
+ * Sorts loans for Admin so that the most latest submitted loans appear at the top of the list,
+ * strictly by submission timestamp descending, and not according to app ID or loan ID.
+ */
+export function sortLoansByLatestSubmitted(items) {
+  if (!Array.isArray(items)) return [];
+  return [...items].sort((a, b) => {
+    const bTime = getLoanSubmissionTimestamp(b);
+    const aTime = getLoanSubmissionTimestamp(a);
+    if (bTime !== aTime) {
+      return bTime - aTime;
+    }
+    const bAlt = new Date(b.createdAt || b.updatedAt || 0).getTime();
+    const aAlt = new Date(a.createdAt || a.updatedAt || 0).getTime();
+    if (bAlt !== aAlt) {
+      return bAlt - aAlt;
+    }
+    return getLoanNumericSeq(b) - getLoanNumericSeq(a);
+  });
+}
+

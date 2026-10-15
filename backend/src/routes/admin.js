@@ -126,16 +126,53 @@ router.delete('/employees/:userId', async (req, res) => {
   res.json({ message: 'Employee deleted' });
 });
 
+function getLoanSubmissionTime(loan) {
+  if (!loan) return 0;
+  if (loan.submittedAt) {
+    const t = new Date(loan.submittedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (loan.submissionDate) {
+    const t = new Date(loan.submissionDate).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (loan.status === 'draft') {
+    const t = new Date(loan.createdAt || loan.updatedAt || 0).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  if (loan.status === 'submitted' && loan.updatedAt) {
+    const t = new Date(loan.updatedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  const c = new Date(loan.createdAt || 0).getTime();
+  if (!isNaN(c) && c > 0) return c;
+  const u = new Date(loan.updatedAt || 0).getTime();
+  return isNaN(u) ? 0 : u;
+}
+
+function getNumericSeq(loan) {
+  if (!loan) return 0;
+  const str = String(loan.applicationNumber || loan.displayLoanId || loan.loanId || '');
+  const m = str.match(/\d+/);
+  return m ? parseInt(m[0], 10) : 0;
+}
+
 router.get('/loans', async (req, res) => {
   try {
     const loans = await db.listLoansByAdmin(req.user.userId);
     const enriched = await Promise.all((loans || []).map(l => enrichLoanWithEmployeeName(l)));
     enriched.sort((a, b) => {
-      const aRet = a.status === 'returned' || a.status === 'rejected';
-      const bRet = b.status === 'returned' || b.status === 'rejected';
-      if (aRet && !bRet) return -1;
-      if (!aRet && bRet) return 1;
-      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+      const bTime = getLoanSubmissionTime(b);
+      const aTime = getLoanSubmissionTime(a);
+      if (bTime !== aTime) {
+        return bTime - aTime;
+      }
+      const bAlt = new Date(b.createdAt || b.updatedAt || 0).getTime();
+      const aAlt = new Date(a.createdAt || a.updatedAt || 0).getTime();
+      if (bAlt !== aAlt) {
+        return bAlt - aAlt;
+      }
+      return getNumericSeq(b) - getNumericSeq(a);
     });
     res.json(enriched);
   } catch (err) {
