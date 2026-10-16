@@ -40,18 +40,55 @@ async function ensureEmiSchedule(loan) {
 
     const principal = Number(loan.approvedAmount || loan.loanAmount || 0);
     const interestRate = Number(loan.interestRate || 2.15);
-    let emiAmount = Number(loan.emiAmount || loan.monthlyEmi || 0);
 
-    if ((!emiAmount || isNaN(emiAmount) || emiAmount <= 0) && principal > 0) {
-      const totalInterest = Math.round(principal * (interestRate / 100) * tenure);
-      const totalRepayable = principal + totalInterest;
-      emiAmount = Math.round(totalRepayable / tenure);
+    // Calculate approved total interest, total repayable, and regular EMI based on approved loan terms
+    let calculatedTotalInterest = 0;
+    let calculatedTotalRepayable = 0;
+    let calculatedEmi = 0;
+
+    if (principal > 0 && tenure > 0) {
+      calculatedTotalInterest = Math.round(principal * (interestRate / 100) * tenure);
+      calculatedTotalRepayable = principal + calculatedTotalInterest;
+      calculatedEmi = Math.round(calculatedTotalRepayable / tenure);
+    }
+
+    // Determine target monthly EMI according to approved terms:
+    // If loan.emiAmount matches the approved rate calculation within 5 rupees, use it.
+    // If a discrepancy exists (e.g. stale preliminary 2.15% rate = 14783 vs approved 2.099% = 14630),
+    // strictly use the calculated approved EMI!
+    let emiAmount = calculatedEmi;
+    if (loan.emiAmount && Number(loan.emiAmount) > 0) {
+      const explicitEmi = Number(loan.emiAmount);
+      if (calculatedEmi > 0 && Math.abs(explicitEmi - calculatedEmi) <= 5) {
+        emiAmount = Math.round(explicitEmi);
+      } else if (calculatedEmi > 0) {
+        emiAmount = calculatedEmi;
+      } else {
+        emiAmount = Math.round(explicitEmi);
+      }
+    }
+
+    const targetTotalRepayable = (loan.totalRepayable && Number(loan.totalRepayable) > 0 && Math.abs(Number(loan.totalRepayable) - calculatedTotalRepayable) <= (tenure * 2))
+      ? Number(loan.totalRepayable)
+      : calculatedTotalRepayable;
+
+    const targetTotalInterest = (loan.totalInterest && Number(loan.totalInterest) > 0 && Math.abs(Number(loan.totalInterest) - calculatedTotalInterest) <= (tenure * 2))
+      ? Number(loan.totalInterest)
+      : calculatedTotalInterest;
+
+    // Persist aligned terms to loan record in DB if any discrepancy exists
+    if (principal > 0 && (Number(loan.emiAmount) !== emiAmount || Number(loan.totalRepayable) !== targetTotalRepayable)) {
+      loan.emiAmount = emiAmount;
+      loan.totalInterest = targetTotalInterest;
+      loan.totalRepayable = targetTotalRepayable;
+      loan.tenureMonths = tenure;
+      loan.interestRate = interestRate;
       db.updateLoan(loan.loanId, {
         tenureMonths: tenure,
         emiAmount,
         interestRate,
-        totalInterest,
-        totalRepayable,
+        totalInterest: targetTotalInterest,
+        totalRepayable: targetTotalRepayable,
       }).catch(() => {});
     }
 
@@ -101,7 +138,7 @@ async function ensureEmiSchedule(loan) {
           } else {
             // Count matches tenure: reconcile amounts and due dates to approved terms
             const regularEmi = Math.round(emiAmount);
-            const totalRepayable = Number(loan.totalRepayable) || (regularEmi * tenure);
+            const totalRepayable = targetTotalRepayable || (regularEmi * tenure);
             const lastEmi = totalRepayable - (regularEmi * (tenure - 1));
 
             const rawStartDate = loan.emiStartDate || loan.loanStartDate;
@@ -138,10 +175,10 @@ async function ensureEmiSchedule(loan) {
           // Some EMIs already paid:
           const remainingTenure = Math.max(1, tenure - paidEmis.length);
           if (unpaidEmis.length !== remainingTenure) {
-            return await rescheduleEmis(loan, { tenureMonths: tenure, emiAmount, totalRepayable: loan.totalRepayable });
+            return await rescheduleEmis(loan, { tenureMonths: tenure, emiAmount, totalRepayable: targetTotalRepayable });
           } else {
             const regularEmi = Math.round(emiAmount);
-            const totalRepayable = Number(loan.totalRepayable) || 0;
+            const totalRepayable = targetTotalRepayable || 0;
             const paidSum = paidEmis.reduce((s, e) => s + Number(e.paidAmount || e.amount || 0), 0);
             const remainingRepayable = totalRepayable > 0 ? Math.max(0, totalRepayable - paidSum) : (regularEmi * unpaidEmis.length);
             const lastEmi = remainingRepayable - (regularEmi * (unpaidEmis.length - 1));

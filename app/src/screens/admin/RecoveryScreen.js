@@ -488,7 +488,11 @@ export default function RecoveryScreen({ navigation }) {
             const isPaid = emi.status === 'paid';
             const isOverdue = !isPaid && emi.dueDate && emi.dueDate < todayStr;
             const isDueNow = !isPaid && (!emi.dueDate || emi.dueDate === todayStr || emi.paymentId === unpaidEmis[0]?.paymentId);
-            const totalDue = (Number(emi.amount || 0) + Number(emi.penaltyAmount || 0)) - Number(emi.paidAmount || 0);
+            const approvedEmi = Number(selectedLoanForSchedule?.emiAmount || selectedLoanForSchedule?.monthlyEmi || 0);
+            const installmentAmt = (approvedEmi > 0 && !isPaid && Number(emi.paidAmount || 0) === 0)
+              ? approvedEmi
+              : Number(emi.amount || 0);
+            const totalDue = (installmentAmt + Number(emi.penaltyAmount || 0)) - Number(emi.paidAmount || 0);
 
             return (
               <View key={emi.paymentId || idx} style={styles.installmentCard}>
@@ -540,7 +544,7 @@ export default function RecoveryScreen({ navigation }) {
                 <View style={styles.instFinancialRow}>
                   <View style={styles.instFinancialCol}>
                     <Text style={styles.instFinancialLabel}>Installment Amount</Text>
-                    <Text style={styles.instFinancialVal}>₹{Number(emi.amount || 0).toLocaleString('en-IN')}</Text>
+                    <Text style={styles.instFinancialVal}>₹{installmentAmt.toLocaleString('en-IN')}</Text>
                   </View>
                   {Number(emi.penaltyAmount) > 0 ? (
                     <View style={styles.instFinancialCol}>

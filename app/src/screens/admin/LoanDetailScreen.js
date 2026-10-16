@@ -545,7 +545,11 @@ export default function LoanDetailScreen({ route, navigation }) {
             </View>
             <View style={styles.emiChangeBody}>
               {[...(loan.emis || [])].sort((a, b) => new Date(a?.dueDate || 0) - new Date(b?.dueDate || 0)).map((emi, idx) => {
-                const totalDue = Number(emi.amount) + Number(emi.penaltyAmount || 0);
+                const approvedEmi = Number(loan.emiAmount || 0);
+                const emiAmount = (approvedEmi > 0 && emi.status !== 'paid' && Number(emi.paidAmount || 0) === 0)
+                  ? approvedEmi
+                  : Number(emi.amount);
+                const totalDue = emiAmount + Number(emi.penaltyAmount || 0);
                 const isPaid = emi.status === 'paid';
                 const isForeclosed = emi.status === 'foreclosed';
                 return (
