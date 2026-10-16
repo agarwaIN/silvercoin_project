@@ -33,9 +33,31 @@ async function ensureEmiSchedule(loan) {
   if (!loan || !loan.loanId) return [];
 
   try {
+    let tenure = parseInt(loan.tenureMonths || loan.repaymentMonths || loan.tenure, 10);
+    if (!tenure || isNaN(tenure) || tenure <= 0 || tenure > 360) {
+      tenure = 12;
+    }
+
+    const principal = Number(loan.approvedAmount || loan.loanAmount || 0);
+    const interestRate = Number(loan.interestRate || 2.15);
+    let emiAmount = Number(loan.emiAmount || loan.monthlyEmi || 0);
+
+    if ((!emiAmount || isNaN(emiAmount) || emiAmount <= 0) && principal > 0) {
+      const totalInterest = Math.round(principal * (interestRate / 100) * tenure);
+      const totalRepayable = principal + totalInterest;
+      emiAmount = Math.round(totalRepayable / tenure);
+      db.updateLoan(loan.loanId, {
+        tenureMonths: tenure,
+        emiAmount,
+        interestRate,
+        totalInterest,
+        totalRepayable,
+      }).catch(() => {});
+    }
+
     const existing = await db.listEmiByLoan(loan.loanId);
     if (existing && existing.length > 0) {
-      // Reconcile and fix any erroneous penalties or statuses for EMIs paid on time
+      // 1. Reconcile and fix any erroneous penalties or statuses for EMIs paid on time
       let modified = false;
       for (const emi of existing) {
         if (Number(emi.paidAmount || 0) > 0 && emi.paidDate) {
@@ -62,29 +84,88 @@ async function ensureEmiSchedule(loan) {
           await db.updateLoan(loan.loanId, { status: 'completed' }).catch(() => {});
         }
       }
-      return existing;
-    }
 
-    let tenure = parseInt(loan.tenureMonths || loan.repaymentMonths || loan.tenure, 10);
-    if (!tenure || isNaN(tenure) || tenure <= 0 || tenure > 360) {
-      tenure = 12;
-    }
+      // 2. Reconcile unpaid EMIs with approved loan terms
+      if (emiAmount > 0 && tenure > 0) {
+        const sortedExisting = [...existing].sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+        const paidEmis = sortedExisting.filter(e => e.status === 'paid');
+        const unpaidEmis = sortedExisting.filter(e => e.status !== 'paid');
 
-    const principal = Number(loan.approvedAmount || loan.loanAmount || 0);
-    const interestRate = Number(loan.interestRate || 2.15);
-    let emiAmount = Number(loan.emiAmount || loan.monthlyEmi || 0);
+        if (paidEmis.length === 0) {
+          // If no EMIs have been paid yet, but existing count does not match the approved tenure
+          if (sortedExisting.length !== tenure) {
+            for (const emi of sortedExisting) {
+              await db.deleteEmiPayment(emi.paymentId).catch(() => {});
+            }
+            // Proceed to generate fresh schedule below!
+          } else {
+            // Count matches tenure: reconcile amounts and due dates to approved terms
+            const regularEmi = Math.round(emiAmount);
+            const totalRepayable = Number(loan.totalRepayable) || (regularEmi * tenure);
+            const lastEmi = totalRepayable - (regularEmi * (tenure - 1));
 
-    if ((!emiAmount || isNaN(emiAmount) || emiAmount <= 0) && principal > 0) {
-      const totalInterest = principal * (interestRate / 100) * tenure;
-      const totalRepayable = principal + totalInterest;
-      emiAmount = Math.round(totalRepayable / tenure);
-      db.updateLoan(loan.loanId, {
-        tenureMonths: tenure,
-        emiAmount,
-        interestRate,
-        totalInterest,
-        totalRepayable,
-      }).catch(() => {});
+            const rawStartDate = loan.emiStartDate || loan.loanStartDate;
+            const parsedStartDate = rawStartDate ? (parseDateInput(rawStartDate) || rawStartDate) : null;
+
+            for (let i = 0; i < unpaidEmis.length; i++) {
+              const emi = unpaidEmis[i];
+              const isLast = (i === tenure - 1);
+              const expectedAmount = isLast ? Math.max(0, lastEmi) : regularEmi;
+
+              const updates = {};
+              if (Number(emi.amount) !== expectedAmount) {
+                emi.amount = expectedAmount;
+                updates.amount = expectedAmount;
+              }
+
+              if (parsedStartDate) {
+                const expectedDueDate = (i === 0) ? parsedStartDate : addMonths(parsedStartDate, i);
+                if (emi.dueDate !== expectedDueDate) {
+                  emi.dueDate = expectedDueDate;
+                  updates.dueDate = expectedDueDate;
+                }
+              }
+
+              if (Object.keys(updates).length > 0) {
+                await db.updateEmiPayment(emi.paymentId, updates).catch(err => {
+                  console.warn(`Could not sync EMI ${emi.paymentId}:`, err.message);
+                });
+              }
+            }
+            return sortedExisting;
+          }
+        } else if (unpaidEmis.length > 0) {
+          // Some EMIs already paid:
+          const remainingTenure = Math.max(1, tenure - paidEmis.length);
+          if (unpaidEmis.length !== remainingTenure) {
+            return await rescheduleEmis(loan, { tenureMonths: tenure, emiAmount, totalRepayable: loan.totalRepayable });
+          } else {
+            const regularEmi = Math.round(emiAmount);
+            const totalRepayable = Number(loan.totalRepayable) || 0;
+            const paidSum = paidEmis.reduce((s, e) => s + Number(e.paidAmount || e.amount || 0), 0);
+            const remainingRepayable = totalRepayable > 0 ? Math.max(0, totalRepayable - paidSum) : (regularEmi * unpaidEmis.length);
+            const lastEmi = remainingRepayable - (regularEmi * (unpaidEmis.length - 1));
+
+            for (let i = 0; i < unpaidEmis.length; i++) {
+              const emi = unpaidEmis[i];
+              const isLast = (i === unpaidEmis.length - 1);
+              const expectedAmount = (isLast && totalRepayable > 0) ? Math.max(0, lastEmi) : regularEmi;
+
+              if (Number(emi.amount) !== expectedAmount) {
+                emi.amount = expectedAmount;
+                await db.updateEmiPayment(emi.paymentId, { amount: expectedAmount }).catch(err => {
+                  console.warn(`Could not sync unpaid EMI ${emi.paymentId}:`, err.message);
+                });
+              }
+            }
+            return sortedExisting;
+          }
+        } else {
+          return sortedExisting;
+        }
+      } else {
+        return existing;
+      }
     }
 
     if (!emiAmount || isNaN(emiAmount) || emiAmount <= 0) {
@@ -111,7 +192,9 @@ async function ensureEmiSchedule(loan) {
     const generatedEmis = [];
     for (let i = 0; i < tenure; i++) {
       const isLast = (i === tenure - 1);
-      const dueDate = addMonths(startDate, i + 1);
+      const dueDate = (loan.emiStartDate || loan.loanStartDate)
+        ? (i === 0 ? startDate : addMonths(startDate, i))
+        : addMonths(startDate, i + 1);
       const amount = isLast ? Math.max(0, lastEmi) : regularEmi;
       const paymentId = `${loan.loanId}-EMI-${String(i + 1).padStart(2, '0')}`;
 
@@ -177,8 +260,8 @@ async function updateEmiScheduleDates(loanId, newEmiStartDate) {
  */
 async function rescheduleEmis(loan, newTerms) {
   const currentEmis = await db.listEmiByLoan(loan.loanId);
-  const paidEmis = currentEmis.filter(e => e.status === 'paid');
-  const unpaidEmis = currentEmis.filter(e => e.status !== 'paid');
+  const paidEmis = (currentEmis || []).filter(e => e.status === 'paid').sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+  const unpaidEmis = (currentEmis || []).filter(e => e.status !== 'paid');
 
   // Remove unpaid EMIs
   for (const emi of unpaidEmis) {
@@ -189,27 +272,44 @@ async function rescheduleEmis(loan, newTerms) {
     }
   }
 
-  const newTenure = parseInt(newTerms.tenureMonths, 10) || 0;
+  const newTenure = parseInt(newTerms.tenureMonths || loan.tenureMonths, 10) || 0;
   const remainingTenure = Math.max(1, newTenure - paidEmis.length);
-  const newEmiAmount = Math.round(Number(newTerms.emiAmount || 0));
+  const newEmiAmount = Math.round(Number(newTerms.emiAmount || loan.emiAmount || 0));
 
-  // Next base date from last paid EMI or now
-  let baseDate = new Date().toISOString().slice(0, 10);
+  let baseDate = null;
+  let useStartOffset = false;
   if (paidEmis.length > 0) {
     baseDate = paidEmis[paidEmis.length - 1].dueDate;
+  } else {
+    const rawStart = loan.emiStartDate || loan.loanStartDate || loan.disbursementDate || newTerms.emiStartDate || new Date().toISOString().slice(0, 10);
+    baseDate = parseDateInput(rawStart) || rawStart;
+    useStartOffset = Boolean(loan.emiStartDate || newTerms.emiStartDate);
   }
+
+  const totalRepayable = Number(newTerms.totalRepayable || loan.totalRepayable || 0);
+  const paidSum = paidEmis.reduce((s, e) => s + Number(e.paidAmount || e.amount || 0), 0);
+  const remainingRepayable = totalRepayable > 0 ? Math.max(0, totalRepayable - paidSum) : (newEmiAmount * remainingTenure);
+  const lastEmi = remainingRepayable - (newEmiAmount * (remainingTenure - 1));
 
   const updatedEmis = [];
   for (let i = 0; i < remainingTenure; i++) {
     const emiIndex = paidEmis.length + i + 1;
     const paymentId = `${loan.loanId}-EMI-${String(emiIndex).padStart(2, '0')}`;
-    const dueDate = addMonths(baseDate, i + 1);
+    let dueDate;
+    if (paidEmis.length === 0 && useStartOffset) {
+      dueDate = (i === 0) ? baseDate : addMonths(baseDate, i);
+    } else {
+      dueDate = addMonths(baseDate, i + 1);
+    }
+
+    const isLast = (i === remainingTenure - 1);
+    const amount = (isLast && totalRepayable > 0) ? Math.max(0, lastEmi) : newEmiAmount;
 
     const emi = {
       paymentId,
       loanId: loan.loanId,
       dueDate,
-      amount: newEmiAmount,
+      amount,
       paidAmount: 0,
       penaltyAmount: 0,
       status: 'pending',

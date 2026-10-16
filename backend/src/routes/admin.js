@@ -724,7 +724,8 @@ router.post('/loans/:loanId/approve-emi-change', async (req, res) => {
     }
   });
 
-  await rescheduleEmis(loan, loan.emiChangeRequest);
+  const freshLoan = await db.getLoanById(loan.loanId);
+  await rescheduleEmis(freshLoan, freshLoan.emiChangeRequest);
   db.getLoanById(loan.loanId).then(l => {
     if (l) notificationService.notifyEmiChangeApproved(l, req.user).catch(() => {});
   }).catch(() => {});
@@ -944,7 +945,8 @@ router.post('/loans/:loanId/change-emi', async (req, res) => {
   };
 
   await db.updateLoan(loan.loanId, updates);
-  await rescheduleEmis(loan, updates);
+  const freshLoan = await db.getLoanById(loan.loanId);
+  await rescheduleEmis(freshLoan, updates);
 
   res.json({ message: 'Loan EMI terms updated and schedule recalculated successfully' });
 });

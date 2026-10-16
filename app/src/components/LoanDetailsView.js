@@ -174,7 +174,7 @@ export default function LoanDetailsView({ loan, onEditDates }) {
           
           <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#D1FAE5', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
-              <Text style={{ fontSize: 12, color: '#065F46', fontWeight: 'bold' }}>Final EMI</Text>
+              <Text style={{ fontSize: 12, color: '#065F46', fontWeight: 'bold' }}>Monthly EMI</Text>
               <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
             </View>
             {onEditDates && (!isLockedForEmployee || !isEmployee) && (
