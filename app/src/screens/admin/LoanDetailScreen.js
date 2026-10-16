@@ -528,7 +528,7 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {loan.emis && loan.emis.length > 0 && (
+        {['approved', 'active', 'completed', 'foreclosed'].includes(loan.status) && loan.emis && loan.emis.length > 0 && (
           <View
             onLayout={(e) => {
               if (rawParams.scrollToEmi) {

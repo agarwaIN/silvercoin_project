@@ -178,7 +178,7 @@ export default function LoanDetailScreen({ route }) {
         />
 
         {/* EMI Repayment Schedule */}
-        {loan.emis && loan.emis.length > 0 && (
+        {['approved', 'active', 'completed', 'foreclosed'].includes(loan.status) && loan.emis && loan.emis.length > 0 && (
           <View style={styles.emiCard}>
             <View style={styles.emiHeader}>
               <Ionicons name="calendar-outline" size={20} color="#15803D" />

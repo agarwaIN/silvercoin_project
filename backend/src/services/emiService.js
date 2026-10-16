@@ -32,6 +32,22 @@ function addMonths(dateStr, monthsToAdd) {
 async function ensureEmiSchedule(loan) {
   if (!loan || !loan.loanId) return [];
 
+  // EMI schedule must NOT be created or visible unless and until the admin completely approves the loan terms
+  const isApproved = ['approved', 'active', 'completed', 'foreclosed'].includes(loan.status);
+  if (!isApproved) {
+    try {
+      const existing = await db.listEmiByLoan(loan.loanId);
+      if (existing && existing.length > 0) {
+        for (const emi of existing) {
+          if (emi.status !== 'paid') {
+            await db.deleteEmiPayment(emi.paymentId).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {}
+    return [];
+  }
+
   try {
     let tenure = parseInt(loan.tenureMonths || loan.repaymentMonths || loan.tenure, 10);
     if (!tenure || isNaN(tenure) || tenure <= 0 || tenure > 360) {
