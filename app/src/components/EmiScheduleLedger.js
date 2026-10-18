@@ -39,6 +39,11 @@ export default function EmiScheduleLedger({
         const isOverdue = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate < todayStr;
         const isDueToday = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate === todayStr;
 
+        // Bounced installment detection: unpaid installment where a later installment has already been paid
+        const isBounced = !isPaid && !isForeclosed && sortedEmis.slice(idx + 1).some(
+          (laterEmi) => laterEmi.status === 'paid' || (Number(laterEmi.paidAmount || 0) > 0)
+        );
+
         const baseAmount = (approvedEmi > 0 && !isPaid && Number(emi.paidAmount || 0) === 0)
           ? approvedEmi
           : Number(emi.amount || 0);
@@ -80,11 +85,16 @@ export default function EmiScheduleLedger({
           badgeColor = '#7C3AED';
           badgeText = 'FORECLOSED';
           badgeIcon = 'ribbon';
+        } else if (isBounced) {
+          badgeBg = '#FFEDD5';
+          badgeColor = '#EA580C';
+          badgeText = isOverdue ? 'BOUNCED • OVERDUE' : 'BOUNCED';
+          badgeIcon = null; // Overdue icon removed per user instructions
         } else if (isOverdue) {
-          badgeBg = '#FEE2E2';
-          badgeColor = '#DC2626';
+          badgeBg = '#FFEDD5';
+          badgeColor = '#EA580C';
           badgeText = 'OVERDUE';
-          badgeIcon = 'alert-circle';
+          badgeIcon = null; // Overdue icon removed per user instructions
         } else if (isDueToday) {
           badgeBg = '#FFFBEB';
           badgeColor = '#D97706';
@@ -93,17 +103,24 @@ export default function EmiScheduleLedger({
         }
 
         return (
-          <View key={emi.paymentId || idx} style={styles.card}>
+          <View key={emi.paymentId || idx} style={[styles.card, isBounced && styles.cardBounced]}>
             {/* Top Row: Installment #, Due Date & Status Badge */}
             <View style={styles.headerRow}>
               <View style={styles.indexDueWrap}>
-                <View style={[styles.indexPill, isPaid && styles.indexPillPaid, isPartial && styles.indexPillPartial]}>
-                  <Text style={[styles.indexTxt, isPaid && styles.indexTxtPaid, isPartial && styles.indexTxtPartial]}>
+                <View style={[styles.indexPill, isOverdue ? styles.indexPillOverdue : styles.indexPillNormal]}>
+                  <Text style={[styles.indexTxt, isOverdue ? styles.indexTxtOverdue : styles.indexTxtNormal]}>
                     #{idx + 1}
                   </Text>
                 </View>
                 <View>
-                  <Text style={styles.dueTxt}>Due: {formatDate(emi.dueDate)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.dueTxt}>Due: {formatDate(emi.dueDate)}</Text>
+                    {isBounced && (
+                      <View style={styles.bouncedTag}>
+                        <Text style={styles.bouncedTagTxt}>Bounced</Text>
+                      </View>
+                    )}
+                  </View>
                   {isPaid && emi.paidDate ? (
                     <Text style={styles.paidDateTxt}>Completed on {formatDate(emi.paidDate)}</Text>
                   ) : null}
@@ -111,7 +128,7 @@ export default function EmiScheduleLedger({
               </View>
 
               <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
-                <Ionicons name={badgeIcon} size={11} color={badgeColor} />
+                {badgeIcon ? <Ionicons name={badgeIcon} size={11} color={badgeColor} style={{ marginRight: 3 }} /> : null}
                 <Text style={[styles.statusBadgeTxt, { color: badgeColor }]}>{badgeText}</Text>
               </View>
             </View>
@@ -244,6 +261,25 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  cardBounced: {
+    borderColor: '#FB923C', // subtle light orange boundary not too loud
+    borderWidth: 1.5,
+    backgroundColor: '#FFFDF9',
+  },
+  bouncedTag: {
+    backgroundColor: '#FFEDD5',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  bouncedTagTxt: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    color: '#EA580C',
+    letterSpacing: 0.3,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -259,26 +295,29 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  indexPillPaid: {
-    backgroundColor: '#DCFCE7',
+  indexPillOverdue: {
+    backgroundColor: '#FFEDD5',
+    borderColor: '#FED7AA',
+    borderWidth: 1,
   },
-  indexPillPartial: {
-    backgroundColor: '#FEF3C7',
+  indexPillNormal: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#BBF7D0',
+    borderWidth: 1,
   },
   indexTxt: {
     fontSize: 12,
+  },
+  indexTxtOverdue: {
+    color: '#EA580C', // Orange number for overdue installments
     fontFamily: fonts.bold,
-    color: '#334155',
   },
-  indexTxtPaid: {
-    color: '#15803D',
-  },
-  indexTxtPartial: {
-    color: '#B45309',
+  indexTxtNormal: {
+    color: '#15803D', // Green number for non-overdue installments
+    fontFamily: fonts.bold,
   },
   dueTxt: {
     fontSize: fontSize.sm,
