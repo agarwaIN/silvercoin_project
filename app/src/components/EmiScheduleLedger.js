@@ -1,0 +1,445 @@
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
+import { fonts, fontSize } from '../theme/typography';
+import { formatDate } from '../utils/date';
+
+/**
+ * EmiScheduleLedger Component
+ * Renders an interactive EMI repayment schedule with itemized payment history/ledger,
+ * showing every partial payment, UTR/receipt reference, mode, and date.
+ */
+export default function EmiScheduleLedger({
+  emis = [],
+  loan = {},
+  onPayEmi = null,
+  canCollect = false,
+}) {
+  if (!emis || emis.length === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Ionicons name="calendar-outline" size={36} color={colors.muted} />
+        <Text style={styles.emptyTxt}>No EMI schedule generated yet.</Text>
+      </View>
+    );
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const sortedEmis = [...emis].sort((a, b) => new Date(a?.dueDate || 0) - new Date(b?.dueDate || 0));
+
+  const approvedEmi = Number(loan?.approvedAmount ? loan?.emiAmount : loan?.emiAmount || 0);
+
+  return (
+    <View style={styles.container}>
+      {sortedEmis.map((emi, idx) => {
+        const isPaid = emi.status === 'paid';
+        const isForeclosed = emi.status === 'foreclosed';
+        const isPartial = emi.status === 'partial' || (!isPaid && Number(emi.paidAmount || 0) > 0);
+        const isOverdue = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate < todayStr;
+        const isDueToday = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate === todayStr;
+
+        const baseAmount = (approvedEmi > 0 && !isPaid && Number(emi.paidAmount || 0) === 0)
+          ? approvedEmi
+          : Number(emi.amount || 0);
+
+        const penalty = Number(emi.penaltyAmount || 0);
+        const totalRequired = baseAmount + penalty;
+        const paidAmount = Number(emi.paidAmount || 0);
+        const remainingDue = Math.max(0, totalRequired - paidAmount);
+
+        // Installment Payments Array
+        const paymentsList = Array.isArray(emi.payments) && emi.payments.length > 0
+          ? emi.payments
+          : (paidAmount > 0 ? [{
+              paymentInstallmentId: `${emi.paymentId}-P1`,
+              amount: paidAmount,
+              paymentMode: emi.paymentMode || 'Cash',
+              transactionRef: emi.transactionRef || emi.txnRef || '',
+              paidDate: emi.paidDate,
+            }] : []);
+
+        // Status Badge details
+        let badgeBg = '#F1F5F9';
+        let badgeColor = '#64748B';
+        let badgeText = 'PENDING';
+        let badgeIcon = 'calendar-outline';
+
+        if (isPaid) {
+          badgeBg = '#DCFCE7';
+          badgeColor = '#15803D';
+          badgeText = 'PAID';
+          badgeIcon = 'checkmark-circle';
+        } else if (isPartial) {
+          badgeBg = '#FEF3C7';
+          badgeColor = '#B45309';
+          badgeText = `PARTIAL • ₹${remainingDue.toLocaleString('en-IN')} LEFT`;
+          badgeIcon = 'pie-chart';
+        } else if (isForeclosed) {
+          badgeBg = '#F5F3FF';
+          badgeColor = '#7C3AED';
+          badgeText = 'FORECLOSED';
+          badgeIcon = 'ribbon';
+        } else if (isOverdue) {
+          badgeBg = '#FEE2E2';
+          badgeColor = '#DC2626';
+          badgeText = 'OVERDUE';
+          badgeIcon = 'alert-circle';
+        } else if (isDueToday) {
+          badgeBg = '#FFFBEB';
+          badgeColor = '#D97706';
+          badgeText = 'DUE TODAY';
+          badgeIcon = 'time';
+        }
+
+        return (
+          <View key={emi.paymentId || idx} style={styles.card}>
+            {/* Top Row: Installment #, Due Date & Status Badge */}
+            <View style={styles.headerRow}>
+              <View style={styles.indexDueWrap}>
+                <View style={[styles.indexPill, isPaid && styles.indexPillPaid, isPartial && styles.indexPillPartial]}>
+                  <Text style={[styles.indexTxt, isPaid && styles.indexTxtPaid, isPartial && styles.indexTxtPartial]}>
+                    #{idx + 1}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.dueTxt}>Due: {formatDate(emi.dueDate)}</Text>
+                  {isPaid && emi.paidDate ? (
+                    <Text style={styles.paidDateTxt}>Completed on {formatDate(emi.paidDate)}</Text>
+                  ) : null}
+                </View>
+              </View>
+
+              <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
+                <Ionicons name={badgeIcon} size={11} color={badgeColor} />
+                <Text style={[styles.statusBadgeTxt, { color: badgeColor }]}>{badgeText}</Text>
+              </View>
+            </View>
+
+            {/* Financial Overview Grid */}
+            <View style={styles.financialsGrid}>
+              <View style={styles.finCol}>
+                <Text style={styles.finLabel}>EMI Amount</Text>
+                <Text style={styles.finVal}>₹{baseAmount.toLocaleString('en-IN')}</Text>
+              </View>
+
+              {penalty > 0 ? (
+                <View style={styles.finCol}>
+                  <Text style={styles.finLabel}>Late Penalty</Text>
+                  <Text style={[styles.finVal, { color: colors.error }]}>+₹{penalty.toLocaleString('en-IN')}</Text>
+                </View>
+              ) : null}
+
+              {paidAmount > 0 ? (
+                <View style={styles.finCol}>
+                  <Text style={styles.finLabel}>{isPaid ? 'Total Collected' : 'Part Collected'}</Text>
+                  <Text style={[styles.finVal, { color: '#059669' }]}>
+                    ₹{paidAmount.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={[styles.finCol, { alignItems: 'flex-end' }]}>
+                <Text style={styles.finLabel}>{isPaid ? 'Final Status' : 'Remaining Due'}</Text>
+                <Text style={[styles.finVal, isPaid ? styles.finValPaid : styles.finValDue]}>
+                  {isPaid ? 'Fully Cleared' : `₹${remainingDue.toLocaleString('en-IN')}`}
+                </Text>
+              </View>
+            </View>
+
+            {/* Complete Payment Ledger Breakdown (UTR / Receipt Number / Mode / Date) */}
+            {paymentsList.length > 0 ? (
+              <View style={styles.ledgerContainer}>
+                <View style={styles.ledgerHeaderRow}>
+                  <Ionicons name="receipt-outline" size={13} color="#0369A1" />
+                  <Text style={styles.ledgerHeaderTitle}>
+                    Payment Ledger Receipts ({paymentsList.length} {paymentsList.length > 1 ? 'parts' : 'entry'}):
+                  </Text>
+                </View>
+
+                {paymentsList.map((p, pIdx) => {
+                  const mode = p.paymentMode || 'Cash';
+                  const isDigital = ['UPI', 'Bank', 'Bank Transfer'].includes(mode);
+                  const refLabel = isDigital ? 'UTR / Ref' : 'Receipt No';
+
+                  return (
+                    <View key={p.paymentInstallmentId || pIdx} style={styles.ledgerEntryRow}>
+                      <View style={styles.ledgerEntryLeft}>
+                        <View style={styles.partPill}>
+                          <Text style={styles.partPillTxt}>Part {pIdx + 1}</Text>
+                        </View>
+                        <Text style={styles.partAmountTxt}>
+                          ₹{Number(p.amount || 0).toLocaleString('en-IN')}
+                        </Text>
+                        <View style={styles.modeBadge}>
+                          <Text style={styles.modeBadgeTxt}>{mode}</Text>
+                        </View>
+                        <Text style={styles.partDateTxt}>
+                          {formatDate(p.paidDate)}
+                        </Text>
+                      </View>
+
+                      {p.transactionRef ? (
+                        <View style={styles.refBadge}>
+                          <Ionicons name="pricetag-outline" size={11} color="#0369A1" />
+                          <Text style={styles.refBadgeTxt}>
+                            {refLabel}: <Text style={{ fontFamily: fonts.bold }}>{p.transactionRef}</Text>
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {/* Action Row: Collect Payment or Pay Remaining */}
+            {!isPaid && !isForeclosed && canCollect && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.payBtn, isPartial && styles.payBtnPartial]}
+                  onPress={() => onPayEmi && onPayEmi(emi)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name={isPartial ? 'cash-outline' : 'card-outline'} size={15} color={colors.white} />
+                  <Text style={styles.payBtnTxt}>
+                    {isPartial
+                      ? `Pay Remaining Balance: ₹${remainingDue.toLocaleString('en-IN')}`
+                      : `Collect EMI: ₹${remainingDue.toLocaleString('en-IN')}`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    gap: 12,
+  },
+  emptyWrap: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTxt: {
+    fontSize: fontSize.sm,
+    fontFamily: fonts.medium,
+    color: colors.muted,
+    marginTop: 8,
+  },
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  indexDueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  indexPill: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  indexPillPaid: {
+    backgroundColor: '#DCFCE7',
+  },
+  indexPillPartial: {
+    backgroundColor: '#FEF3C7',
+  },
+  indexTxt: {
+    fontSize: 12,
+    fontFamily: fonts.bold,
+    color: '#334155',
+  },
+  indexTxtPaid: {
+    color: '#15803D',
+  },
+  indexTxtPartial: {
+    color: '#B45309',
+  },
+  dueTxt: {
+    fontSize: fontSize.sm,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+  },
+  paidDateTxt: {
+    fontSize: 10,
+    fontFamily: fonts.regular,
+    color: '#059669',
+    marginTop: 1,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+  statusBadgeTxt: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    letterSpacing: 0.4,
+  },
+  financialsGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  finCol: {
+    flex: 1,
+  },
+  finLabel: {
+    fontSize: 10,
+    fontFamily: fonts.medium,
+    color: colors.muted,
+  },
+  finVal: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+    marginTop: 2,
+  },
+  finValPaid: {
+    color: '#15803D',
+    fontFamily: fonts.bold,
+  },
+  finValDue: {
+    color: colors.primary,
+    fontFamily: fonts.bold,
+  },
+  ledgerContainer: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    padding: 10,
+    marginTop: 4,
+    marginBottom: 8,
+    gap: 8,
+  },
+  ledgerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0F2FE',
+  },
+  ledgerHeaderTitle: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: '#0369A1',
+    textTransform: 'uppercase',
+  },
+  ledgerEntryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  ledgerEntryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  partPill: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  partPillTxt: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    color: '#0284C7',
+  },
+  partAmountTxt: {
+    fontSize: 12,
+    fontFamily: fonts.bold,
+    color: '#0F172A',
+  },
+  modeBadge: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  modeBadgeTxt: {
+    fontSize: 10,
+    fontFamily: fonts.medium,
+    color: '#334155',
+  },
+  partDateTxt: {
+    fontSize: 10,
+    fontFamily: fonts.regular,
+    color: colors.muted,
+  },
+  refBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 4,
+  },
+  refBadgeTxt: {
+    fontSize: 11,
+    fontFamily: fonts.medium,
+    color: '#0369A1',
+  },
+  actionRow: {
+    marginTop: 6,
+  },
+  payBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  payBtnPartial: {
+    backgroundColor: '#0D9488', // Teal accent for collecting remaining balance
+  },
+  payBtnTxt: {
+    fontSize: 12,
+    fontFamily: fonts.bold,
+    color: colors.white,
+  },
+});

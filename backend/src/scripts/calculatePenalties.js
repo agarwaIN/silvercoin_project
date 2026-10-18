@@ -29,14 +29,16 @@ async function calculatePenalties() {
         // penalty = EMI amount * (penaltyRate / 100) * diffDays
         
         const penaltyRate = loan.penaltyRate || 0.1; // Default 0.1% per day
-        const baseAmount = Number(emi.amount) || 0;
+        const baseAmount = Math.max(0, Number(emi.amount || 0) - Number(emi.paidAmount || 0));
+        if (baseAmount <= 0) continue;
         const penaltyAmount = Math.round(baseAmount * (penaltyRate / 100) * diffDays);
 
         // Only update if penalty changed significantly (to avoid unnecessary writes)
         if (penaltyAmount > (emi.penaltyAmount || 0)) {
+          const newStatus = Number(emi.paidAmount || 0) > 0 ? 'partial' : 'overdue';
           await db.updateEmiPayment(emi.paymentId, {
             penaltyAmount,
-            status: 'overdue'
+            status: newStatus
           });
           penaltyCount++;
         }

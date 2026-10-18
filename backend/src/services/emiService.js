@@ -805,9 +805,10 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     }
 
     let applicablePenalty = 0;
-    if (daysLate > 3) {
+    const unpaidPrincipal = Math.max(0, Number(emi.amount || 0) - Number(emi.paidAmount || 0));
+    if (daysLate > 3 && unpaidPrincipal > 0) {
       const penaltyRate = Number(loan?.penaltyRate || 0.1);
-      applicablePenalty = Math.round(Number(emi.amount || 0) * (penaltyRate / 100) * daysLate);
+      applicablePenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysLate);
     } else {
       applicablePenalty = 0;
     }
@@ -820,7 +821,32 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     const newPaidAmount = currentPaid + payForThisEmi;
     remainingAmount -= payForThisEmi;
 
-    const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partial';
+    const newStatus = newPaidAmount >= totalRequired ? 'paid' : (newPaidAmount > 0 ? 'partial' : 'pending');
+
+    // Build installment list maintaining complete itemized ledger history of partial payments
+    const existingPayments = Array.isArray(emi.payments) ? [...emi.payments] : [];
+    if (existingPayments.length === 0 && currentPaid > 0 && (emi.transactionRef || emi.txnRef)) {
+      existingPayments.push({
+        paymentInstallmentId: `${emi.paymentId}-P1`,
+        amount: currentPaid,
+        paymentMode: emi.paymentMode || 'Cash',
+        transactionRef: emi.transactionRef || emi.txnRef || '',
+        paidDate: emi.paidDate || emi.updatedAt || emi.createdAt,
+        markedBy: emi.markedBy || null,
+        createdAt: emi.paidDate || new Date().toISOString(),
+      });
+    }
+
+    const newInstallment = {
+      paymentInstallmentId: `${emi.paymentId}-P${existingPayments.length + 1}`,
+      amount: payForThisEmi,
+      paymentMode: mode,
+      transactionRef: rawTxnRef,
+      paidDate: effectivePaidDate,
+      markedBy: userId,
+      createdAt: new Date().toISOString(),
+    };
+    existingPayments.push(newInstallment);
 
     await db.updateEmiPayment(emi.paymentId, {
       paidAmount: newPaidAmount,
@@ -831,6 +857,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       paymentMode: mode,
       transactionRef: rawTxnRef,
       txnRef: rawTxnRef,
+      payments: existingPayments,
     });
 
     updatedPayments.push({
@@ -841,6 +868,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       paymentMode: mode,
       transactionRef: rawTxnRef,
       paidDate: effectivePaidDate,
+      payments: existingPayments,
     });
   }
 
@@ -848,6 +876,17 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
   if (remainingAmount > 0 && unpaidEmis.length > 0) {
     const lastEmi = unpaidEmis[unpaidEmis.length - 1];
     const newPaid = Number(lastEmi.paidAmount || 0) + remainingAmount;
+    const lastPayments = Array.isArray(lastEmi.payments) ? [...lastEmi.payments] : [];
+    lastPayments.push({
+      paymentInstallmentId: `${lastEmi.paymentId}-P${lastPayments.length + 1}`,
+      amount: remainingAmount,
+      paymentMode: mode,
+      transactionRef: rawTxnRef,
+      paidDate: effectivePaidDate,
+      markedBy: userId,
+      createdAt: new Date().toISOString(),
+    });
+
     await db.updateEmiPayment(lastEmi.paymentId, {
       paidAmount: newPaid,
       status: 'paid',
@@ -856,6 +895,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       paymentMode: mode,
       transactionRef: rawTxnRef,
       txnRef: rawTxnRef,
+      payments: lastPayments,
     });
   }
 
@@ -873,7 +913,17 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     await db.updateLoan(loanId, { status: 'completed' });
   }
 
-  return { success: true, updatedPayments };
+  return {
+    success: true,
+    updatedPayments,
+    emi: {
+      paymentId: initialPaymentId,
+      amount: Number(amount),
+      paymentMode: mode,
+      transactionRef: rawTxnRef,
+      paidDate: effectivePaidDate,
+    },
+  };
 }
 
 /**

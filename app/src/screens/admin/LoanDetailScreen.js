@@ -11,9 +11,10 @@ import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
 import { Ionicons } from '@expo/vector-icons';
-import { payEmi } from '../../api/adminApi';
 import { formatDate, getTodayFormatted } from '../../utils/date';
 import CalendarPicker from '../../components/CalendarPicker';
+import CollectEmiModal from '../../components/CollectEmiModal';
+import EmiScheduleLedger from '../../components/EmiScheduleLedger';
 
 export default function LoanDetailScreen({ route, navigation }) {
   const { height: windowHeight } = useWindowDimensions();
@@ -63,7 +64,7 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [disburseModalVisible, setDisburseModalVisible] = useState(false);
   const [disburseData, setDisburseData] = useState({ date: formatDate(new Date()), amount: '', bankName: '', transactionNumber: '', remark: '' });
   const [payEmiModalVisible, setPayEmiModalVisible] = useState(false);
-  const [payEmiData, setPayEmiData] = useState({ paymentId: '', amount: '', dueAmount: 0, paymentMode: 'Cash', txnRef: '', paymentDate: '' });
+  const [selectedPayEmi, setSelectedPayEmi] = useState(null);
   const [editDatesModalVisible, setEditDatesModalVisible] = useState(false);
   const [datesData, setDatesData] = useState({ disbursementDate: '', emiStartDate: '' });
   const [activeDatePicker, setActiveDatePicker] = useState(null);
@@ -177,32 +178,6 @@ export default function LoanDetailScreen({ route, navigation }) {
         load();
       }
     });
-  };
-
-  const handlePayEmi = async () => {
-    if (!payEmiData.amount || Number(payEmiData.amount) <= 0) {
-      showAlert('Error', 'Please enter a valid amount.');
-      return;
-    }
-    const mode = payEmiData.paymentMode || 'Cash';
-    const cleanRef = (payEmiData.txnRef || '').trim();
-    if (!cleanRef) {
-      showAlert('Required Field Missing', 'Receipt / Reference number is mandatory.');
-      return;
-    }
-    const payDate = payEmiData.paymentDate || getTodayFormatted();
-    setProcessing(true);
-    try {
-      await payEmi(loanId, payEmiData.paymentId, payEmiData.amount, mode, cleanRef, payDate);
-      setPayEmiModalVisible(false);
-      setActiveDatePicker(null);
-      await load();
-      showAlert('Success', 'EMI payment recorded successfully.');
-    } catch (error) {
-      showAlert('Error', error.response?.data?.message || 'Failed to record EMI payment.');
-    } finally {
-      setProcessing(false);
-    }
   };
 
   const handleReject = async () => {
@@ -537,68 +512,21 @@ export default function LoanDetailScreen({ route, navigation }) {
                 }, 250);
               }
             }}
-            style={[styles.emiChangeCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', marginTop: 0 }]}
+            style={{ marginTop: 16 }}
           >
-            <View style={styles.emiChangeHeader}>
-              <Ionicons name="calendar-outline" size={20} color="#15803D" />
-              <Text style={[styles.emiChangeTitle, { color: '#15803D' }]}>EMI Schedule</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Ionicons name="calendar" size={20} color={colors.primary} />
+              <Text style={{ fontFamily: fonts.bold, fontSize: 16, color: colors.dark }}>EMI Schedule & Repayment Ledger</Text>
             </View>
-            <View style={styles.emiChangeBody}>
-              {[...(loan.emis || [])].sort((a, b) => new Date(a?.dueDate || 0) - new Date(b?.dueDate || 0)).map((emi, idx) => {
-                const approvedEmi = Number(loan.emiAmount || 0);
-                const emiAmount = (approvedEmi > 0 && emi.status !== 'paid' && Number(emi.paidAmount || 0) === 0)
-                  ? approvedEmi
-                  : Number(emi.amount);
-                const totalDue = emiAmount + Number(emi.penaltyAmount || 0);
-                const isPaid = emi.status === 'paid';
-                const isForeclosed = emi.status === 'foreclosed';
-                return (
-                  <View key={emi.paymentId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: idx !== loan.emis.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark }}>Due: {formatDate(emi.dueDate)}</Text>
-                      <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: isForeclosed ? '#D97706' : colors.muted }}>
-                        Status: {emi.status.toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: isPaid ? colors.success : isForeclosed ? '#D97706' : colors.error }}>
-                        {isForeclosed ? 'Foreclosed' : `₹${totalDue.toLocaleString('en-IN')}`}
-                      </Text>
-                      {emi.paidAmount > 0 && (
-                        <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.success }}>
-                          Paid: ₹{Number(emi.paidAmount).toLocaleString('en-IN')}
-                        </Text>
-                      )}
-                      {emi.paidDate && emi.paidAmount > 0 && (
-                        <Text style={{ fontFamily: fonts.regular, fontSize: 10, color: '#047857' }}>
-                          Collected: {formatDate(emi.paidDate)}
-                        </Text>
-                      )}
-                      {emi.penaltyAmount > 0 && <Text style={{ fontFamily: fonts.regular, fontSize: 11, color: colors.error }}>Penalty: ₹{Number(emi.penaltyAmount).toLocaleString('en-IN')}</Text>}
-                    </View>
-                    {!isPaid && !isForeclosed && loan.status === 'active' && (
-                      <TouchableOpacity 
-                        style={{ marginLeft: 12, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-                        onPress={() => {
-                          setPayEmiData({
-                            paymentId: emi.paymentId,
-                            amount: (totalDue - (emi.paidAmount || 0)).toString(),
-                            dueAmount: totalDue - (emi.paidAmount || 0),
-                            paymentMode: 'Cash',
-                            txnRef: '',
-                            paymentDate: getTodayFormatted(),
-                          });
-                          setActiveDatePicker(null);
-                          setPayEmiModalVisible(true);
-                        }}
-                      >
-                        <Text style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.white }}>Pay</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
+            <EmiScheduleLedger
+              emis={loan.emis}
+              loan={loan}
+              canCollect={loan.status === 'active' || loan.status === 'approved'}
+              onPayEmi={(targetEmi) => {
+                setSelectedPayEmi(targetEmi);
+                setPayEmiModalVisible(true);
+              }}
+            />
           </View>
         )}
 
@@ -827,139 +755,20 @@ export default function LoanDetailScreen({ route, navigation }) {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={payEmiModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setPayEmiModalVisible(false); }}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
-        >
-          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
-            {activeDatePicker === 'payDate' ? (
-              <CalendarPicker
-                title="Select Payment Received Date"
-                value={payEmiData.paymentDate}
-                onSelect={(d) => {
-                  setPayEmiData({ ...payEmiData, paymentDate: d });
-                  setActiveDatePicker(null);
-                }}
-                onClose={() => setActiveDatePicker(null)}
-              />
-            ) : (
-              <ScrollView
-                ref={payEmiScrollRef}
-                style={{ flexShrink: 1 }}
-                showsVerticalScrollIndicator={true}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled={true}
-                contentContainerStyle={{ paddingBottom: 28 }}
-              >
-                <Text style={styles.modalTitle}>Receive Payment</Text>
-                <Text style={styles.modalSubtitle}>
-                  Enter the amount received from the customer. Remaining due: ₹{payEmiData.dueAmount}
-                </Text>
-
-                <TextInput
-                  style={styles.modalInputSmall}
-                  placeholder="Amount (₹)"
-                  placeholderTextColor={colors.placeholder || '#4B5563'}
-                  value={payEmiData.amount?.toString()}
-                  onChangeText={t => setPayEmiData({...payEmiData, amount: t})}
-                  keyboardType="numeric"
-                  onFocus={() => {
-                    setTimeout(() => payEmiScrollRef.current?.scrollTo({ y: 80, animated: true }), 150);
-                  }}
-                />
-
-                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 4, marginBottom: 6 }}>
-                  Payment Received Date * (DD-MM-YYYY)
-                </Text>
-                <TouchableOpacity
-                  style={styles.datePickerInput}
-                  onPress={() => setActiveDatePicker('payDate')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.datePickerValueText}>
-                    {formatDate(payEmiData.paymentDate) || 'DD-MM-YYYY'}
-                  </Text>
-                  <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
-                </TouchableOpacity>
-
-                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginTop: 4, marginBottom: 6 }}>
-                  Payment Mode *
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                  {['Cash', 'UPI', 'Bank'].map(mode => (
-                    <TouchableOpacity
-                      key={mode}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 10,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: payEmiData.paymentMode === mode ? colors.primary : colors.border,
-                        backgroundColor: payEmiData.paymentMode === mode ? colors.primary : colors.white,
-                        alignItems: 'center',
-                      }}
-                      onPress={() => setPayEmiData({ ...payEmiData, paymentMode: mode })}
-                    >
-                      <Text
-                        style={{
-                          fontFamily: fonts.semiBold,
-                          fontSize: 13,
-                          color: payEmiData.paymentMode === mode ? colors.white : colors.text,
-                        }}
-                      >
-                        {mode}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.text, marginBottom: 6 }}>
-                  Receipt / Reference No. * (Mandatory)
-                </Text>
-                <TextInput
-                  style={[styles.modalInputSmall, { marginBottom: 16 }]}
-                  placeholder={
-                    ['UPI', 'Bank'].includes(payEmiData.paymentMode)
-                      ? 'Enter mandatory UTR / Bank Reference No.'
-                      : 'Enter mandatory receipt / slip number'
-                  }
-                  placeholderTextColor={colors.placeholder || '#4B5563'}
-                  value={payEmiData.txnRef}
-                  onChangeText={t => setPayEmiData({ ...payEmiData, txnRef: t })}
-                  onFocus={() => {
-                    setTimeout(() => payEmiScrollRef.current?.scrollToEnd({ animated: true }), 150);
-                  }}
-                />
-
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={styles.modalCancel}
-                    onPress={() => {
-                      setActiveDatePicker(null);
-                      setPayEmiModalVisible(false);
-                    }}
-                    disabled={processing}
-                  >
-                    <Text style={styles.modalCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalSubmit, { backgroundColor: colors.primary }]}
-                    onPress={handlePayEmi}
-                    disabled={processing}
-                  >
-                    {processing ? (
-                      <ActivityIndicator color={colors.white} size="small" />
-                    ) : (
-                      <Text style={styles.modalSubmitText}>Confirm Payment</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* Unified Collect EMI Modal */}
+      <CollectEmiModal
+        visible={payEmiModalVisible}
+        onClose={() => {
+          setPayEmiModalVisible(false);
+          setSelectedPayEmi(null);
+        }}
+        loan={loan}
+        emi={selectedPayEmi}
+        userRole="admin"
+        onSuccess={async () => {
+          await load();
+        }}
+      />
 
       <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}>
         <KeyboardAvoidingView

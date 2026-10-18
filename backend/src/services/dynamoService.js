@@ -313,10 +313,14 @@ async function findEmiByTxnRef(txnRef) {
   if (!txnRef) return null;
   const items = await scanAll(tableName('emis'));
   const normalized = String(txnRef).trim().toLowerCase();
-  return items.find(e =>
-    (e.transactionRef && String(e.transactionRef).trim().toLowerCase() === normalized) ||
-    (e.txnRef && String(e.txnRef).trim().toLowerCase() === normalized)
-  ) || null;
+  return items.find(e => {
+    if (e.transactionRef && String(e.transactionRef).trim().toLowerCase() === normalized) return true;
+    if (e.txnRef && String(e.txnRef).trim().toLowerCase() === normalized) return true;
+    if (Array.isArray(e.payments)) {
+      return e.payments.some(p => p && p.transactionRef && String(p.transactionRef).trim().toLowerCase() === normalized);
+    }
+    return false;
+  }) || null;
 }
 
 async function findTransactionRefExists(txnRef) {
@@ -324,12 +328,16 @@ async function findTransactionRefExists(txnRef) {
   const normalized = String(txnRef).trim().toLowerCase();
   if (!normalized) return false;
 
-  // Check EMIs table
+  // Check EMIs table (both top-level and partial payments array)
   const emis = await scanAll(tableName('emis'));
-  const emiFound = emis.some(e =>
-    (e.transactionRef && String(e.transactionRef).trim().toLowerCase() === normalized) ||
-    (e.txnRef && String(e.txnRef).trim().toLowerCase() === normalized)
-  );
+  const emiFound = emis.some(e => {
+    if (e.transactionRef && String(e.transactionRef).trim().toLowerCase() === normalized) return true;
+    if (e.txnRef && String(e.txnRef).trim().toLowerCase() === normalized) return true;
+    if (Array.isArray(e.payments)) {
+      return e.payments.some(p => p && p.transactionRef && String(p.transactionRef).trim().toLowerCase() === normalized);
+    }
+    return false;
+  });
   if (emiFound) return true;
 
   // Check loan disbursements

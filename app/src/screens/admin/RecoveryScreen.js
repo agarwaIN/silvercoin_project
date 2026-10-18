@@ -25,6 +25,8 @@ import { usePopup } from '../../context/PopupContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatDate, getTodayFormatted } from '../../utils/date';
 import CalendarPicker from '../../components/CalendarPicker';
+import CollectEmiModal from '../../components/CollectEmiModal';
+import EmiScheduleLedger from '../../components/EmiScheduleLedger';
 
 const getOrdinalDay = (dayNum) => {
   if (!dayNum) return '';
@@ -46,11 +48,6 @@ export default function RecoveryScreen({ navigation }) {
 
   // Payment Modal State
   const [selectedItem, setSelectedItem] = useState(null);
-  const [payAmount, setPayAmount] = useState('');
-  const [payMode, setPayMode] = useState('Cash'); // 'Cash', 'UPI', 'Bank'
-  const [txnRef, setTxnRef] = useState('');
-  const [payDate, setPayDate] = useState(getTodayFormatted());
-  const [submitting, setSubmitting] = useState(false);
 
   // Selected Loan for EMI Schedule View on Recovery Page
   const [selectedScheduleLoan, setSelectedScheduleLoan] = useState(null);
@@ -259,60 +256,23 @@ export default function RecoveryScreen({ navigation }) {
   };
 
   const openPayModal = (item, targetEmi = null) => {
-    const netDue = targetEmi
-      ? (Number(targetEmi.amount || 0) + Number(targetEmi.penaltyAmount || 0) - Number(targetEmi.paidAmount || 0))
-      : (item.totalOverdue > 0 ? item.totalOverdue : item.dueAmount);
-
+    let resolvedEmi = targetEmi;
+    if (!resolvedEmi && Array.isArray(item.emis)) {
+      const unpaids = item.emis.filter((e) => e.status !== 'paid').sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      if (unpaids.length > 0) resolvedEmi = unpaids[0];
+    }
+    const target = resolvedEmi || {
+      paymentId: item.paymentId,
+      amount: Number(item.amount || 0),
+      penaltyAmount: Number(item.penaltyAmount || 0),
+      paidAmount: Number(item.isPartiallyPaid ? item.partialPaidAmount : (item.paidAmount || 0)),
+      dueDate: item.dueDate,
+      status: item.currentEmiStatus || (item.isPartiallyPaid ? 'partial' : 'pending'),
+    };
     setSelectedItem({
       ...item,
-      paymentId: targetEmi ? targetEmi.paymentId : item.paymentId,
-      dueAmount: Math.max(0, netDue),
-      targetEmi,
+      targetEmi: target,
     });
-    setPayAmount(String(Math.max(0, netDue) || item.amount || ''));
-    setPayMode('Cash');
-    setTxnRef('');
-    setPayDate(getTodayFormatted());
-    setActiveDatePicker(null);
-  };
-
-  const handleConfirmPay = async () => {
-    if (!selectedItem) return;
-    const amountNum = parseFloat(payAmount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      showAlert('Invalid Amount', 'Please enter a valid payment amount');
-      return;
-    }
-
-    // Strictly enforce Transaction/Receipt Reference for all payments
-    if (!txnRef || !txnRef.trim()) {
-      showAlert(
-        'Receipt Reference Mandatory',
-        'Receipt / Reference number is mandatory for all payments. Please enter a valid number to prevent duplicate entries.',
-      );
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const cleanRef = txnRef.trim();
-      if (isEmployee) {
-        await employeeApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef, payDate);
-      } else {
-        await adminApi.payEmi(selectedItem.loanId, selectedItem.paymentId, amountNum, payMode, cleanRef, payDate);
-      }
-      showAlert('Success', `Recorded payment of ₹${amountNum.toLocaleString('en-IN')} successfully.`);
-      setSelectedItem(null);
-      setActiveDatePicker(null);
-      await loadData();
-      if (selectedScheduleLoan) {
-        await loadFreshLoanSchedule(selectedScheduleLoan.loanId);
-      }
-    } catch (err) {
-      showAlert('Payment Error', err.response?.data?.message || err.message || 'Failed to record payment.');
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   const renderEmiScheduleView = () => {
@@ -477,124 +437,13 @@ export default function RecoveryScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* List of EMI Installments */}
-        {displayEmis.length === 0 ? (
-          <View style={styles.emptyScheduleBox}>
-            <Ionicons name="calendar-outline" size={36} color={colors.muted} />
-            <Text style={styles.emptyScheduleTxt}>No installments in this category</Text>
-          </View>
-        ) : (
-          displayEmis.map((emi, idx) => {
-            const isPaid = emi.status === 'paid';
-            const isOverdue = !isPaid && emi.dueDate && emi.dueDate < todayStr;
-            const isDueNow = !isPaid && (!emi.dueDate || emi.dueDate === todayStr || emi.paymentId === unpaidEmis[0]?.paymentId);
-            const approvedEmi = Number(selectedScheduleLoan?.emiAmount || selectedScheduleLoan?.monthlyEmi || 0);
-            const installmentAmt = (approvedEmi > 0 && !isPaid && Number(emi.paidAmount || 0) === 0)
-              ? approvedEmi
-              : Number(emi.amount || 0);
-            const totalDue = (installmentAmt + Number(emi.penaltyAmount || 0)) - Number(emi.paidAmount || 0);
-
-            return (
-              <View key={emi.paymentId || idx} style={styles.installmentCard}>
-                <View style={styles.installmentHeaderRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <View style={[styles.instNumCircle, isPaid && { backgroundColor: '#DCFCE7' }, isOverdue && { backgroundColor: '#FEE2E2' }]}>
-                      <Text style={[styles.instNumTxt, isPaid && { color: '#15803D' }, isOverdue && { color: colors.error }]}>
-                        #{idx + 1}
-                      </Text>
-                    </View>
-                    <View>
-                      <Text style={styles.instDueDate}>Due: {formatDate(emi.dueDate)}</Text>
-                      {emi.paidDate ? (
-                        <Text style={styles.instPaidDate}>Paid on: {formatDate(emi.paidDate)}</Text>
-                      ) : null}
-                    </View>
-                  </View>
-
-                  {/* Status Badge */}
-                  <View
-                    style={[
-                      styles.instBadge,
-                      isPaid && styles.instBadgePaid,
-                      isOverdue && styles.instBadgeOverdue,
-                      isDueNow && !isOverdue && styles.instBadgeDue,
-                      !isPaid && !isOverdue && !isDueNow && styles.instBadgeUpcoming,
-                    ]}
-                  >
-                    <Ionicons
-                      name={isPaid ? 'checkmark-circle' : isOverdue ? 'warning' : isDueNow ? 'time' : 'calendar-outline'}
-                      size={11}
-                      color={isPaid ? '#15803D' : isOverdue ? colors.error : isDueNow ? '#D97706' : colors.muted}
-                    />
-                    <Text
-                      style={[
-                        styles.instBadgeTxt,
-                        isPaid && { color: '#15803D' },
-                        isOverdue && { color: colors.error },
-                        isDueNow && !isOverdue && { color: '#B45309' },
-                        !isPaid && !isOverdue && !isDueNow && { color: colors.muted },
-                      ]}
-                    >
-                      {isPaid ? 'PAID' : isOverdue ? 'OVERDUE' : isDueNow ? 'DUE NOW' : 'UPCOMING'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Amounts Breakdown */}
-                <View style={styles.instFinancialRow}>
-                  <View style={styles.instFinancialCol}>
-                    <Text style={styles.instFinancialLabel}>Installment Amount</Text>
-                    <Text style={styles.instFinancialVal}>₹{installmentAmt.toLocaleString('en-IN')}</Text>
-                  </View>
-                  {Number(emi.penaltyAmount) > 0 ? (
-                    <View style={styles.instFinancialCol}>
-                      <Text style={styles.instFinancialLabel}>Late Penalty</Text>
-                      <Text style={[styles.instFinancialVal, { color: colors.error }]}>+₹{Number(emi.penaltyAmount).toLocaleString('en-IN')}</Text>
-                    </View>
-                  ) : null}
-                  {Number(emi.paidAmount) > 0 && !isPaid ? (
-                    <View style={styles.instFinancialCol}>
-                      <Text style={styles.instFinancialLabel}>Part Paid</Text>
-                      <Text style={[styles.instFinancialVal, { color: '#059669' }]}>-₹{Number(emi.paidAmount).toLocaleString('en-IN')}</Text>
-                    </View>
-                  ) : null}
-                  <View style={[styles.instFinancialCol, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.instFinancialLabel}>{isPaid ? 'Amount Paid' : 'Net Payable'}</Text>
-                    <Text style={[styles.instFinancialVal, { fontFamily: fonts.bold, color: isPaid ? '#15803D' : colors.dark }]}>
-                      ₹{(isPaid ? Number(emi.paidAmount || emi.amount || 0) : Math.max(0, totalDue)).toLocaleString('en-IN')}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Txn Reference if Paid */}
-                {isPaid && (emi.transactionRef || emi.txnRef) ? (
-                  <View style={styles.instRefRow}>
-                    <Ionicons name="receipt-outline" size={12} color={colors.muted} />
-                    <Text style={styles.instRefTxt}>
-                      Receipt / Ref: <Text style={{ fontFamily: fonts.medium, color: colors.dark }}>{emi.transactionRef || emi.txnRef}</Text>
-                      {emi.paymentMode ? ` • ${emi.paymentMode}` : ''}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {/* Collect Button if Unpaid */}
-                {!isPaid && (
-                  <View style={styles.instActionRow}>
-                    <TouchableOpacity
-                      style={styles.instCollectBtn}
-                      onPress={() => openPayModal(selectedScheduleLoan, emi)}
-                    >
-                      <Ionicons name="card-outline" size={14} color={colors.white} />
-                      <Text style={styles.instCollectBtnTxt}>
-                        Collect EMI (₹{Math.max(0, totalDue).toLocaleString('en-IN')})
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            );
-          })
-        )}
+        {/* Schedule List with Itemized Ledger */}
+        <EmiScheduleLedger
+          emis={displayEmis}
+          loan={selectedScheduleLoan}
+          canCollect={true}
+          onPayEmi={(targetEmi) => openPayModal(selectedScheduleLoan, targetEmi)}
+        />
 
         {/* View Full Loan Profile Link */}
         <TouchableOpacity
@@ -957,7 +806,7 @@ export default function RecoveryScreen({ navigation }) {
                     style={styles.callBtn}
                     onPress={() => handleCall(item.borrowerMobile)}
                   >
-                    <Ionicons name="call" size={14} color="#059669" />
+                    <Ionicons name="call" size={13} color="#059669" />
                     <Text style={styles.callBtnTxt}>Call</Text>
                   </TouchableOpacity>
 
@@ -965,16 +814,26 @@ export default function RecoveryScreen({ navigation }) {
                     style={styles.waBtn}
                     onPress={() => handleWhatsApp(item.borrowerMobile, item)}
                   >
-                    <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
-                    <Text style={styles.waBtnTxt}>WhatsApp</Text>
+                    <Ionicons name="logo-whatsapp" size={13} color="#16A34A" />
+                    <Text style={styles.waBtnTxt}>WA</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.scheduleBtn}
+                    onPress={() => handleOpenEmiSchedule(item)}
+                  >
+                    <Ionicons name="calendar-outline" size={13} color="#1D4ED8" />
+                    <Text style={styles.scheduleBtnTxt}>Ledger</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.collectBtn}
-                    onPress={() => handleOpenEmiSchedule(item)}
+                    onPress={() => openPayModal(item)}
                   >
-                    <Ionicons name="calendar-outline" size={15} color={colors.white} />
-                    <Text style={styles.collectBtnTxt}>Collect EMI</Text>
+                    <Ionicons name="card-outline" size={14} color={colors.white} />
+                    <Text style={styles.collectBtnTxt}>
+                      {item.isPartiallyPaid ? `Pay Left: ₹${Number(item.dueAmount || 0).toLocaleString('en-IN')}` : 'Collect'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </Card>
@@ -994,211 +853,20 @@ export default function RecoveryScreen({ navigation }) {
       </View>
       )}
 
-      {/* Collect Payment Modal */}
-      <Modal visible={!!selectedItem} transparent animationType="slide" onRequestClose={() => { setActiveDatePicker(null); setSelectedItem(null); }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {activeDatePicker === 'recoveryPayDate' ? (
-              <CalendarPicker
-                title="Select Payment Received Date"
-                value={payDate}
-                onSelect={(d) => {
-                  setPayDate(d);
-                  setActiveDatePicker(null);
-                }}
-                onClose={() => setActiveDatePicker(null)}
-              />
-            ) : (
-              <>
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Record EMI Payment</Text>
-                <Text style={styles.modalSub}>
-                  {selectedItem?.borrowerName} • {selectedItem?.displayLoanId}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setSelectedItem(null)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={22} color={colors.muted} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Financial Overview in Modal */}
-            <View style={styles.modalOverviewBox}>
-              <View style={styles.modalOverviewCol}>
-                <Text style={styles.modalOverviewLabel}>Monthly EMI</Text>
-                <Text style={styles.modalOverviewVal}>₹{Number(selectedItem?.amount || 0).toLocaleString('en-IN')}</Text>
-              </View>
-              <View style={styles.modalOverviewCol}>
-                <Text style={styles.modalOverviewLabel}>Current Due</Text>
-                <Text style={[styles.modalOverviewVal, { color: selectedItem?.totalOverdue > 0 ? colors.error : colors.dark }]}>
-                  ₹{Number(selectedItem?.dueAmount || selectedItem?.amount || 0).toLocaleString('en-IN')}
-                </Text>
-              </View>
-              <View style={styles.modalOverviewCol}>
-                <Text style={styles.modalOverviewLabel}>Loan Balance</Text>
-                <Text style={styles.modalOverviewVal}>₹{Number(selectedItem?.totalRemainingDue || 0).toLocaleString('en-IN')}</Text>
-              </View>
-            </View>
-
-            {/* Quick-fill preset chips */}
-            <Text style={styles.fieldLabel}>Quick Fill Amount:</Text>
-            <View style={styles.presetChipsRow}>
-              {(() => {
-                const fullEmi = Math.round(Number(selectedItem?.amount || 0));
-                const currentDue = Math.round(Number(selectedItem?.dueAmount || selectedItem?.amount || 0));
-                const totalOverdue = Math.round(Number(selectedItem?.totalOverdue || 0));
-                const advanceEmi = Math.round(fullEmi * 2);
-
-                const chips = [];
-
-                if (fullEmi > 0) {
-                  chips.push({
-                    id: 'full',
-                    label: `1 Full EMI: ₹${fullEmi.toLocaleString('en-IN')}`,
-                    value: fullEmi,
-                  });
-                }
-
-                if (currentDue > 0 && currentDue !== fullEmi) {
-                  chips.push({
-                    id: 'due',
-                    label: `Due EMI: ₹${currentDue.toLocaleString('en-IN')}`,
-                    value: currentDue,
-                  });
-                }
-
-                if (totalOverdue > 0 && totalOverdue !== currentDue && totalOverdue !== fullEmi) {
-                  chips.push({
-                    id: 'overdue',
-                    label: `All Overdue: ₹${totalOverdue.toLocaleString('en-IN')}`,
-                    value: totalOverdue,
-                    isOverdue: true,
-                  });
-                }
-
-                if (advanceEmi > 0) {
-                  chips.push({
-                    id: 'advance',
-                    label: `2 EMIs Advance: ₹${advanceEmi.toLocaleString('en-IN')}`,
-                    value: advanceEmi,
-                  });
-                }
-
-                return chips.map((chip) => {
-                  const isActive = payAmount === String(chip.value);
-                  const isOverdue = chip.isOverdue;
-
-                  return (
-                    <TouchableOpacity
-                      key={chip.id}
-                      style={[
-                        styles.presetChip,
-                        isOverdue && styles.presetChipOverdue,
-                        isActive && (isOverdue ? styles.presetChipOverdueActive : styles.presetChipActive),
-                      ]}
-                      onPress={() => setPayAmount(String(chip.value))}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.presetChipTxt,
-                          isOverdue && styles.presetChipOverdueTxt,
-                          isActive && (isOverdue ? styles.presetChipOverdueTxtActive : styles.presetChipTxtActive),
-                        ]}
-                      >
-                        {chip.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                });
-              })()}
-            </View>
-
-            <Input
-              label="Payment Amount (₹)"
-              value={payAmount}
-              onChangeText={setPayAmount}
-              keyboardType="numeric"
-              placeholder="Enter Collected Amount"
-            />
-
-            <Text style={styles.fieldLabel}>Payment Received Date * (DD-MM-YYYY)</Text>
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: colors.inputBg,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                marginBottom: 12,
-              }}
-              onPress={() => setActiveDatePicker('recoveryPayDate')}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontFamily: fonts.medium, fontSize: 14, color: colors.text }}>
-                {formatDate(payDate) || 'Select Payment Date'}
-              </Text>
-              <Ionicons name="calendar-outline" size={20} color={colors.dark || '#4B6B4E'} />
-            </TouchableOpacity>
-
-            <Text style={styles.fieldLabel}>Payment Mode *</Text>
-            <View style={styles.modeRow}>
-              {['Cash', 'UPI', 'Bank'].map((mode) => (
-                <TouchableOpacity
-                  key={mode}
-                  style={[styles.modeChip, payMode === mode && styles.modeChipActive]}
-                  onPress={() => setPayMode(mode)}
-                >
-                  <Text style={[styles.modeTxt, payMode === mode && styles.modeTxtActive]}>
-                    {mode}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Input
-              label="Receipt / Reference No. * (Mandatory)"
-              value={txnRef}
-              onChangeText={setTxnRef}
-              placeholder={
-                ['UPI', 'Bank'].includes(payMode)
-                  ? 'Enter Mandatory UTR / Bank Reference No.'
-                  : 'Enter Mandatory Receipt / Slip Number'
-              }
-            />
-
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => {
-                  setActiveDatePicker(null);
-                  setSelectedItem(null);
-                }}
-                disabled={submitting}
-              >
-                <Text style={styles.cancelTxt}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={handleConfirmPay}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator color={colors.white} size="small" />
-                ) : (
-                  <Text style={styles.confirmTxt}>Confirm Payment</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+      {/* Unified Collect EMI Modal */}
+      <CollectEmiModal
+        visible={!!selectedItem}
+        onClose={() => setSelectedItem(null)}
+        loan={selectedItem}
+        emi={selectedItem?.targetEmi || selectedItem}
+        userRole={isEmployee ? 'employee' : 'admin'}
+        onSuccess={async () => {
+          await loadData();
+          if (selectedScheduleLoan) {
+            await loadFreshLoanSchedule(selectedScheduleLoan.loanId);
+          }
+        }}
+      />
 
       {/* Edit Loan Dates Modal */}
       <Modal visible={editDatesModalVisible} transparent animationType="fade" onRequestClose={() => { setActiveDatePicker(null); setEditDatesModalVisible(false); }}>
@@ -1457,6 +1125,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCFCE7',
   },
   waBtnTxt: { fontFamily: fonts.semiBold, fontSize: 11, color: '#15803D' },
+  scheduleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  scheduleBtnTxt: { fontFamily: fonts.semiBold, fontSize: 11, color: '#1D4ED8' },
   collectBtn: {
     flex: 1,
     flexDirection: 'row',
