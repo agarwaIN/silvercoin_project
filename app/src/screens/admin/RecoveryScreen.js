@@ -477,395 +477,380 @@ export default function RecoveryScreen({ navigation }) {
         renderEmiScheduleView()
       ) : (
 
-      <View style={styles.container}>
-        {/* Metrics Banner (Overdue, Advance/Upcoming, Total Balance) */}
-        <View style={styles.metricsRow}>
-          <View style={[styles.metricCard, { borderLeftColor: colors.error }]}>
-            <View style={styles.metricHeaderRow}>
-              <Text style={[styles.metricLabel, { color: colors.error }]}>Overdue</Text>
+        <View style={styles.container}>
+          {/* Metrics Banner (Overdue, Advance/Upcoming, Total Balance) */}
+          <View style={styles.metricsRow}>
+            <View style={[styles.metricCard, { borderLeftColor: colors.error }]}>
+              <View style={styles.metricHeaderRow}>
+                <Ionicons name="alert-circle" size={16} color={colors.error} />
+                <Text style={styles.metricLabel}>Overdue</Text>
+              </View>
+              <Text style={[styles.metricValue, { color: colors.error }]}>
+                ₹{totalOverdueAmount.toLocaleString('en-IN')}
+              </Text>
+              <Text style={styles.metricSub}>{overdueItems.length} Loans</Text>
             </View>
-            <Text style={[styles.metricValue, { color: colors.error }]}>
-              ₹{totalOverdueAmount.toLocaleString('en-IN')}
-            </Text>
-            <Text style={styles.metricSub}>{overdueItems.length} Loans</Text>
-          </View>
 
-          <View style={[styles.metricCard, { borderLeftColor: totalAdvanceCollected > 0 ? '#059669' : '#D97706' }]}>
-            <View style={styles.metricHeaderRow}>
-              <Ionicons
-                name={totalAdvanceCollected > 0 ? 'shield-checkmark' : 'calendar-outline'}
-                size={16}
-                color={totalAdvanceCollected > 0 ? '#059669' : '#D97706'}
-              />
-              <Text style={styles.metricLabel}>
-                {totalAdvanceCollected > 0 ? 'Advance Collected' : 'Upcoming Due'}
+            <View style={[styles.metricCard, { borderLeftColor: totalAdvanceCollected > 0 ? '#059669' : '#D97706' }]}>
+              <View style={styles.metricHeaderRow}>
+                <Ionicons
+                  name={totalAdvanceCollected > 0 ? 'shield-checkmark' : 'calendar-outline'}
+                  size={16}
+                  color={totalAdvanceCollected > 0 ? '#059669' : '#D97706'}
+                />
+                <Text style={styles.metricLabel}>
+                  {totalAdvanceCollected > 0 ? 'Advance Collected' : 'Upcoming Due'}
+                </Text>
+              </View>
+              <Text style={[styles.metricValue, { color: totalAdvanceCollected > 0 ? '#059669' : '#D97706' }]}>
+                ₹{(totalAdvanceCollected > 0 ? totalAdvanceCollected : upcomingItems.reduce((s, i) => s + (i.dueAmount || 0), 0)).toLocaleString('en-IN')}
+              </Text>
+              <Text style={styles.metricSub}>
+                {totalAdvanceCollected > 0 ? `${advanceItems.length} Loans in Advance` : `${upcomingItems.length} Loans`}
               </Text>
             </View>
-            <Text style={[styles.metricValue, { color: totalAdvanceCollected > 0 ? '#059669' : '#D97706' }]}>
-              ₹{(totalAdvanceCollected > 0 ? totalAdvanceCollected : upcomingItems.reduce((s, i) => s + (i.dueAmount || 0), 0)).toLocaleString('en-IN')}
-            </Text>
-            <Text style={styles.metricSub}>
-              {totalAdvanceCollected > 0 ? `${advanceItems.length} Loans in Advance` : `${upcomingItems.length} Loans`}
-            </Text>
-          </View>
 
-          <View style={[styles.metricCard, { borderLeftColor: colors.primary }]}>
-            <View style={styles.metricHeaderRow}>
-              <Ionicons name="wallet-outline" size={16} color={colors.primary} />
-              <Text style={styles.metricLabel}>Total Balance</Text>
+            <View style={[styles.metricCard, { borderLeftColor: colors.primary }]}>
+              <View style={styles.metricHeaderRow}>
+                <Ionicons name="wallet-outline" size={16} color={colors.primary} />
+                <Text style={styles.metricLabel}>Total Balance</Text>
+              </View>
+              <Text style={[styles.metricValue, { color: colors.primary }]}>
+                ₹{totalRemainingBalance.toLocaleString('en-IN')}
+              </Text>
+              <Text style={styles.metricSub}>{items.length} Active Loans</Text>
             </View>
-            <Text style={[styles.metricValue, { color: colors.primary }]}>
-              ₹{totalRemainingBalance.toLocaleString('en-IN')}
-            </Text>
-            <Text style={styles.metricSub}>{items.length} Active Loans</Text>
           </View>
-        </View>
 
-        {/* Search Bar */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={colors.muted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search Borrower, Mobile, Loan ID..."
-            placeholderTextColor={colors.muted}
-            value={search}
-            onChangeText={setSearch}
-          />
-          {search ? (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={18} color={colors.muted} />
+          {/* Search Bar */}
+          <View style={styles.searchBox}>
+            <Ionicons name="search" size={18} color={colors.muted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search Borrower, Mobile, Loan ID..."
+              placeholderTextColor={colors.muted}
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search ? (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Ionicons name="close-circle" size={18} color={colors.muted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Filter Tabs (All, Overdue, Upcoming) */}
+          <View style={styles.tabsRow}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'all' && styles.tabActive]}
+              onPress={() => setActiveTab('all')}
+            >
+              <Text style={[styles.tabTxt, activeTab === 'all' && styles.tabTxtActive]}>
+                All ({items.length})
+              </Text>
             </TouchableOpacity>
-          ) : null}
-        </View>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'overdue' && styles.tabActive]}
+              onPress={() => setActiveTab('overdue')}
+            >
+              <Text style={[styles.tabTxt, activeTab === 'overdue' && styles.tabTxtActive]}>
+                Overdue ({overdueItems.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'upcoming' && styles.tabActive]}
+              onPress={() => setActiveTab('upcoming')}
+            >
+              <Text style={[styles.tabTxt, activeTab === 'upcoming' && styles.tabTxtActive]}>
+                Upcoming ({upcomingItems.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* Filter Tabs (All, Overdue, Upcoming) */}
-        <View style={styles.tabsRow}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'all' && styles.tabActive]}
-            onPress={() => setActiveTab('all')}
-          >
-            <Text style={[styles.tabTxt, activeTab === 'all' && styles.tabTxtActive]}>
-              All ({items.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'overdue' && styles.tabActive]}
-            onPress={() => setActiveTab('overdue')}
-          >
-            <Text style={[styles.tabTxt, activeTab === 'overdue' && styles.tabTxtActive]}>
-              Overdue ({overdueItems.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'upcoming' && styles.tabActive]}
-            onPress={() => setActiveTab('upcoming')}
-          >
-            <Text style={[styles.tabTxt, activeTab === 'upcoming' && styles.tabTxtActive]}>
-              Upcoming ({upcomingItems.length})
-            </Text>
-          </TouchableOpacity>
-        </View>
+          {/* Recovery List */}
+          <FlatList
+            data={filteredItems}
+            keyExtractor={(item) => item.loanId || item.paymentId}
+            contentContainerStyle={styles.listContainer}
+            initialNumToRender={8}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />
+            }
+            renderItem={({ item }) => {
+              const isOverdue =
+                item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
+              const isAdvance = !isOverdue && item.totalAdvanceAmount > 0;
 
-        {/* Recovery List */}
-        <FlatList
-          data={filteredItems}
-          keyExtractor={(item) => item.loanId || item.paymentId}
-          contentContainerStyle={styles.listContainer}
-          initialNumToRender={8}
-          maxToRenderPerBatch={10}
-          windowSize={7}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.dark} />
-          }
-          renderItem={({ item }) => {
-            const isOverdue =
-              item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
-            const isAdvance = !isOverdue && item.totalAdvanceAmount > 0;
+              const progressPct =
+                item.totalCount && item.totalCount > 0
+                  ? Math.min(100, Math.round(((item.paidCount || 0) / item.totalCount) * 100))
+                  : 0;
 
-            const progressPct =
-              item.totalCount && item.totalCount > 0
-                ? Math.min(100, Math.round(((item.paidCount || 0) / item.totalCount) * 100))
-                : 0;
+              const monthlyEmiDayStr = item.dueDayNumber
+                ? `${getOrdinalDay(item.dueDayNumber)} of every month`
+                : item.dueDate
+                  ? `${getOrdinalDay(parseInt(item.dueDate.slice(8, 10), 10))} of every month`
+                  : 'Monthly';
 
-            const monthlyEmiDayStr = item.dueDayNumber
-              ? `${getOrdinalDay(item.dueDayNumber)} of every month`
-              : item.dueDate
-              ? `${getOrdinalDay(parseInt(item.dueDate.slice(8, 10), 10))} of every month`
-              : 'Monthly';
-
-            // Check if loan has any bounced EMI (unpaid while a later EMI was paid)
-            const hasBouncedEmi = Array.isArray(item.emis) && item.emis.some(
-              (e, eIdx, arr) => e.status !== 'paid' && arr.slice(eIdx + 1).some(later => later.status === 'paid' || Number(later.paidAmount || 0) > 0)
-            );
-
-            return (
-              <Card style={[styles.card, hasBouncedEmi && styles.cardBounced]}>
-                {/* Tappable Header & Body -> Navigates to Loan Details */}
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => handleCardPress(item)}
-                  style={styles.cardClickableArea}
-                >
-                  {/* Header: Borrower, Loan ID, and Status Badge */}
-                  <View style={styles.cardHeader}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <Text style={styles.borrowerName}>{item.borrowerName}</Text>
-                      <View style={styles.idAndDetailRow}>
-                        <View style={styles.loanIdBadge}>
-                          <Ionicons name="document-text-outline" size={12} color={colors.muted} />
-                          <Text style={styles.loanIdTxt}>{item.displayLoanId || item.loanId}</Text>
-                        </View>
-                        <View style={styles.viewDetailsHint}>
-                          <Text style={styles.viewDetailsHintTxt}>Details</Text>
-                          <Ionicons name="chevron-forward" size={11} color={colors.primary} />
+              return (
+                <Card style={styles.card}>
+                  {/* Tappable Header & Body -> Navigates to Loan Details */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => handleCardPress(item)}
+                    style={styles.cardClickableArea}
+                  >
+                    {/* Header: Borrower, Loan ID, and Status Badge */}
+                    <View style={styles.cardHeader}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.borrowerName}>{item.borrowerName}</Text>
+                        <View style={styles.idAndDetailRow}>
+                          <View style={styles.loanIdBadge}>
+                            <Ionicons name="document-text-outline" size={12} color={colors.muted} />
+                            <Text style={styles.loanIdTxt}>{item.displayLoanId || item.loanId}</Text>
+                          </View>
+                          <View style={styles.viewDetailsHint}>
+                            <Text style={styles.viewDetailsHintTxt}>Details</Text>
+                            <Ionicons name="chevron-forward" size={11} color={colors.primary} />
+                          </View>
                         </View>
                       </View>
-                    </View>
-                    <View
-                      style={[
-                        styles.statusTag,
-                        {
-                          backgroundColor: isOverdue ? '#FEE2E2' : isAdvance ? '#D1FAE5' : item.isPartiallyPaid ? '#FEF3C7' : '#E0F2FE',
-                        },
-                      ]}
-                    >
-                      {!isOverdue && (
+                      <View
+                        style={[
+                          styles.statusTag,
+                          {
+                            backgroundColor: isOverdue ? '#FEE2E2' : isAdvance ? '#D1FAE5' : item.isPartiallyPaid ? '#FEF3C7' : '#E0F2FE',
+                          },
+                        ]}
+                      >
                         <Ionicons
-                          name={isAdvance ? 'shield-checkmark' : item.isPartiallyPaid ? 'pie-chart' : 'checkmark-circle-outline'}
+                          name={isOverdue ? 'alert-circle' : isAdvance ? 'shield-checkmark' : item.isPartiallyPaid ? 'pie-chart' : 'checkmark-circle-outline'}
                           size={12}
-                          color={isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7'}
+                          color={isOverdue ? colors.error : isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7'}
                           style={{ marginRight: 3 }}
                         />
-                      )}
-                      <Text
-                        style={[
-                          styles.statusTxt,
-                          {
-                            color: isOverdue ? colors.error : isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7',
-                          },
-                        ]}
+                        <Text
+                          style={[
+                            styles.statusTxt,
+                            {
+                              color: isOverdue ? colors.error : isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7',
+                            },
+                          ]}
+                        >
+                          {isOverdue
+                            ? item.overdueCount > 1
+                              ? `${item.overdueCount} EMIs Overdue`
+                              : item.daysOverdue > 0
+                                ? `Overdue (${item.daysOverdue}d)`
+                                : 'Overdue'
+                            : isAdvance
+                              ? `Advance (${item.advanceEmisCount || 1} EMIs)`
+                              : item.isPartiallyPaid
+                                ? 'Part Paid'
+                                : 'Upcoming'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Repayment Progress Bar */}
+                    {item.totalCount ? (
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressBarBg}>
+                          <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
+                        </View>
+                        <View style={styles.progressLabelRow}>
+                          <Text style={styles.progressText}>
+                            Repaid: {item.paidCount || 0} / {item.totalCount} EMIs
+                          </Text>
+                          <Text style={styles.progressPercent}>{progressPct}%</Text>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* Advance Payment Callout (if borrower has paid ahead) */}
+                    {isAdvance ? (
+                      <View style={styles.advanceCallout}>
+                        <Ionicons name="shield-checkmark" size={16} color="#059669" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.advanceCalloutTxt}>
+                            EMI Advance Paid: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.totalAdvanceAmount).toLocaleString('en-IN')}</Text>
+                            {item.advanceEmisCount > 0 ? ` (${item.advanceEmisCount} EMIs paid ahead)` : ''}
+                          </Text>
+                          <Text style={styles.advanceSubTxt}>
+                            Next Upcoming EMI Date: <Text style={{ fontFamily: fonts.semiBold }}>{formatDate(item.upcomingEmiDate || item.dueDate)}</Text>
+                            {' '}(No payment due until then)
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* Part Payment Callout (if borrower paid a partial amount on current EMI) */}
+                    {item.isPartiallyPaid ? (
+                      <View style={styles.partPaymentCallout}>
+                        <Ionicons name="pie-chart-outline" size={15} color="#D97706" />
+                        <Text style={styles.partPaymentCalloutTxt}>
+                          Part Payment Recorded: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.partialPaidAmount || 0).toLocaleString('en-IN')}</Text>
+                          {' '}| Remaining for this EMI: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.dueAmount || 0).toLocaleString('en-IN')}</Text>
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {/* Disbursement, Opening Date & Recurring Monthly Payment Cycle */}
+                    <View style={styles.scheduleInfoBox}>
+                      <View style={styles.scheduleItem}>
+                        <Text style={styles.scheduleLabel}>Disbursed On</Text>
+                        <Text style={styles.scheduleVal}>{formatDate(item.disbursementDate) || '—'}</Text>
+                      </View>
+                      <View style={styles.scheduleDivider} />
+                      <View style={styles.scheduleItem}>
+                        <Text style={styles.scheduleLabel}>EMI Opening Date</Text>
+                        <Text style={styles.scheduleVal}>{formatDate(item.emiOpeningDate) || '—'}</Text>
+                      </View>
+                      <View style={styles.scheduleDivider} />
+                      <View style={styles.scheduleItem}>
+                        <Text style={styles.scheduleLabel}>Monthly Due Day</Text>
+                        <Text style={[styles.scheduleVal, { color: colors.primary, fontFamily: fonts.bold }]}>
+                          {monthlyEmiDayStr}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.editDatesPillBtn}
+                        onPress={(e) => {
+                          e?.stopPropagation?.();
+                          handleOpenEditDates(item);
+                        }}
                       >
-                        {isOverdue
-                          ? item.overdueCount > 1
-                            ? `${item.overdueCount} EMIs Overdue`
-                            : item.daysOverdue > 0
-                            ? `Overdue (${item.daysOverdue}d)`
-                            : 'Overdue'
-                          : isAdvance
-                          ? `Advance (${item.advanceEmisCount || 1} EMIs)`
-                          : item.isPartiallyPaid
-                          ? 'Part Paid'
-                          : 'Upcoming'}
-                      </Text>
+                        <Ionicons name="pencil" size={11} color="#047857" />
+                        <Text style={styles.editDatesPillTxt}>Edit</Text>
+                      </TouchableOpacity>
                     </View>
-                  </View>
 
-                  {/* Repayment Progress Bar */}
-                  {item.totalCount ? (
-                    <View style={styles.progressContainer}>
-                      <View style={styles.progressBarBg}>
-                        <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
-                      </View>
-                      <View style={styles.progressLabelRow}>
-                        <Text style={styles.progressText}>
-                          Repaid: {item.paidCount || 0} / {item.totalCount} EMIs
-                        </Text>
-                        <Text style={styles.progressPercent}>{progressPct}%</Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {/* Advance Payment Callout (if borrower has paid ahead) */}
-                  {isAdvance ? (
-                    <View style={styles.advanceCallout}>
-                      <Ionicons name="shield-checkmark" size={16} color="#059669" />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.advanceCalloutTxt}>
-                          EMI Advance Paid: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.totalAdvanceAmount).toLocaleString('en-IN')}</Text>
-                          {item.advanceEmisCount > 0 ? ` (${item.advanceEmisCount} EMIs paid ahead)` : ''}
-                        </Text>
-                        <Text style={styles.advanceSubTxt}>
-                          Next Upcoming EMI Date: <Text style={{ fontFamily: fonts.semiBold }}>{formatDate(item.upcomingEmiDate || item.dueDate)}</Text>
-                          {' '}(No payment due until then)
+                    {/* Overdue Warning Callout */}
+                    {item.totalOverdue > 0 ? (
+                      <View style={styles.overdueCallout}>
+                        <Ionicons name="warning-outline" size={15} color={colors.error} />
+                        <Text style={styles.overdueCalloutTxt}>
+                          Total Overdue Dues:{' '}
+                          <Text style={{ fontFamily: fonts.bold }}>
+                            ₹{item.totalOverdue.toLocaleString('en-IN')}
+                          </Text>
+                          {item.penaltyAmount > 0 ? ` (incl. ₹${item.penaltyAmount} penalty)` : ''}
                         </Text>
                       </View>
-                    </View>
-                  ) : null}
+                    ) : null}
 
-                  {/* Part Payment Callout (if borrower paid a partial amount on current EMI) */}
-                  {item.isPartiallyPaid ? (
-                    <View style={styles.partPaymentCallout}>
-                      <Ionicons name="pie-chart-outline" size={15} color="#D97706" />
-                      <Text style={styles.partPaymentCalloutTxt}>
-                        Part Payment Recorded: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.partialPaidAmount || 0).toLocaleString('en-IN')}</Text>
-                        {' '}| Remaining for this EMI: <Text style={{ fontFamily: fonts.bold }}>₹{Number(item.dueAmount || 0).toLocaleString('en-IN')}</Text>
-                      </Text>
+                    {/* Financial Summary Grid */}
+                    <View style={styles.detailRow}>
+                      <View style={styles.detailCol}>
+                        <Text style={styles.detailLabel}>Next Due Date</Text>
+                        <Text style={styles.detailVal}>{formatDate(item.upcomingEmiDate || item.dueDate)}</Text>
+                      </View>
+                      <View style={styles.detailCol}>
+                        <Text style={styles.detailLabel}>Monthly EMI</Text>
+                        <Text style={styles.detailVal}>₹{Number(item.amount || 0).toLocaleString('en-IN')}</Text>
+                      </View>
+                      <View style={styles.detailCol}>
+                        <Text style={styles.detailLabel}>Current Due</Text>
+                        <Text
+                          style={[
+                            styles.detailVal,
+                            {
+                              color: isOverdue ? colors.error : isAdvance ? '#059669' : colors.dark,
+                              fontFamily: fonts.bold,
+                            },
+                          ]}
+                        >
+                          {isAdvance ? `₹0 (Paid Ahead)` : `₹${Number(item.dueAmount || item.amount || 0).toLocaleString('en-IN')}`}
+                        </Text>
+                      </View>
+                      <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
+                        <Text style={styles.detailLabel}>Total Balance</Text>
+                        <Text style={[styles.detailVal, { color: colors.primary, fontFamily: fonts.semiBold }]}>
+                          ₹{Number(item.totalRemainingDue || 0).toLocaleString('en-IN')}
+                        </Text>
+                      </View>
                     </View>
-                  ) : null}
 
-                  {/* Disbursement, Opening Date & Recurring Monthly Payment Cycle */}
-                  <View style={styles.scheduleInfoBox}>
-                    <View style={styles.scheduleItem}>
-                      <Text style={styles.scheduleLabel}>Disbursed On</Text>
-                      <Text style={styles.scheduleVal}>{formatDate(item.disbursementDate) || '—'}</Text>
-                    </View>
-                    <View style={styles.scheduleDivider} />
-                    <View style={styles.scheduleItem}>
-                      <Text style={styles.scheduleLabel}>EMI Opening Date</Text>
-                      <Text style={styles.scheduleVal}>{formatDate(item.emiOpeningDate) || '—'}</Text>
-                    </View>
-                    <View style={styles.scheduleDivider} />
-                    <View style={styles.scheduleItem}>
-                      <Text style={styles.scheduleLabel}>Monthly Due Day</Text>
-                      <Text style={[styles.scheduleVal, { color: colors.primary, fontFamily: fonts.bold }]}>
-                        {monthlyEmiDayStr}
-                      </Text>
-                    </View>
+                    {/* Last EMI Paid Date (if available) */}
+                    {item.lastPaidDate ? (
+                      <View style={styles.lastPaymentRow}>
+                        <Ionicons name="checkmark-circle" size={13} color="#059669" />
+                        <Text style={styles.lastPaymentTxt}>
+                          Last Payment: ₹{Number(item.lastPaidAmount || item.amount || 0).toLocaleString('en-IN')} on {formatDate(item.lastPaidDate)}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {/* Borrower Contact & Address */}
+                    {item.borrowerMobile ? (
+                      <View style={styles.contactRow}>
+                        <Ionicons name="call-outline" size={13} color={colors.muted} />
+                        <Text style={styles.mobileTxt}>{item.borrowerMobile}</Text>
+                        {item.borrowerAddress ? (
+                          <>
+                            <Text style={styles.bulletDot}>•</Text>
+                            <Text style={styles.addressTxt} numberOfLines={1}>
+                              {item.borrowerAddress}
+                            </Text>
+                          </>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+
+                  {/* Actions Row */}
+                  <View style={styles.actionsRow}>
                     <TouchableOpacity
-                      style={styles.editDatesPillBtn}
-                      onPress={(e) => {
-                        e?.stopPropagation?.();
-                        handleOpenEditDates(item);
-                      }}
+                      style={styles.callBtn}
+                      onPress={() => handleCall(item.borrowerMobile)}
                     >
-                      <Ionicons name="pencil" size={11} color="#047857" />
-                      <Text style={styles.editDatesPillTxt}>Edit</Text>
+                      <Ionicons name="call" size={13} color="#059669" />
+                      <Text style={styles.callBtnTxt}>Call</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.waBtn}
+                      onPress={() => handleWhatsApp(item.borrowerMobile, item)}
+                    >
+                      <Ionicons name="logo-whatsapp" size={13} color="#16A34A" />
+                      <Text style={styles.waBtnTxt}>WA</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.scheduleBtn}
+                      onPress={() => handleOpenEmiSchedule(item)}
+                    >
+                      <Ionicons name="calendar-outline" size={13} color="#1D4ED8" />
+                      <Text style={styles.scheduleBtnTxt}>Ledger</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.collectBtn}
+                      onPress={() => openPayModal(item)}
+                    >
+                      <Ionicons name="card-outline" size={14} color={colors.white} />
+                      <Text style={styles.collectBtnTxt}>
+                        {item.isPartiallyPaid ? `Pay Left: ₹${Number(item.dueAmount || 0).toLocaleString('en-IN')}` : 'Collect'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
-
-                  {/* Overdue Warning Callout (Overdue icon removed per user request) */}
-                  {item.totalOverdue > 0 ? (
-                    <View style={styles.overdueCallout}>
-                      <Text style={styles.overdueCalloutTxt}>
-                        Total Overdue Dues:{' '}
-                        <Text style={{ fontFamily: fonts.bold }}>
-                          ₹{item.totalOverdue.toLocaleString('en-IN')}
-                        </Text>
-                        {item.penaltyAmount > 0 ? ` (incl. ₹${item.penaltyAmount} penalty)` : ''}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {/* Bounced Installment Callout if detected */}
-                  {hasBouncedEmi ? (
-                    <View style={styles.bouncedCallout}>
-                      <Ionicons name="repeat" size={13} color="#C2410C" />
-                      <Text style={styles.bouncedCalloutTxt}>
-                        Bounced Installment: An earlier EMI was skipped while a later one was paid
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {/* Financial Summary Grid */}
-                  <View style={styles.detailRow}>
-                    <View style={styles.detailCol}>
-                      <Text style={styles.detailLabel}>Next Due Date</Text>
-                      <Text style={styles.detailVal}>{formatDate(item.upcomingEmiDate || item.dueDate)}</Text>
-                    </View>
-                    <View style={styles.detailCol}>
-                      <Text style={styles.detailLabel}>Monthly EMI</Text>
-                      <Text style={styles.detailVal}>₹{Number(item.amount || 0).toLocaleString('en-IN')}</Text>
-                    </View>
-                    <View style={styles.detailCol}>
-                      <Text style={styles.detailLabel}>Current Due</Text>
-                      <Text
-                        style={[
-                          styles.detailVal,
-                          {
-                            color: isOverdue ? colors.error : isAdvance ? '#059669' : colors.dark,
-                            fontFamily: fonts.bold,
-                          },
-                        ]}
-                      >
-                        {isAdvance ? `₹0 (Paid Ahead)` : `₹${Number(item.dueAmount || item.amount || 0).toLocaleString('en-IN')}`}
-                      </Text>
-                    </View>
-                    <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
-                      <Text style={styles.detailLabel}>Total Balance</Text>
-                      <Text style={[styles.detailVal, { color: colors.primary, fontFamily: fonts.semiBold }]}>
-                        ₹{Number(item.totalRemainingDue || 0).toLocaleString('en-IN')}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Last EMI Paid Date (if available) */}
-                  {item.lastPaidDate ? (
-                    <View style={styles.lastPaymentRow}>
-                      <Ionicons name="checkmark-circle" size={13} color="#059669" />
-                      <Text style={styles.lastPaymentTxt}>
-                        Last Payment: ₹{Number(item.lastPaidAmount || item.amount || 0).toLocaleString('en-IN')} on {formatDate(item.lastPaidDate)}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {/* Borrower Contact & Address */}
-                  {item.borrowerMobile ? (
-                    <View style={styles.contactRow}>
-                      <Ionicons name="call-outline" size={13} color={colors.muted} />
-                      <Text style={styles.mobileTxt}>{item.borrowerMobile}</Text>
-                      {item.borrowerAddress ? (
-                        <>
-                          <Text style={styles.bulletDot}>•</Text>
-                          <Text style={styles.addressTxt} numberOfLines={1}>
-                            {item.borrowerAddress}
-                          </Text>
-                        </>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
-
-                {/* Actions Row */}
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity
-                    style={styles.callBtn}
-                    onPress={() => handleCall(item.borrowerMobile)}
-                  >
-                    <Ionicons name="call" size={13} color="#059669" />
-                    <Text style={styles.callBtnTxt}>Call</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.waBtn}
-                    onPress={() => handleWhatsApp(item.borrowerMobile, item)}
-                  >
-                    <Ionicons name="logo-whatsapp" size={13} color="#16A34A" />
-                    <Text style={styles.waBtnTxt}>WA</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.scheduleBtn}
-                    onPress={() => handleOpenEmiSchedule(item)}
-                  >
-                    <Ionicons name="calendar-outline" size={13} color="#1D4ED8" />
-                    <Text style={styles.scheduleBtnTxt}>Ledger</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.collectBtn}
-                    onPress={() => openPayModal(item)}
-                  >
-                    <Ionicons name="card-outline" size={14} color={colors.white} />
-                    <Text style={styles.collectBtnTxt}>
-                      {item.isPartiallyPaid ? `Pay Left: ₹${Number(item.dueAmount || 0).toLocaleString('en-IN')}` : 'Collect'}
-                    </Text>
-                  </TouchableOpacity>
+                </Card>
+              );
+            }}
+            ListEmptyComponent={
+              loading ? (
+                <ActivityIndicator size="large" color={colors.dark} style={{ marginTop: 40 }} />
+              ) : (
+                <View style={styles.empty}>
+                  <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.muted} />
+                  <Text style={styles.emptyTxt}>No Active Recoveries Found</Text>
                 </View>
-              </Card>
-            );
-          }}
-          ListEmptyComponent={
-            loading ? (
-              <ActivityIndicator size="large" color={colors.dark} style={{ marginTop: 40 }} />
-            ) : (
-              <View style={styles.empty}>
-                <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.muted} />
-                <Text style={styles.emptyTxt}>No Active Recoveries Found</Text>
-              </View>
-            )
-          }
-        />
-      </View>
+              )
+            }
+          />
+        </View>
       )}
 
       {/* Unified Collect EMI Modal */}
@@ -1014,28 +999,6 @@ const styles = StyleSheet.create({
   tabTxtActive: { color: colors.white, fontFamily: fonts.semiBold },
   listContainer: { paddingBottom: 80 },
   card: { marginBottom: 12, padding: 14, borderRadius: 12 },
-  cardBounced: {
-    borderColor: '#EA580C', // Orange border to depict bounced installment
-    borderWidth: 2,
-    backgroundColor: '#FFFDF9',
-  },
-  bouncedCallout: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFEDD5',
-    borderColor: '#FED7AA',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginTop: 8,
-  },
-  bouncedCalloutTxt: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    color: '#C2410C',
-  },
   cardClickableArea: { marginBottom: 4 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   borrowerName: { fontFamily: fonts.bold, fontSize: fontSize.base, color: colors.dark },
