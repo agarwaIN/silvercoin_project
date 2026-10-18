@@ -482,8 +482,7 @@ export default function RecoveryScreen({ navigation }) {
         <View style={styles.metricsRow}>
           <View style={[styles.metricCard, { borderLeftColor: colors.error }]}>
             <View style={styles.metricHeaderRow}>
-              <Ionicons name="alert-circle" size={16} color={colors.error} />
-              <Text style={styles.metricLabel}>Overdue</Text>
+              <Text style={[styles.metricLabel, { color: colors.error }]}>Overdue</Text>
             </View>
             <Text style={[styles.metricValue, { color: colors.error }]}>
               ₹{totalOverdueAmount.toLocaleString('en-IN')}
@@ -594,8 +593,13 @@ export default function RecoveryScreen({ navigation }) {
               ? `${getOrdinalDay(parseInt(item.dueDate.slice(8, 10), 10))} of every month`
               : 'Monthly';
 
+            // Check if loan has any bounced EMI (unpaid while a later EMI was paid)
+            const hasBouncedEmi = Array.isArray(item.emis) && item.emis.some(
+              (e, eIdx, arr) => e.status !== 'paid' && arr.slice(eIdx + 1).some(later => later.status === 'paid' || Number(later.paidAmount || 0) > 0)
+            );
+
             return (
-              <Card style={styles.card}>
+              <Card style={[styles.card, hasBouncedEmi && styles.cardBounced]}>
                 {/* Tappable Header & Body -> Navigates to Loan Details */}
                 <TouchableOpacity
                   activeOpacity={0.7}
@@ -625,12 +629,14 @@ export default function RecoveryScreen({ navigation }) {
                         },
                       ]}
                     >
-                      <Ionicons
-                        name={isOverdue ? 'alert-circle' : isAdvance ? 'shield-checkmark' : item.isPartiallyPaid ? 'pie-chart' : 'checkmark-circle-outline'}
-                        size={12}
-                        color={isOverdue ? colors.error : isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7'}
-                        style={{ marginRight: 3 }}
-                      />
+                      {!isOverdue && (
+                        <Ionicons
+                          name={isAdvance ? 'shield-checkmark' : item.isPartiallyPaid ? 'pie-chart' : 'checkmark-circle-outline'}
+                          size={12}
+                          color={isAdvance ? '#047857' : item.isPartiallyPaid ? '#B45309' : '#0284C7'}
+                          style={{ marginRight: 3 }}
+                        />
+                      )}
                       <Text
                         style={[
                           styles.statusTxt,
@@ -727,16 +733,25 @@ export default function RecoveryScreen({ navigation }) {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Overdue Warning Callout */}
+                  {/* Overdue Warning Callout (Overdue icon removed per user request) */}
                   {item.totalOverdue > 0 ? (
                     <View style={styles.overdueCallout}>
-                      <Ionicons name="warning-outline" size={15} color={colors.error} />
                       <Text style={styles.overdueCalloutTxt}>
                         Total Overdue Dues:{' '}
                         <Text style={{ fontFamily: fonts.bold }}>
                           ₹{item.totalOverdue.toLocaleString('en-IN')}
                         </Text>
                         {item.penaltyAmount > 0 ? ` (incl. ₹${item.penaltyAmount} penalty)` : ''}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Bounced Installment Callout if detected */}
+                  {hasBouncedEmi ? (
+                    <View style={styles.bouncedCallout}>
+                      <Ionicons name="repeat" size={13} color="#C2410C" />
+                      <Text style={styles.bouncedCalloutTxt}>
+                        Bounced Installment: An earlier EMI was skipped while a later one was paid
                       </Text>
                     </View>
                   ) : null}
@@ -999,6 +1014,28 @@ const styles = StyleSheet.create({
   tabTxtActive: { color: colors.white, fontFamily: fonts.semiBold },
   listContainer: { paddingBottom: 80 },
   card: { marginBottom: 12, padding: 14, borderRadius: 12 },
+  cardBounced: {
+    borderColor: '#EA580C', // Orange border to depict bounced installment
+    borderWidth: 2,
+    backgroundColor: '#FFFDF9',
+  },
+  bouncedCallout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFEDD5',
+    borderColor: '#FED7AA',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  bouncedCalloutTxt: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    color: '#C2410C',
+  },
   cardClickableArea: { marginBottom: 4 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   borrowerName: { fontFamily: fonts.bold, fontSize: fontSize.base, color: colors.dark },
