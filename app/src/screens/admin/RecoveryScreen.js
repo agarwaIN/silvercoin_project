@@ -488,7 +488,7 @@ export default function RecoveryScreen({ navigation }) {
             const isPaid = emi.status === 'paid';
             const isOverdue = !isPaid && emi.dueDate && emi.dueDate < todayStr;
             const isDueNow = !isPaid && (!emi.dueDate || emi.dueDate === todayStr || emi.paymentId === unpaidEmis[0]?.paymentId);
-            const approvedEmi = Number(selectedLoanForSchedule?.emiAmount || selectedLoanForSchedule?.monthlyEmi || 0);
+            const approvedEmi = Number(selectedScheduleLoan?.emiAmount || selectedScheduleLoan?.monthlyEmi || 0);
             const installmentAmt = (approvedEmi > 0 && !isPaid && Number(emi.paidAmount || 0) === 0)
               ? approvedEmi
               : Number(emi.amount || 0);
