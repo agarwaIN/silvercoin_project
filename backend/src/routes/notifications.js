@@ -13,15 +13,20 @@ router.use(verifyToken);
  */
 router.get('/', async (req, res) => {
   try {
-    const notifications = await notificationService.getNotificationsForUser(req.user);
+    const allNotifications = await notificationService.getNotificationsForUser(req.user);
     const unreadCount = await notificationService.getUnreadCount(req.user);
+
+    let notifications = allNotifications;
+    if (req.query.unreadOnly === 'true') {
+      notifications = notifications.filter(n => !n.isRead);
+    }
 
     const limit = parseInt(req.query.limit, 10);
     const result = limit > 0 ? notifications.slice(0, limit) : notifications;
 
     return res.json({
       notifications: result,
-      total: notifications.length,
+      total: allNotifications.length,
       unreadCount,
     });
   } catch (err) {

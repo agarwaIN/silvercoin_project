@@ -158,14 +158,19 @@ export default function NotificationScreen() {
     markAllAsRead,
   } = useNotifications();
 
-  const [filter, setFilter] = useState('all'); // 'all' | 'unread'
+  const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' (unread) | 'history' (read)
+
+  const unreadNotifications = useMemo(() => {
+    return (notifications || []).filter((n) => !n.isRead);
+  }, [notifications]);
+
+  const readNotifications = useMemo(() => {
+    return (notifications || []).filter((n) => n.isRead);
+  }, [notifications]);
 
   const filteredNotifications = useMemo(() => {
-    if (filter === 'unread') {
-      return (notifications || []).filter((n) => !n.isRead);
-    }
-    return notifications || [];
-  }, [notifications, filter]);
+    return activeTab === 'inbox' ? unreadNotifications : readNotifications;
+  }, [activeTab, unreadNotifications, readNotifications]);
 
   const handleNotificationPress = useCallback(
     (item) => {
@@ -188,7 +193,10 @@ export default function NotificationScreen() {
         } catch (e) {
           // Fallback direct navigate if in loan stack
           try {
-            navigation.navigate('LoanDetail', { loanId: item.loanId });
+            navigation.navigate('Loans', {
+              screen: 'LoanDetail',
+              params: { loanId: item.loanId },
+            });
           } catch (err) {
             console.warn('Navigation error:', err);
           }
@@ -198,10 +206,21 @@ export default function NotificationScreen() {
     [markAsRead, navigation]
   );
 
+  const handleDismiss = useCallback(
+    (item) => {
+      if (!item || item.isRead) return;
+      markAsRead(item.notificationId);
+    },
+    [markAsRead]
+  );
+
   const isAdmin = user?.role === 'admin';
-  const headerSubtitle = isAdmin
-    ? 'Activity & updates from employees'
-    : 'Decisions & updates from admin';
+  const headerSubtitle =
+    activeTab === 'inbox'
+      ? unreadCount > 0
+        ? `${unreadCount} unread update${unreadCount > 1 ? 's' : ''}`
+        : 'All caught up'
+      : `${readNotifications.length} archived notification${readNotifications.length !== 1 ? 's' : ''}`;
 
   const renderItem = ({ item }) => {
     const visuals = getNotificationVisuals(item.type);
@@ -262,12 +281,29 @@ export default function NotificationScreen() {
           {item.body}
         </Text>
 
-        {item.loanId ? (
-          <View style={styles.footerRow}>
-            <Text style={styles.viewLoanText}>Tap to view loan details</Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.dark} />
-          </View>
-        ) : null}
+        <View style={styles.footerRow}>
+          {item.loanId ? (
+            <View style={styles.viewLoanWrap}>
+              <Text style={styles.viewLoanText}>View loan details</Text>
+              <Ionicons name="chevron-forward" size={13} color={colors.dark} />
+            </View>
+          ) : (
+            <View />
+          )}
+
+          {isUnread ? (
+            <TouchableOpacity
+              style={styles.dismissBtn}
+              onPress={() => handleDismiss(item)}
+              activeOpacity={0.65}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Dismiss notification"
+            >
+              <Ionicons name="checkmark-circle-outline" size={14} color="#16A34A" />
+              <Text style={styles.dismissBtnText}>Dismiss</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -282,22 +318,30 @@ export default function NotificationScreen() {
       );
     }
 
+    if (activeTab === 'inbox') {
+      return (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons name="checkmark-done-circle" size={54} color="#16A34A" />
+          </View>
+          <Text style={styles.emptyTitle}>All Caught Up! 🎉</Text>
+          <Text style={styles.emptySubtitle}>
+            {isAdmin
+              ? 'No unopened notifications. New loan applications, agreements, and EMI collections will appear here.'
+              : 'No unopened notifications. Loan approvals, remarks, and updates from admin will appear here.'}
+          </Text>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconCircle}>
-          <Ionicons
-            name={filter === 'unread' ? 'mail-open-outline' : 'notifications-off-outline'}
-            size={48}
-            color={colors.muted}
-          />
+          <Ionicons name="archive-outline" size={48} color={colors.muted} />
         </View>
-        <Text style={styles.emptyTitle}>
-          {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
-        </Text>
+        <Text style={styles.emptyTitle}>No Notification History</Text>
         <Text style={styles.emptySubtitle}>
-          {isAdmin
-            ? 'When employees submit loan applications, agreements, or collect EMIs, you will receive notifications here.'
-            : 'When the administrator approves, rejects, returns, or disburses your loan applications, you will receive notifications here.'}
+          Notifications you open or mark as read will be archived here for your reference.
         </Text>
       </View>
     );
@@ -327,31 +371,43 @@ export default function NotificationScreen() {
 
       <View style={styles.tabsContainer}>
         <TouchableOpacity
-          style={[styles.tab, filter === 'all' && styles.activeTab]}
-          onPress={() => setFilter('all')}
+          style={[styles.tab, activeTab === 'inbox' && styles.activeTab]}
+          onPress={() => setActiveTab('inbox')}
           activeOpacity={0.7}
         >
-          <Text style={[styles.tabText, filter === 'all' && styles.activeTabText]}>
-            All
-          </Text>
-          <View style={[styles.countPill, filter === 'all' && styles.activeCountPill]}>
-            <Text style={[styles.countPillText, filter === 'all' && styles.activeCountPillText]}>
-              {(notifications || []).length}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, filter === 'unread' && styles.activeTab]}
-          onPress={() => setFilter('unread')}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabText, filter === 'unread' && styles.activeTabText]}>
-            Unread
+          <Ionicons
+            name={activeTab === 'inbox' ? 'mail' : 'mail-outline'}
+            size={16}
+            color={activeTab === 'inbox' ? colors.white : colors.muted}
+          />
+          <Text style={[styles.tabText, activeTab === 'inbox' && styles.activeTabText]}>
+            Inbox
           </Text>
           {unreadCount > 0 ? (
             <View style={styles.unreadCountPill}>
               <Text style={styles.unreadCountPillText}>{unreadCount}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'history' && styles.activeTab]}
+          onPress={() => setActiveTab('history')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={activeTab === 'history' ? 'archive' : 'archive-outline'}
+            size={16}
+            color={activeTab === 'history' ? colors.white : colors.muted}
+          />
+          <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
+            History
+          </Text>
+          {readNotifications.length > 0 ? (
+            <View style={[styles.countPill, activeTab === 'history' && styles.activeCountPill]}>
+              <Text style={[styles.countPillText, activeTab === 'history' && styles.activeCountPillText]}>
+                {readNotifications.length}
+              </Text>
             </View>
           ) : null}
         </TouchableOpacity>
@@ -572,17 +628,37 @@ const styles = StyleSheet.create({
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
+  },
+  viewLoanWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
   },
   viewLoanText: {
     fontSize: fontSize.xs,
     fontFamily: fonts.medium,
     color: colors.dark,
+  },
+  dismissBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    gap: 4,
+  },
+  dismissBtnText: {
+    fontSize: fontSize.xs,
+    fontFamily: fonts.medium,
+    color: '#16A34A',
   },
   emptyContainer: {
     alignItems: 'center',

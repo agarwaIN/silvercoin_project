@@ -712,7 +712,18 @@ async function getNotificationsForUser(user) {
     }
   }
 
-  const readSet = readNotificationIdsByUser.get(userId) || new Set();
+  let readSet = readNotificationIdsByUser.get(userId);
+  if (!readSet) {
+    readSet = new Set();
+    readNotificationIdsByUser.set(userId, readSet);
+  }
+
+  // Pre-seed readSet with any notifications already recorded as read in DB
+  for (const n of storedDb) {
+    if (n && n.isRead) {
+      readSet.add(n.notificationId);
+    }
+  }
 
   const list = Array.from(combinedMap.values()).map(item => ({
     ...item,
@@ -754,7 +765,7 @@ async function markNotificationAsRead(arg1, arg2) {
 
   try {
     if (db.updateNotification) {
-      await db.updateNotification(notificationId, { isRead: true });
+      await db.updateNotification(notificationId, { isRead: true, recipientId: userId });
     }
   } catch (err) {
     // Non-fatal
@@ -777,13 +788,11 @@ async function markAllNotificationsAsRead(user) {
 
   for (const n of list) {
     readSet.add(n.notificationId);
-    if (n.notificationId.startsWith('notif_')) {
-      try {
-        if (db.updateNotification) {
-          await db.updateNotification(n.notificationId, { isRead: true });
-        }
-      } catch (e) {}
-    }
+    try {
+      if (db.updateNotification) {
+        await db.updateNotification(n.notificationId, { isRead: true, recipientId: userId });
+      }
+    } catch (e) {}
   }
 
   for (const m of memoryNotifications) {
