@@ -158,19 +158,9 @@ export default function NotificationScreen() {
     markAllAsRead,
   } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' (unread) | 'history' (read)
-
   const unreadNotifications = useMemo(() => {
     return (notifications || []).filter((n) => !n.isRead);
   }, [notifications]);
-
-  const readNotifications = useMemo(() => {
-    return (notifications || []).filter((n) => n.isRead);
-  }, [notifications]);
-
-  const filteredNotifications = useMemo(() => {
-    return activeTab === 'inbox' ? unreadNotifications : readNotifications;
-  }, [activeTab, unreadNotifications, readNotifications]);
 
   const handleNotificationPress = useCallback(
     (item) => {
@@ -216,11 +206,9 @@ export default function NotificationScreen() {
 
   const isAdmin = user?.role === 'admin';
   const headerSubtitle =
-    activeTab === 'inbox'
-      ? unreadCount > 0
-        ? `${unreadCount} unread update${unreadCount > 1 ? 's' : ''}`
-        : 'All caught up'
-      : `${readNotifications.length} archived notification${readNotifications.length !== 1 ? 's' : ''}`;
+    unreadCount > 0
+      ? `${unreadCount} unread update${unreadCount > 1 ? 's' : ''}`
+      : 'All caught up';
 
   const renderItem = ({ item }) => {
     const visuals = getNotificationVisuals(item.type);
@@ -318,30 +306,16 @@ export default function NotificationScreen() {
       );
     }
 
-    if (activeTab === 'inbox') {
-      return (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconCircle}>
-            <Ionicons name="checkmark-done-circle" size={54} color="#16A34A" />
-          </View>
-          <Text style={styles.emptyTitle}>All Caught Up! 🎉</Text>
-          <Text style={styles.emptySubtitle}>
-            {isAdmin
-              ? 'No unopened notifications. New loan applications, agreements, and EMI collections will appear here.'
-              : 'No unopened notifications. Loan approvals, remarks, and updates from admin will appear here.'}
-          </Text>
-        </View>
-      );
-    }
-
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconCircle}>
-          <Ionicons name="archive-outline" size={48} color={colors.muted} />
+          <Ionicons name="checkmark-done-circle" size={54} color="#16A34A" />
         </View>
-        <Text style={styles.emptyTitle}>No Notification History</Text>
+        <Text style={styles.emptyTitle}>All Caught Up! 🎉</Text>
         <Text style={styles.emptySubtitle}>
-          Notifications you open or mark as read will be archived here for your reference.
+          {isAdmin
+            ? 'No unopened notifications. New loan applications, agreements, and EMI collections will appear here.'
+            : 'No unopened notifications. Loan approvals, remarks, and updates from admin will appear here.'}
         </Text>
       </View>
     );
@@ -369,58 +343,14 @@ export default function NotificationScreen() {
         }
       />
 
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'inbox' && styles.activeTab]}
-          onPress={() => setActiveTab('inbox')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === 'inbox' ? 'mail' : 'mail-outline'}
-            size={16}
-            color={activeTab === 'inbox' ? colors.white : colors.muted}
-          />
-          <Text style={[styles.tabText, activeTab === 'inbox' && styles.activeTabText]}>
-            Inbox
-          </Text>
-          {unreadCount > 0 ? (
-            <View style={styles.unreadCountPill}>
-              <Text style={styles.unreadCountPillText}>{unreadCount}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'history' && styles.activeTab]}
-          onPress={() => setActiveTab('history')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === 'history' ? 'archive' : 'archive-outline'}
-            size={16}
-            color={activeTab === 'history' ? colors.white : colors.muted}
-          />
-          <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
-            History
-          </Text>
-          {readNotifications.length > 0 ? (
-            <View style={[styles.countPill, activeTab === 'history' && styles.activeCountPill]}>
-              <Text style={[styles.countPillText, activeTab === 'history' && styles.activeCountPillText]}>
-                {readNotifications.length}
-              </Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-      </View>
-
       <FlatList
-        data={filteredNotifications}
+        data={unreadNotifications}
         keyExtractor={(item) => item.notificationId}
         renderItem={renderItem}
         ListEmptyComponent={renderEmpty}
         contentContainerStyle={[
           styles.listContent,
-          filteredNotifications.length === 0 && styles.listContentEmpty,
+          unreadNotifications.length === 0 && styles.listContentEmpty,
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -454,69 +384,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontFamily: fonts.medium,
     fontSize: fontSize.xs,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.white,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    gap: 12,
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    gap: 6,
-  },
-  activeTab: {
-    backgroundColor: colors.dark,
-  },
-  tabText: {
-    fontFamily: fonts.medium,
-    fontSize: fontSize.sm,
-    color: colors.muted,
-  },
-  activeTabText: {
-    color: colors.white,
-    fontFamily: fonts.semiBold,
-  },
-  countPill: {
-    backgroundColor: '#E5E7EB',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 10,
-    minWidth: 18,
-    alignItems: 'center',
-  },
-  activeCountPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  countPillText: {
-    fontSize: 11,
-    fontFamily: fonts.medium,
-    color: colors.muted,
-  },
-  activeCountPillText: {
-    color: colors.white,
-  },
-  unreadCountPill: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 10,
-    minWidth: 18,
-    alignItems: 'center',
-  },
-  unreadCountPillText: {
-    fontSize: 11,
-    fontFamily: fonts.bold,
-    color: colors.white,
-    fontWeight: '700',
   },
   listContent: {
     padding: 16,
