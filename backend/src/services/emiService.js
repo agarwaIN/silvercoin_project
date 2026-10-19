@@ -586,6 +586,13 @@ async function buildLoanRecoveryItems(loans) {
         return sum + Math.max(0, d);
       }, 0);
 
+      // Overdue EMI base amount due vs Overdue penalty
+      const overdueEmiDue = overdueEmis.reduce((sum, e) => sum + Math.max(0, Number(e.amount || 0) - Number(e.paidAmount || 0)), 0);
+      const overduePenalty = overdueEmis.reduce((sum, e) => sum + Number(e.penaltyAmount || 0), 0);
+
+      // All penalties implied on the client (across all installments, collected + unpaid)
+      const totalPenaltyImplied = emis.reduce((sum, e) => sum + Number(e.penaltyAmount || 0), 0);
+
       // Total remaining balance to be recovered on the loan
       const totalRemainingDue = unpaidEmis.reduce((sum, e) => {
         const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
@@ -679,6 +686,9 @@ async function buildLoanRecoveryItems(loans) {
         // Loan-level recovery metrics
         totalOverdue,
         totalRemainingDue,
+        totalPenaltyImplied,
+        overdueEmiDue,
+        overduePenalty,
         overdueCount: overdueEmis.length,
         paidCount,
         totalCount,

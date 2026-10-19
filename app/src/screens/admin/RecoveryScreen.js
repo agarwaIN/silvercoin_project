@@ -320,25 +320,22 @@ export default function RecoveryScreen({ navigation }) {
       ? scheduledEmisSum
       : (Number(selectedScheduleLoan.totalRepayable || 0) || (monthlyEmiVal * totalTenure));
 
-    // Metric 3: Total Overdue (EMI Due Total + Separate Penalty with + sign)
-    const overdueEmiDueTotal = overdueEmis.reduce(
+    // Metric 3: Total Overdue (EMI Due Total + All Implied Penalties with + sign)
+    let finalOverdueEmiDue = overdueEmis.reduce(
       (sum, e) => sum + Math.max(0, Number(e.amount || 0) - Number(e.paidAmount || 0)),
       0
     );
-    const overduePenaltyTotal = overdueEmis.reduce(
-      (sum, e) => sum + Number(e.penaltyAmount || 0),
-      0
-    );
-
-    let finalOverdueEmiDue = overdueEmiDueTotal;
-    let finalOverduePenalty = overduePenaltyTotal;
-    const loanTotalOverdue = Number(selectedScheduleLoan.totalOverdue || 0);
-
-    if (finalOverdueEmiDue === 0 && finalOverduePenalty === 0 && loanTotalOverdue > 0) {
-      finalOverduePenalty = Number(selectedScheduleLoan.penaltyAmount || 0);
-      finalOverdueEmiDue = Math.max(0, loanTotalOverdue - finalOverduePenalty);
+    if (finalOverdueEmiDue === 0 && Number(selectedScheduleLoan.overdueEmiDue || 0) > 0) {
+      finalOverdueEmiDue = Number(selectedScheduleLoan.overdueEmiDue);
+    } else if (finalOverdueEmiDue === 0 && Number(selectedScheduleLoan.totalOverdue || 0) > 0) {
+      finalOverdueEmiDue = Math.max(0, Number(selectedScheduleLoan.totalOverdue || 0) - Number(selectedScheduleLoan.penaltyAmount || 0));
     }
-    const totalOverdueCombined = finalOverdueEmiDue + finalOverduePenalty;
+
+    // All penalties ever implied/added to client across all EMIs (collected or not)
+    const allPenaltiesImplied = Math.max(
+      emisSorted.reduce((sum, e) => sum + Number(e.penaltyAmount || 0), 0),
+      Number(selectedScheduleLoan.totalPenaltyImplied || selectedScheduleLoan.totalPenalty || selectedScheduleLoan.penaltyAmount || 0)
+    );
 
     return (
       <ScrollView
@@ -408,10 +405,10 @@ export default function RecoveryScreen({ navigation }) {
               </Text>
             </View>
 
-            {/* Metric 3: Total Overdue (EMI Due + Separate Penalty with + sign) */}
+            {/* Metric 3: Total Overdue (EMI Due + All Implied Penalties with + sign) */}
             <View style={styles.scheduleMetricItem}>
               <Text style={styles.scheduleMetricLabel}>Total Overdue</Text>
-              {totalOverdueCombined > 0 ? (
+              {(finalOverdueEmiDue > 0 || allPenaltiesImplied > 0) ? (
                 <View>
                   <Text
                     style={[
@@ -419,21 +416,21 @@ export default function RecoveryScreen({ navigation }) {
                       {
                         color: colors.error,
                         fontFamily: fonts.bold,
-                        fontSize: finalOverduePenalty > 0 ? 13 : 14,
+                        fontSize: allPenaltiesImplied > 0 ? 13 : 14,
                       },
                     ]}
                     numberOfLines={2}
                   >
                     ₹{finalOverdueEmiDue.toLocaleString('en-IN')}
-                    {finalOverduePenalty > 0 ? (
+                    {allPenaltiesImplied > 0 ? (
                       <Text style={{ color: colors.error, fontFamily: fonts.bold, fontSize: 13 }}>
-                        {' '}+ ₹{finalOverduePenalty.toLocaleString('en-IN')}
+                        {' '}+ ₹{allPenaltiesImplied.toLocaleString('en-IN')}
                       </Text>
                     ) : null}
                   </Text>
-                  {finalOverduePenalty > 0 ? (
+                  {allPenaltiesImplied > 0 ? (
                     <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }}>
-                      EMI Due + Penalty
+                      EMI Due + Total Penalty Added
                     </Text>
                   ) : null}
                 </View>
