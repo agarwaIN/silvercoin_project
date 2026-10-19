@@ -305,8 +305,10 @@ export default function RecoveryScreen({ navigation }) {
       selectedScheduleLoan.approvedAmount ||
       selectedScheduleLoan.loanAmount ||
       selectedScheduleLoan.principalAmount ||
-      (selectedScheduleLoan.disbursements && selectedScheduleLoan.disbursements[0]?.amount) ||
+      selectedScheduleLoan.principal ||
       selectedScheduleLoan.disbursedAmount ||
+      selectedScheduleLoan.disbursementAmount ||
+      (selectedScheduleLoan.disbursements && selectedScheduleLoan.disbursements[0]?.amount) ||
       0
     );
 
