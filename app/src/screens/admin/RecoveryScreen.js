@@ -300,6 +300,44 @@ export default function RecoveryScreen({ navigation }) {
     const progressPct = totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
     const totalRemainingDue = unpaidEmis.reduce((s, e) => s + Math.max(0, (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0)), 0);
 
+    // Metric 1: Total Principal Amount Disbursed
+    const totalPrincipal = Number(
+      selectedScheduleLoan.approvedAmount ||
+      selectedScheduleLoan.loanAmount ||
+      selectedScheduleLoan.principalAmount ||
+      (selectedScheduleLoan.disbursements && selectedScheduleLoan.disbursements[0]?.amount) ||
+      selectedScheduleLoan.disbursedAmount ||
+      0
+    );
+
+    // Metric 2: Total EMI Amount to be Collected (Tenure * Monthly EMI)
+    const totalTenure = Number(selectedScheduleLoan.tenureMonths || totalCount || emisSorted.length || 0);
+    const monthlyEmiVal = Number(selectedScheduleLoan.emiAmount || selectedScheduleLoan.amount || (emisSorted[0]?.amount || 0));
+    const scheduledEmisSum = emisSorted.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const totalEmiToCollect = scheduledEmisSum > 0
+      ? scheduledEmisSum
+      : (Number(selectedScheduleLoan.totalRepayable || 0) || (monthlyEmiVal * totalTenure));
+
+    // Metric 3: Total Overdue (EMI Due Total + Separate Penalty with + sign)
+    const overdueEmiDueTotal = overdueEmis.reduce(
+      (sum, e) => sum + Math.max(0, Number(e.amount || 0) - Number(e.paidAmount || 0)),
+      0
+    );
+    const overduePenaltyTotal = overdueEmis.reduce(
+      (sum, e) => sum + Number(e.penaltyAmount || 0),
+      0
+    );
+
+    let finalOverdueEmiDue = overdueEmiDueTotal;
+    let finalOverduePenalty = overduePenaltyTotal;
+    const loanTotalOverdue = Number(selectedScheduleLoan.totalOverdue || 0);
+
+    if (finalOverdueEmiDue === 0 && finalOverduePenalty === 0 && loanTotalOverdue > 0) {
+      finalOverduePenalty = Number(selectedScheduleLoan.penaltyAmount || 0);
+      finalOverdueEmiDue = Math.max(0, loanTotalOverdue - finalOverduePenalty);
+    }
+    const totalOverdueCombined = finalOverdueEmiDue + finalOverduePenalty;
+
     return (
       <ScrollView
         style={styles.scheduleScroll}
@@ -352,20 +390,59 @@ export default function RecoveryScreen({ navigation }) {
 
           {/* Key Metrics Grid */}
           <View style={styles.scheduleMetricsGrid}>
+            {/* Metric 1: Total Principal Amount Disbursed */}
             <View style={styles.scheduleMetricItem}>
-              <Text style={styles.scheduleMetricLabel}>Monthly EMI</Text>
-              <Text style={styles.scheduleMetricVal}>₹{Number(selectedScheduleLoan.amount || 0).toLocaleString('en-IN')}</Text>
-            </View>
-            <View style={styles.scheduleMetricItem}>
-              <Text style={styles.scheduleMetricLabel}>Next Due Date</Text>
-              <Text style={styles.scheduleMetricVal}>{formatDate(selectedScheduleLoan.upcomingEmiDate || selectedScheduleLoan.dueDate)}</Text>
-            </View>
-            <View style={styles.scheduleMetricItem}>
-              <Text style={styles.scheduleMetricLabel}>Total Overdue</Text>
-              <Text style={[styles.scheduleMetricVal, { color: selectedScheduleLoan.totalOverdue > 0 ? colors.error : colors.dark, fontFamily: fonts.bold }]}>
-                ₹{Number(selectedScheduleLoan.totalOverdue || 0).toLocaleString('en-IN')}
+              <Text style={styles.scheduleMetricLabel}>Total Principal</Text>
+              <Text style={styles.scheduleMetricVal}>
+                ₹{totalPrincipal.toLocaleString('en-IN')}
               </Text>
             </View>
+
+            {/* Metric 2: Total EMI Amount to be Collected (Tenure * Monthly EMI) */}
+            <View style={styles.scheduleMetricItem}>
+              <Text style={styles.scheduleMetricLabel}>Total EMI Amount</Text>
+              <Text style={styles.scheduleMetricVal}>
+                ₹{totalEmiToCollect.toLocaleString('en-IN')}
+              </Text>
+            </View>
+
+            {/* Metric 3: Total Overdue (EMI Due + Separate Penalty with + sign) */}
+            <View style={styles.scheduleMetricItem}>
+              <Text style={styles.scheduleMetricLabel}>Total Overdue</Text>
+              {totalOverdueCombined > 0 ? (
+                <View>
+                  <Text
+                    style={[
+                      styles.scheduleMetricVal,
+                      {
+                        color: colors.error,
+                        fontFamily: fonts.bold,
+                        fontSize: finalOverduePenalty > 0 ? 13 : 14,
+                      },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    ₹{finalOverdueEmiDue.toLocaleString('en-IN')}
+                    {finalOverduePenalty > 0 ? (
+                      <Text style={{ color: colors.error, fontFamily: fonts.bold, fontSize: 13 }}>
+                        {' '}+ ₹{finalOverduePenalty.toLocaleString('en-IN')}
+                      </Text>
+                    ) : null}
+                  </Text>
+                  {finalOverduePenalty > 0 ? (
+                    <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }}>
+                      EMI Due + Penalty
+                    </Text>
+                  ) : null}
+                </View>
+              ) : (
+                <Text style={[styles.scheduleMetricVal, { color: colors.dark, fontFamily: fonts.bold }]}>
+                  ₹0
+                </Text>
+              )}
+            </View>
+
+            {/* Metric 4: Total Balance */}
             <View style={styles.scheduleMetricItem}>
               <Text style={styles.scheduleMetricLabel}>Total Balance</Text>
               <Text style={[styles.scheduleMetricVal, { color: colors.primary, fontFamily: fonts.bold }]}>

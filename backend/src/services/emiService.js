@@ -669,6 +669,13 @@ async function buildLoanRecoveryItems(loans) {
         lastPaidDate,
         lastPaidAmount,
 
+        // Loan terms & approved values
+        approvedAmount: Number(loan.approvedAmount || loan.loanAmount || 0),
+        loanAmount: Number(loan.loanAmount || loan.approvedAmount || 0),
+        tenureMonths: Number(loan.tenureMonths || totalCount || 0),
+        emiAmount: Number(loan.emiAmount || (currentEmi ? currentEmi.amount : 0)),
+        totalRepayable: Number(loan.totalRepayable || 0),
+
         // Loan-level recovery metrics
         totalOverdue,
         totalRemainingDue,
