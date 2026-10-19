@@ -46,7 +46,7 @@ export const sendQrToAgent = (loanId) => api.post(`/employee/loans/${loanId}/sen
 export const requestEmiChange = (loanId, data) => api.post(`/employee/loans/${loanId}/emi-change-request`, data).then((r) => r.data);
 export const requestForeclosure = (loanId, data) => api.post(`/employee/loans/${loanId}/request-foreclosure`, data).then((r) => r.data);
 export const getRecovery = () => api.get('/employee/recovery').then((r) => r.data);
-export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null) =>
+export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true) =>
   api.post(`/employee/loans/${loanId}/pay-emi`, {
     paymentId,
     amount,
@@ -55,6 +55,8 @@ export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef =
     txnRef,
     paymentDate,
     date: paymentDate,
+    penaltyAmount,
+    collectPenalty,
   }).then((r) => r.data);
 export const checkAadhaar = (aadhaar, excludeLoanId = '') =>
   api.get(`/employee/loans/check-aadhaar?aadhaar=${encodeURIComponent(aadhaar)}&excludeLoanId=${encodeURIComponent(excludeLoanId || '')}`).then((r) => r.data);

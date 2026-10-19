@@ -395,13 +395,15 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
     const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
     if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
 
-    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date } = req.body;
+    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {
       paymentMode,
       transactionRef: transactionRef || txnRef,
       txnRef: txnRef || transactionRef,
       paymentDate: paymentDate || date,
       date: paymentDate || date,
+      penaltyAmount: penaltyAmount !== undefined ? penaltyAmount : customPenalty,
+      collectPenalty: collectPenalty !== undefined ? collectPenalty : true,
     });
     db.getLoanById(loan.loanId).then(l => {
       if (l) notificationService.notifyEmiPaymentCollected(l, req.user, amount, result?.emi || { emiNumber: req.body?.emiNumber }).catch(() => {});

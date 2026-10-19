@@ -823,11 +823,19 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
 
     let applicablePenalty = 0;
     const unpaidPrincipal = Math.max(0, Number(emi.amount || 0) - Number(emi.paidAmount || 0));
-    if (daysLate > 3 && unpaidPrincipal > 0) {
+    const isTargetEmi = (i === startIndex);
+
+    if (isTargetEmi && paymentDetails.collectPenalty === false) {
+      // User explicitly opted NOT to collect penalty on this EMI
+      applicablePenalty = 0;
+    } else if (isTargetEmi && paymentDetails.penaltyAmount !== undefined && paymentDetails.penaltyAmount !== null && !isNaN(Number(paymentDetails.penaltyAmount))) {
+      // User explicitly set/edited the penalty amount
+      applicablePenalty = Math.max(0, Number(paymentDetails.penaltyAmount));
+    } else if (daysLate > 3 && unpaidPrincipal > 0) {
       const penaltyRate = Number(loan?.penaltyRate || 0.1);
       applicablePenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysLate);
     } else {
-      applicablePenalty = 0;
+      applicablePenalty = Number(emi.penaltyAmount || 0);
     }
 
     const totalRequired = Number(emi.amount || 0) + applicablePenalty;

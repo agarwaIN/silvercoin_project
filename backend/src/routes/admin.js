@@ -256,13 +256,15 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
     const loan = await db.getLoanById(req.params.loanId);
     if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
 
-    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date } = req.body;
+    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {
       paymentMode,
       transactionRef: transactionRef || txnRef,
       txnRef: txnRef || transactionRef,
       paymentDate: paymentDate || date,
       date: paymentDate || date,
+      penaltyAmount: penaltyAmount !== undefined ? penaltyAmount : customPenalty,
+      collectPenalty: collectPenalty !== undefined ? collectPenalty : true,
     });
     res.json({ message: 'Payment recorded successfully', ...result });
   } catch (err) {

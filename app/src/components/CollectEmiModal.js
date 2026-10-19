@@ -37,11 +37,23 @@ export default function CollectEmiModal({
 
   // Financial calculations
   const rawEmiAmount = Number(emi?.amount || loan?.emiAmount || loan?.monthlyEmi || 0);
-  const penalty = Number(emi?.penaltyAmount || 0);
   const alreadyPaid = Number(emi?.paidAmount || 0);
-  const totalRequired = rawEmiAmount + penalty;
-  const remainingDue = Math.max(0, totalRequired - alreadyPaid);
+  const standardEmiDue = Math.max(0, rawEmiAmount - alreadyPaid);
 
+  // Standard calculated penalty for this EMI
+  let calcStandardPenalty = Number(emi?.penaltyAmount || 0);
+  const todayStr = getTodayFormatted();
+  if (calcStandardPenalty === 0 && emi?.dueDate && emi.dueDate < todayStr && standardEmiDue > 0) {
+    const diffDays = Math.max(0, Math.floor((new Date(todayStr) - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
+    if (diffDays > 3) {
+      const rate = Number(loan?.penaltyRate || 0.1);
+      calcStandardPenalty = Math.round(standardEmiDue * (rate / 100) * diffDays);
+    }
+  }
+  const standardPenalty = calcStandardPenalty;
+
+  const [collectPenalty, setCollectPenalty] = useState(false);
+  const [customPenalty, setCustomPenalty] = useState(String(standardPenalty || 0));
   const [amount, setAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash'); // 'Cash', 'UPI', 'Bank', 'Cheque'
   const [txnRef, setTxnRef] = useState('');
@@ -52,20 +64,51 @@ export default function CollectEmiModal({
   // Re-initialize when modal opens or target EMI changes
   useEffect(() => {
     if (visible && emi) {
-      setAmount(String(remainingDue > 0 ? remainingDue : rawEmiAmount || ''));
+      const initCollect = (standardEmiDue === 0 && standardPenalty > 0);
+      setCollectPenalty(initCollect);
+      setCustomPenalty(String(standardPenalty || 0));
+      const initTotal = standardEmiDue + (initCollect ? standardPenalty : 0);
+      setAmount(String(initTotal > 0 ? initTotal : standardPenalty || ''));
       setPaymentMode('Cash');
       setTxnRef('');
       setPaymentDate(getTodayFormatted());
       setActiveDatePicker(false);
       setSubmitting(false);
     }
-  }, [visible, emi, remainingDue, rawEmiAmount]);
+  }, [visible, emi?.paymentId]);
 
   if (!visible || !emi) return null;
 
   const borrowerName = loan?.borrowerName || loan?.ownerName || 'Borrower';
   const displayId = loan?.displayLoanId || loan?.applicationNumber || loan?.loanId || '';
   const emiNumber = emi?.paymentId ? emi.paymentId.split('-').pop() : '';
+
+  const handleToggleCollectPenalty = () => {
+    const next = !collectPenalty;
+    setCollectPenalty(next);
+    const pVal = parseFloat(customPenalty) || 0;
+    if (next) {
+      setAmount(String(standardEmiDue + pVal));
+    } else {
+      setAmount(String(standardEmiDue));
+    }
+  };
+
+  const handleCustomPenaltyChange = (val) => {
+    const clean = val.replace(/[^0-9.]/g, '');
+    setCustomPenalty(clean);
+    if (collectPenalty) {
+      const pVal = parseFloat(clean) || 0;
+      setAmount(String(standardEmiDue + pVal));
+    }
+  };
+
+  const handleResetPenalty = () => {
+    setCustomPenalty(String(standardPenalty));
+    if (collectPenalty) {
+      setAmount(String(standardEmiDue + standardPenalty));
+    }
+  };
 
   const getRefLabel = () => {
     switch (paymentMode) {
@@ -118,12 +161,13 @@ export default function CollectEmiModal({
       const loanId = loan?.loanId || emi.loanId;
       const paymentId = emi.paymentId;
       const isEmployee = userRole === 'employee';
+      const effectivePenalty = collectPenalty ? (parseFloat(customPenalty) || 0) : 0;
 
       let result;
       if (isEmployee) {
-        result = await employeeApi.payEmi(loanId, paymentId, amountNum, paymentMode, cleanRef, paymentDate);
+        result = await employeeApi.payEmi(loanId, paymentId, amountNum, paymentMode, cleanRef, paymentDate, effectivePenalty, collectPenalty);
       } else {
-        result = await adminApi.payEmi(loanId, paymentId, amountNum, paymentMode, cleanRef, paymentDate);
+        result = await adminApi.payEmi(loanId, paymentId, amountNum, paymentMode, cleanRef, paymentDate, effectivePenalty, collectPenalty);
       }
 
       showAlert('Success', `Recorded payment of ₹${amountNum.toLocaleString('en-IN')} successfully.`);
@@ -141,33 +185,37 @@ export default function CollectEmiModal({
   // Quick preset chips for convenience
   const renderPresetChips = () => {
     const chips = [];
+    const penaltyNum = collectPenalty ? (parseFloat(customPenalty) || 0) : 0;
+    const fullExpected = standardEmiDue + penaltyNum;
 
     // Full remaining balance chip
-    if (remainingDue > 0) {
+    if (fullExpected > 0) {
       chips.push({
-        id: 'full_due',
-        label: alreadyPaid > 0 ? `Pay Left: ₹${remainingDue.toLocaleString('en-IN')}` : `Full EMI: ₹${remainingDue.toLocaleString('en-IN')}`,
-        value: remainingDue,
+        id: 'full_total',
+        label: collectPenalty && penaltyNum > 0
+          ? `Full (EMI + Penalty): ₹${fullExpected.toLocaleString('en-IN')}`
+          : `Full EMI: ₹${fullExpected.toLocaleString('en-IN')}`,
+        value: fullExpected,
         isHighlight: true,
       });
     }
 
+    // Standard EMI only chip if penalty is active
+    if (collectPenalty && penaltyNum > 0 && standardEmiDue > 0) {
+      chips.push({
+        id: 'emi_only',
+        label: `Standard EMI Only: ₹${standardEmiDue.toLocaleString('en-IN')}`,
+        value: standardEmiDue,
+      });
+    }
+
     // 50% partial payment chip
-    if (remainingDue >= 2000) {
-      const half = Math.round(remainingDue / 2);
+    if (fullExpected >= 2000) {
+      const half = Math.round(fullExpected / 2);
       chips.push({
         id: 'half',
         label: `50% Partial: ₹${half.toLocaleString('en-IN')}`,
         value: half,
-      });
-    }
-
-    // Original regular EMI amount chip (if partial already)
-    if (alreadyPaid > 0 && rawEmiAmount > 0 && rawEmiAmount !== remainingDue) {
-      chips.push({
-        id: 'regular',
-        label: `Full Monthly: ₹${rawEmiAmount.toLocaleString('en-IN')}`,
-        value: rawEmiAmount,
       });
     }
 
@@ -246,34 +294,106 @@ export default function CollectEmiModal({
                 </TouchableOpacity>
               </View>
 
-              {/* Financial Snapshot Card */}
-              <View style={styles.snapshotCard}>
-                <View style={styles.snapshotCol}>
-                  <Text style={styles.snapshotLabel}>Total Installment</Text>
-                  <Text style={styles.snapshotVal}>₹{rawEmiAmount.toLocaleString('en-IN')}</Text>
-                  {penalty > 0 ? (
-                    <Text style={styles.penaltyTxt}>+₹{penalty} Late Penalty</Text>
-                  ) : null}
+              {/* Financial Snapshot: Separate Standard EMI & Separate Penalty with Add/Edit Flow */}
+              <View style={styles.breakdownCard}>
+                {/* Standard EMI Row */}
+                <View style={styles.breakdownRow}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.breakdownLabel}>Standard EMI Amount</Text>
+                    <Text style={styles.breakdownSub}>
+                      {alreadyPaid > 0
+                        ? `Original EMI: ₹${rawEmiAmount.toLocaleString('en-IN')} (₹${alreadyPaid.toLocaleString('en-IN')} paid)`
+                        : 'Base installment amount'}
+                    </Text>
+                  </View>
+                  <Text style={styles.breakdownVal}>₹{standardEmiDue.toLocaleString('en-IN')}</Text>
                 </View>
 
-                {alreadyPaid > 0 ? (
-                  <View style={styles.snapshotCol}>
-                    <Text style={styles.snapshotLabel}>Already Collected</Text>
-                    <Text style={[styles.snapshotVal, { color: '#059669' }]}>
-                      ₹{alreadyPaid.toLocaleString('en-IN')}
-                    </Text>
-                    <Text style={styles.partialBadge}>Partially Paid</Text>
-                  </View>
-                ) : null}
+                {/* Divider */}
+                <View style={styles.breakdownDivider} />
 
-                <View style={[styles.snapshotCol, { alignItems: 'flex-end' }]}>
-                  <Text style={styles.snapshotLabel}>Net Due Now</Text>
-                  <Text style={[styles.snapshotVal, styles.dueVal]}>
-                    ₹{remainingDue.toLocaleString('en-IN')}
+                {/* Separate Penalty Section with Standard Display, Add/Collect Button & Editable Input */}
+                <View style={styles.penaltySection}>
+                  <View style={styles.penaltyHeaderRow}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Ionicons name="time-outline" size={15} color="#D97706" />
+                        <Text style={styles.penaltyHeaderTitle}>Separate Late Penalty</Text>
+                        <View style={styles.standardPenaltyBadge}>
+                          <Text style={styles.standardPenaltyBadgeTxt}>
+                            Standard: ₹{standardPenalty.toLocaleString('en-IN')}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.penaltySubTxt}>
+                        {collectPenalty
+                          ? 'Penalty is added to this collection. You can edit the amount below.'
+                          : 'Click button to add penalty to this collection.'}
+                      </Text>
+                    </View>
+
+                    {/* Toggle Button to Collect Penalty */}
+                    <TouchableOpacity
+                      style={[styles.collectPenaltyBtn, collectPenalty && styles.collectPenaltyBtnActive]}
+                      onPress={handleToggleCollectPenalty}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={collectPenalty ? 'checkbox' : 'add-circle-outline'}
+                        size={17}
+                        color={collectPenalty ? colors.white : '#B45309'}
+                      />
+                      <Text style={[styles.collectPenaltyBtnTxt, collectPenalty && styles.collectPenaltyBtnTxtActive]}>
+                        {collectPenalty ? 'Penalty Added' : '+ Add Penalty'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Editable Penalty Box (visible when collectPenalty is active) */}
+                  {collectPenalty && (
+                    <View style={styles.editablePenaltyContainer}>
+                      <View style={styles.editablePenaltyLabelRow}>
+                        <Text style={styles.editablePenaltyLabel}>
+                          Penalty Amount to Receive (₹):
+                        </Text>
+                        {standardPenalty > 0 && parseFloat(customPenalty) !== standardPenalty && (
+                          <TouchableOpacity onPress={handleResetPenalty}>
+                            <Text style={styles.resetStandardLink}>
+                              Reset to Standard (₹{standardPenalty.toLocaleString('en-IN')})
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      <View style={styles.editablePenaltyInputWrap}>
+                        <Text style={styles.currencyPrefix}>₹</Text>
+                        <TextInput
+                          style={styles.editablePenaltyInput}
+                          value={customPenalty}
+                          onChangeText={handleCustomPenaltyChange}
+                          placeholder="0"
+                          placeholderTextColor="#94A3B8"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                {/* Total To Collect Summary Banner */}
+                <View style={styles.totalSummaryBox}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.totalSummaryTitle}>Total To Be Collected</Text>
+                    <Text style={styles.totalSummarySub}>
+                      Base EMI: ₹{standardEmiDue.toLocaleString('en-IN')}
+                      {collectPenalty && (parseFloat(customPenalty) || 0) > 0
+                        ? ` + Penalty: ₹${(parseFloat(customPenalty) || 0).toLocaleString('en-IN')}`
+                        : ' (Penalty not added)'}
+                    </Text>
+                  </View>
+                  <Text style={styles.totalSummaryAmt}>
+                    ₹{(standardEmiDue + (collectPenalty ? (parseFloat(customPenalty) || 0) : 0)).toLocaleString('en-IN')}
                   </Text>
-                  {emi?.dueDate ? (
-                    <Text style={styles.dueDateTxt}>Due: {formatDate(emi.dueDate)}</Text>
-                  ) : null}
                 </View>
               </View>
 
@@ -425,51 +545,173 @@ const styles = StyleSheet.create({
     padding: 4,
     marginTop: -4,
   },
-  snapshotCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  breakdownCard: {
     backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    padding: 14,
     marginBottom: 12,
   },
-  snapshotCol: {
-    flex: 1,
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  snapshotLabel: {
-    fontSize: 10,
-    fontFamily: fonts.medium,
-    color: colors.muted,
-    textTransform: 'uppercase',
-  },
-  snapshotVal: {
-    fontSize: 15,
+  breakdownLabel: {
     fontFamily: fonts.bold,
-    color: colors.text,
-    marginTop: 2,
+    fontSize: 14,
+    color: colors.dark,
   },
-  dueVal: {
-    color: colors.primary,
-  },
-  penaltyTxt: {
-    fontSize: 10,
+  breakdownSub: {
     fontFamily: fonts.regular,
-    color: colors.error,
-    marginTop: 2,
-  },
-  partialBadge: {
-    fontSize: 10,
-    fontFamily: fonts.semiBold,
-    color: '#D97706',
-    marginTop: 2,
-  },
-  dueDateTxt: {
-    fontSize: 10,
-    fontFamily: fonts.regular,
+    fontSize: 11,
     color: colors.muted,
     marginTop: 2,
+  },
+  breakdownVal: {
+    fontFamily: fonts.bold,
+    fontSize: 17,
+    color: colors.dark,
+  },
+  breakdownDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 12,
+  },
+  penaltySection: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 12,
+  },
+  penaltyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  penaltyHeaderTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: '#92400E',
+  },
+  standardPenaltyBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  standardPenaltyBadgeTxt: {
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    color: '#B45309',
+  },
+  penaltySubTxt: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: '#78350F',
+    marginTop: 3,
+  },
+  collectPenaltyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#D97706',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  collectPenaltyBtnActive: {
+    backgroundColor: '#D97706',
+    borderColor: '#B45309',
+  },
+  collectPenaltyBtnTxt: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+    color: '#B45309',
+  },
+  collectPenaltyBtnTxtActive: {
+    color: colors.white,
+    fontFamily: fonts.bold,
+  },
+  editablePenaltyContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#FDE68A',
+  },
+  editablePenaltyLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  editablePenaltyLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+    color: '#92400E',
+  },
+  resetStandardLink: {
+    fontFamily: fonts.bold,
+    fontSize: 10.5,
+    color: colors.primary,
+    textDecorationLine: 'underline',
+  },
+  editablePenaltyInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+  },
+  currencyPrefix: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    color: '#92400E',
+    marginRight: 4,
+  },
+  editablePenaltyInput: {
+    flex: 1,
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    color: '#78350F',
+    paddingVertical: 7,
+  },
+  totalSummaryBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 10,
+    padding: 11,
+    marginTop: 12,
+  },
+  totalSummaryTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: '#065F46',
+  },
+  totalSummarySub: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: '#047857',
+    marginTop: 1,
+  },
+  totalSummaryAmt: {
+    fontFamily: fonts.bold,
+    fontSize: 18,
+    color: '#047857',
   },
   infoBanner: {
     flexDirection: 'row',
