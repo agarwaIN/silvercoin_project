@@ -389,64 +389,70 @@ export default function RecoveryScreen({ navigation }) {
 
           {/* Key Metrics Grid */}
           <View style={styles.scheduleMetricsGrid}>
-            {/* Metric 1: Total Principal Amount Disbursed */}
-            <View style={styles.scheduleMetricItem}>
-              <Text style={styles.scheduleMetricLabel}>Total Principal</Text>
-              <Text style={styles.scheduleMetricVal}>
-                ₹{totalPrincipal.toLocaleString('en-IN')}
-              </Text>
+            <View style={styles.scheduleMetricsRow}>
+              {/* Metric 1: Total Principal Amount Disbursed */}
+              <View style={styles.scheduleMetricItem}>
+                <Text style={styles.scheduleMetricLabel}>Total Principal</Text>
+                <Text style={styles.scheduleMetricVal}>
+                  ₹{totalPrincipal.toLocaleString('en-IN')}
+                </Text>
+              </View>
+
+              {/* Metric 2: Total EMI Amount to be Collected (Tenure * Monthly EMI) */}
+              <View style={styles.scheduleMetricItem}>
+                <Text style={styles.scheduleMetricLabel}>Total EMI Amount</Text>
+                <Text style={styles.scheduleMetricVal}>
+                  ₹{totalEmiToCollect.toLocaleString('en-IN')}
+                </Text>
+              </View>
             </View>
 
-            {/* Metric 2: Total EMI Amount to be Collected (Tenure * Monthly EMI) */}
-            <View style={styles.scheduleMetricItem}>
-              <Text style={styles.scheduleMetricLabel}>Total EMI Amount</Text>
-              <Text style={styles.scheduleMetricVal}>
-                ₹{totalEmiToCollect.toLocaleString('en-IN')}
-              </Text>
-            </View>
+            <View style={styles.scheduleMetricsDivider} />
 
-            {/* Metric 3: Total Overdue (EMI Due + All Implied Penalties with + sign) */}
-            <View style={styles.scheduleMetricItem}>
-              <Text style={styles.scheduleMetricLabel}>Total Overdue</Text>
-              {(finalOverdueEmiDue > 0 || allPenaltiesImplied > 0) ? (
-                <View>
-                  <Text
-                    style={[
-                      styles.scheduleMetricVal,
-                      {
-                        color: colors.error,
-                        fontFamily: fonts.bold,
-                        fontSize: allPenaltiesImplied > 0 ? 13 : 14,
-                      },
-                    ]}
-                    numberOfLines={2}
-                  >
-                    ₹{finalOverdueEmiDue.toLocaleString('en-IN')}
+            <View style={styles.scheduleMetricsRow}>
+              {/* Metric 3: Total Overdue (EMI Due + All Implied Penalties with + sign) */}
+              <View style={styles.scheduleMetricItem}>
+                <Text style={styles.scheduleMetricLabel}>Total Overdue</Text>
+                {(finalOverdueEmiDue > 0 || allPenaltiesImplied > 0) ? (
+                  <View>
+                    <Text
+                      style={[
+                        styles.scheduleMetricVal,
+                        {
+                          color: colors.error,
+                          fontFamily: fonts.bold,
+                          fontSize: allPenaltiesImplied > 0 ? 13 : 14,
+                        },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      ₹{finalOverdueEmiDue.toLocaleString('en-IN')}
+                      {allPenaltiesImplied > 0 ? (
+                        <Text style={{ color: colors.error, fontFamily: fonts.bold, fontSize: 13 }}>
+                          {' '}+ ₹{allPenaltiesImplied.toLocaleString('en-IN')}
+                        </Text>
+                      ) : null}
+                    </Text>
                     {allPenaltiesImplied > 0 ? (
-                      <Text style={{ color: colors.error, fontFamily: fonts.bold, fontSize: 13 }}>
-                        {' '}+ ₹{allPenaltiesImplied.toLocaleString('en-IN')}
+                      <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }}>
+                        EMI Due + Total Penalty Added
                       </Text>
                     ) : null}
+                  </View>
+                ) : (
+                  <Text style={[styles.scheduleMetricVal, { color: colors.dark, fontFamily: fonts.bold }]}>
+                    ₹0
                   </Text>
-                  {allPenaltiesImplied > 0 ? (
-                    <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }}>
-                      EMI Due + Total Penalty Added
-                    </Text>
-                  ) : null}
-                </View>
-              ) : (
-                <Text style={[styles.scheduleMetricVal, { color: colors.dark, fontFamily: fonts.bold }]}>
-                  ₹0
-                </Text>
-              )}
-            </View>
+                )}
+              </View>
 
-            {/* Metric 4: Total Balance */}
-            <View style={styles.scheduleMetricItem}>
-              <Text style={styles.scheduleMetricLabel}>Total Balance</Text>
-              <Text style={[styles.scheduleMetricVal, { color: colors.primary, fontFamily: fonts.bold }]}>
-                ₹{Number(totalRemainingDue || selectedScheduleLoan.totalRemainingDue || 0).toLocaleString('en-IN')}
-              </Text>
+              {/* Metric 4: Total Balance */}
+              <View style={styles.scheduleMetricItem}>
+                <Text style={styles.scheduleMetricLabel}>Total Balance</Text>
+                <Text style={[styles.scheduleMetricVal, { color: colors.primary, fontFamily: fonts.bold }]}>
+                  ₹{Number(totalRemainingDue || selectedScheduleLoan.totalRemainingDue || 0).toLocaleString('en-IN')}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -1328,8 +1334,10 @@ const styles = StyleSheet.create({
   scheduleContactActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   scheduleCallBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center' },
   scheduleWaBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center' },
-  scheduleMetricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
-  scheduleMetricItem: { width: '48%', paddingVertical: 4 },
+  scheduleMetricsGrid: { marginBottom: 14, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  scheduleMetricsRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  scheduleMetricsDivider: { height: 1, backgroundColor: colors.border, marginVertical: 8 },
+  scheduleMetricItem: { flex: 1, minWidth: 0 },
   scheduleMetricLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
   scheduleMetricVal: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.dark, marginTop: 2 },
   scheduleProgressBox: { marginBottom: 14 },

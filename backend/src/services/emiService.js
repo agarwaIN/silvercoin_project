@@ -521,21 +521,35 @@ async function buildLoanRecoveryItems(loans) {
       const emis = await ensureEmiSchedule(loan);
       if (!emis || emis.length === 0) return null;
 
-      // Self-heal and clear unwarranted penalties on EMIs paid within grace period
+      // Self-heal and clear unwarranted penalties on EMIs paid within grace period, and ensure accurate paid status
       for (const emi of emis) {
-        if (Number(emi.paidAmount || 0) > 0 && emi.paidDate) {
+        const paid = Number(emi.paidAmount || 0);
+        const amt = Number(emi.amount || 0);
+        const pen = Number(emi.penaltyAmount || 0);
+        const totalReq = amt + pen;
+
+        if (paid > 0 && emi.paidDate) {
           const paidDateStr = String(emi.paidDate).slice(0, 10);
           const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
           if (dueDateStr) {
             const daysLate = Math.max(0, Math.floor((new Date(paidDateStr) - new Date(dueDateStr)) / (1000 * 60 * 60 * 24)));
-            if (daysLate <= 3 && Number(emi.penaltyAmount || 0) > 0) {
+            if (daysLate <= 3 && pen > 0) {
               emi.penaltyAmount = 0;
-              if (Number(emi.paidAmount) >= Number(emi.amount)) {
+              if (paid >= amt) {
                 emi.status = 'paid';
               }
               db.updateEmiPayment(emi.paymentId, { penaltyAmount: 0, status: emi.status }).catch(() => {});
             }
           }
+        }
+
+        // Heal status if installment has been completely satisfied
+        if (paid >= totalReq && totalReq > 0 && emi.status !== 'paid') {
+          emi.status = 'paid';
+          db.updateEmiPayment(emi.paymentId, { status: 'paid' }).catch(() => {});
+        } else if (paid >= amt && amt > 0 && pen === 0 && emi.status !== 'paid') {
+          emi.status = 'paid';
+          db.updateEmiPayment(emi.paymentId, { status: 'paid' }).catch(() => {});
         }
       }
 

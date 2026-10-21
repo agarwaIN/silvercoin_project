@@ -33,25 +33,26 @@ export default function EmiScheduleLedger({
   return (
     <View style={styles.container}>
       {sortedEmis.map((emi, idx) => {
-        const isPaid = emi.status === 'paid';
-        const isForeclosed = emi.status === 'foreclosed';
-        const isPartial = emi.status === 'partial' || (!isPaid && Number(emi.paidAmount || 0) > 0);
-        const isOverdue = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate < todayStr;
-        const isDueToday = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate === todayStr;
-
-        // Bounced installment detection: unpaid installment where a later installment has already been paid
-        const isBounced = !isPaid && !isForeclosed && sortedEmis.slice(idx + 1).some(
-          (laterEmi) => laterEmi.status === 'paid' || (Number(laterEmi.paidAmount || 0) > 0)
-        );
-
-        const baseAmount = (approvedEmi > 0 && !isPaid && Number(emi.paidAmount || 0) === 0)
+        const paidAmount = Number(emi.paidAmount || 0);
+        const baseAmount = (approvedEmi > 0 && emi.status !== 'paid' && paidAmount === 0)
           ? approvedEmi
           : Number(emi.amount || 0);
 
         const penalty = Number(emi.penaltyAmount || 0);
         const totalRequired = baseAmount + penalty;
-        const paidAmount = Number(emi.paidAmount || 0);
         const remainingDue = Math.max(0, totalRequired - paidAmount);
+
+        // Accurate paid status: status is 'paid' OR fully paid (remainingDue is 0 with paidAmount >= baseAmount or > 0)
+        const isPaid = emi.status === 'paid' || (remainingDue === 0 && paidAmount > 0 && paidAmount >= baseAmount);
+        const isForeclosed = emi.status === 'foreclosed';
+        const isPartial = !isPaid && !isForeclosed && (emi.status === 'partial' || (paidAmount > 0 && remainingDue > 0));
+        const isOverdue = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate < todayStr;
+        const isDueToday = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate === todayStr;
+
+        // Bounced installment detection: strictly unpaid installment where a later installment has already been paid
+        const isBounced = !isPaid && !isForeclosed && sortedEmis.slice(idx + 1).some(
+          (laterEmi) => laterEmi.status === 'paid' || (Number(laterEmi.paidAmount || 0) > 0)
+        );
 
         // Installment Payments Array
         const paymentsList = Array.isArray(emi.payments) && emi.payments.length > 0
@@ -78,7 +79,7 @@ export default function EmiScheduleLedger({
         } else if (isPartial) {
           badgeBg = '#FEF3C7';
           badgeColor = '#B45309';
-          badgeText = `PARTIAL • ₹${remainingDue.toLocaleString('en-IN')} LEFT`;
+          badgeText = `PARTIAL • ₹${remainingDue.toLocaleString('en-IN')}`;
           badgeIcon = 'pie-chart';
         } else if (isForeclosed) {
           badgeBg = '#F5F3FF';
@@ -112,8 +113,8 @@ export default function EmiScheduleLedger({
                     #{idx + 1}
                   </Text>
                 </View>
-                <View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={styles.dueInfoCol}>
+                  <View style={styles.dueDateRow}>
                     <Text style={styles.dueTxt}>Due: {formatDate(emi.dueDate)}</Text>
                     {isBounced && (
                       <View style={styles.bouncedTag}>
@@ -129,36 +130,38 @@ export default function EmiScheduleLedger({
 
               <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
                 {badgeIcon ? <Ionicons name={badgeIcon} size={11} color={badgeColor} style={{ marginRight: 3 }} /> : null}
-                <Text style={[styles.statusBadgeTxt, { color: badgeColor }]}>{badgeText}</Text>
+                <Text style={[styles.statusBadgeTxt, { color: badgeColor }]} numberOfLines={1}>
+                  {badgeText}
+                </Text>
               </View>
             </View>
 
             {/* Financial Overview Grid */}
             <View style={styles.financialsGrid}>
               <View style={styles.finCol}>
-                <Text style={styles.finLabel}>EMI Amount</Text>
-                <Text style={styles.finVal}>₹{baseAmount.toLocaleString('en-IN')}</Text>
+                <Text style={styles.finLabel} numberOfLines={1}>EMI Amount</Text>
+                <Text style={styles.finVal} numberOfLines={1}>₹{baseAmount.toLocaleString('en-IN')}</Text>
               </View>
 
               {penalty > 0 ? (
                 <View style={styles.finCol}>
-                  <Text style={styles.finLabel}>Late Penalty</Text>
-                  <Text style={[styles.finVal, { color: colors.error }]}>+₹{penalty.toLocaleString('en-IN')}</Text>
+                  <Text style={styles.finLabel} numberOfLines={1}>Late Penalty</Text>
+                  <Text style={[styles.finVal, { color: colors.error }]} numberOfLines={1}>+₹{penalty.toLocaleString('en-IN')}</Text>
                 </View>
               ) : null}
 
               {paidAmount > 0 ? (
                 <View style={styles.finCol}>
-                  <Text style={styles.finLabel}>{isPaid ? 'Total Collected' : 'Part Collected'}</Text>
-                  <Text style={[styles.finVal, { color: '#059669' }]}>
+                  <Text style={styles.finLabel} numberOfLines={1}>{isPaid ? 'Total Collected' : 'Part Collected'}</Text>
+                  <Text style={[styles.finVal, { color: '#059669' }]} numberOfLines={1}>
                     ₹{paidAmount.toLocaleString('en-IN')}
                   </Text>
                 </View>
               ) : null}
 
               <View style={[styles.finCol, { alignItems: 'flex-end' }]}>
-                <Text style={styles.finLabel}>{isPaid ? 'Final Status' : 'Remaining Due'}</Text>
-                <Text style={[styles.finVal, isPaid ? styles.finValPaid : styles.finValDue]}>
+                <Text style={styles.finLabel} numberOfLines={1}>{isPaid ? 'Final Status' : 'Remaining Due'}</Text>
+                <Text style={[styles.finVal, isPaid ? styles.finValPaid : styles.finValDue]} numberOfLines={1}>
                   {isPaid ? 'Fully Cleared' : `₹${remainingDue.toLocaleString('en-IN')}`}
                 </Text>
               </View>
@@ -260,6 +263,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
+    overflow: 'hidden',
   },
   cardBounced: {
     borderColor: '#FB923C', // subtle light orange boundary not too loud
@@ -268,28 +272,45 @@ const styles = StyleSheet.create({
   },
   bouncedTag: {
     backgroundColor: '#FFEDD5',
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: '#FED7AA',
   },
   bouncedTagTxt: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontFamily: fonts.bold,
     color: '#EA580C',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 6,
     marginBottom: 10,
+    width: '100%',
   },
   indexDueWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    marginRight: 4,
+  },
+  dueInfoCol: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  dueDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexWrap: 'wrap',
   },
   indexPill: {
     width: 28,
@@ -297,6 +318,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   indexPillOverdue: {
     backgroundColor: '#FFEDD5',
@@ -320,7 +342,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
   },
   dueTxt: {
-    fontSize: fontSize.sm,
+    fontSize: 12.5,
     fontFamily: fonts.semiBold,
     color: colors.text,
   },
@@ -333,15 +355,17 @@ const styles = StyleSheet.create({
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 8,
-    gap: 4,
+    borderRadius: 6,
+    gap: 3,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   statusBadgeTxt: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontFamily: fonts.bold,
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
   },
   financialsGrid: {
     flexDirection: 'row',
@@ -349,19 +373,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#F8FAFC',
     borderRadius: 10,
-    padding: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 8,
     marginBottom: 8,
+    gap: 4,
   },
   finCol: {
     flex: 1,
+    minWidth: 0,
   },
   finLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: fonts.medium,
     color: colors.muted,
   },
   finVal: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: fonts.semiBold,
     color: colors.text,
     marginTop: 2,
