@@ -38,7 +38,7 @@ export default function EmiScheduleLedger({
           ? approvedEmi
           : Number(emi.amount || 0);
 
-        const penalty = Number(emi.penaltyAmount || 0);
+        const penalty = emi.penaltyWaived ? 0 : Number(emi.penaltyAmount || 0);
         const totalRequired = baseAmount + penalty;
         const remainingDue = Math.max(0, totalRequired - paidAmount);
 
@@ -147,6 +147,11 @@ export default function EmiScheduleLedger({
                 <View style={styles.finCol}>
                   <Text style={styles.finLabel} numberOfLines={1}>Late Penalty</Text>
                   <Text style={[styles.finVal, { color: colors.error }]} numberOfLines={1}>+₹{penalty.toLocaleString('en-IN')}</Text>
+                </View>
+              ) : emi.penaltyWaived ? (
+                <View style={styles.finCol}>
+                  <Text style={styles.finLabel} numberOfLines={1}>Late Penalty</Text>
+                  <Text style={[styles.finVal, { color: '#059669' }]} numberOfLines={1}>Waived (₹0)</Text>
                 </View>
               ) : null}
 

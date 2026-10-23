@@ -395,7 +395,7 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
     const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
     if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
 
-    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty } = req.body;
+    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty, waivePenalty } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {
       paymentMode,
       transactionRef: transactionRef || txnRef,
@@ -404,6 +404,7 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
       date: paymentDate || date,
       penaltyAmount: penaltyAmount !== undefined ? penaltyAmount : customPenalty,
       collectPenalty: collectPenalty !== undefined ? collectPenalty : true,
+      waivePenalty: Boolean(waivePenalty),
     });
     db.getLoanById(loan.loanId).then(l => {
       if (l) notificationService.notifyEmiPaymentCollected(l, req.user, amount, result?.emi || { emiNumber: req.body?.emiNumber }).catch(() => {});
@@ -412,6 +413,58 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
   } catch (err) {
     console.error('Employee Pay EMI Error:', err);
     res.status(400).json({ message: err.message || 'Failed to record payment' });
+  }
+});
+
+router.post('/loans/:loanId/emis/:paymentId/waive-penalty', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+    if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
+
+    const { paymentId } = req.params;
+    const { reason } = req.body;
+
+    await db.updateEmiPayment(paymentId, {
+      penaltyAmount: 0,
+      penaltyWaived: true,
+      penaltyLocked: true,
+      penaltyWaivedBy: req.user.userId,
+      penaltyWaivedAt: new Date().toISOString(),
+      penaltyWaiveReason: reason || 'Waived by employee',
+    });
+
+    res.json({ success: true, message: 'Penalty waived off successfully' });
+  } catch (err) {
+    console.error('Employee Waive Penalty Error:', err);
+    res.status(500).json({ message: err.message || 'Failed to waive penalty' });
+  }
+});
+
+router.post('/loans/:loanId/emis/:paymentId/update-penalty', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
+    if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
+
+    const { paymentId } = req.params;
+    const { penaltyAmount } = req.body;
+
+    const newPenalty = Math.max(0, Number(penaltyAmount || 0));
+    const isWaived = newPenalty === 0;
+
+    await db.updateEmiPayment(paymentId, {
+      penaltyAmount: newPenalty,
+      penaltyWaived: isWaived,
+      penaltyLocked: true,
+      penaltyUpdatedAt: new Date().toISOString(),
+      penaltyUpdatedBy: req.user.userId,
+    });
+
+    res.json({ success: true, penaltyAmount: newPenalty, message: isWaived ? 'Penalty waived off' : 'Penalty updated successfully' });
+  } catch (err) {
+    console.error('Employee Update Penalty Error:', err);
+    res.status(500).json({ message: err.message || 'Failed to update penalty' });
   }
 });
 

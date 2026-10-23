@@ -27,7 +27,7 @@ export const sendQr = (loanId) => api.post(`/admin/loans/${loanId}/send-qr`).the
 export const getRecovery = () => api.get('/admin/recovery').then((r) => r.data);
 export const markEmiPaid = (loanId, paymentId) =>
   api.post(`/admin/loans/${loanId}/mark-emi-paid`, { paymentId }).then((r) => r.data);
-export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true) =>
+export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false) =>
   api.post(`/admin/loans/${loanId}/pay-emi`, {
     paymentId,
     amount,
@@ -38,7 +38,12 @@ export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef =
     date: paymentDate,
     penaltyAmount,
     collectPenalty,
+    waivePenalty,
   }).then((r) => r.data);
+export const waiveEmiPenalty = (loanId, paymentId, reason = '') =>
+  api.post(`/admin/loans/${loanId}/emis/${paymentId}/waive-penalty`, { reason }).then((r) => r.data);
+export const updateEmiPenalty = (loanId, paymentId, penaltyAmount) =>
+  api.post(`/admin/loans/${loanId}/emis/${paymentId}/update-penalty`, { penaltyAmount }).then((r) => r.data);
 export const checkAadhaar = (aadhaar, excludeLoanId = '') =>
   api.get(`/admin/loans/check-aadhaar?aadhaar=${encodeURIComponent(aadhaar)}&excludeLoanId=${encodeURIComponent(excludeLoanId || '')}`).then((r) => r.data);
 export const rejectEmiProof = (loanId, paymentId) =>

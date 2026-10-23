@@ -523,9 +523,16 @@ async function buildLoanRecoveryItems(loans) {
 
       // Self-heal and clear unwarranted penalties on EMIs paid within grace period, and ensure accurate paid status
       for (const emi of emis) {
+        if (emi.penaltyWaived) {
+          if (Number(emi.penaltyAmount || 0) > 0) {
+            emi.penaltyAmount = 0;
+            db.updateEmiPayment(emi.paymentId, { penaltyAmount: 0 }).catch(() => {});
+          }
+        }
+
         const paid = Number(emi.paidAmount || 0);
         const amt = Number(emi.amount || 0);
-        const pen = Number(emi.penaltyAmount || 0);
+        const pen = emi.penaltyWaived ? 0 : Number(emi.penaltyAmount || 0);
         const totalReq = amt + pen;
 
         if (paid > 0 && emi.paidDate) {
@@ -575,9 +582,14 @@ async function buildLoanRecoveryItems(loans) {
         daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
       }
 
-      // Apply penalty calculation if overdue beyond 3-day grace period on unpaid balance
+      // Apply penalty calculation if overdue beyond 3-day grace period on unpaid balance (unless waived or manually locked)
       const unpaidPrincipal = Math.max(0, Number(currentEmi.amount || 0) - Number(currentEmi.paidAmount || 0));
-      if (daysOverdue > 3 && unpaidPrincipal > 0) {
+      if (currentEmi.penaltyWaived) {
+        if (Number(currentEmi.penaltyAmount || 0) > 0) {
+          currentEmi.penaltyAmount = 0;
+          db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: 0 }).catch(() => {});
+        }
+      } else if (daysOverdue > 3 && unpaidPrincipal > 0 && !currentEmi.penaltyLocked) {
         const penaltyRate = Number(loan.penaltyRate) || 0.1; // 0.1% per day default
         const calcPenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysOverdue);
         if (calcPenalty > Number(currentEmi.penaltyAmount || 0)) {
@@ -585,31 +597,34 @@ async function buildLoanRecoveryItems(loans) {
           db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: calcPenalty, status: 'overdue' }).catch(() => {});
         }
       } else if (daysOverdue <= 3 || unpaidPrincipal === 0) {
-        if (Number(currentEmi.penaltyAmount || 0) > 0 && Number(currentEmi.paidAmount || 0) >= Number(currentEmi.amount || 0)) {
+        if (!currentEmi.penaltyLocked && Number(currentEmi.penaltyAmount || 0) > 0 && Number(currentEmi.paidAmount || 0) >= Number(currentEmi.amount || 0)) {
           currentEmi.penaltyAmount = 0;
           db.updateEmiPayment(currentEmi.paymentId, { penaltyAmount: 0 }).catch(() => {});
         }
       }
 
       // Recompute currentDue with any updated penalty
-      const finalCurrentDue = (Number(currentEmi.amount || 0) + Number(currentEmi.penaltyAmount || 0)) - Number(currentEmi.paidAmount || 0);
+      const curPenalty = currentEmi.penaltyWaived ? 0 : Number(currentEmi.penaltyAmount || 0);
+      const finalCurrentDue = (Number(currentEmi.amount || 0) + curPenalty) - Number(currentEmi.paidAmount || 0);
 
       // Total overdue amount across all overdue installments
       const totalOverdue = overdueEmis.reduce((sum, e) => {
-        const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
+        const pen = e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0);
+        const d = (Number(e.amount || 0) + pen) - Number(e.paidAmount || 0);
         return sum + Math.max(0, d);
       }, 0);
 
       // Overdue EMI base amount due vs Overdue penalty
       const overdueEmiDue = overdueEmis.reduce((sum, e) => sum + Math.max(0, Number(e.amount || 0) - Number(e.paidAmount || 0)), 0);
-      const overduePenalty = overdueEmis.reduce((sum, e) => sum + Number(e.penaltyAmount || 0), 0);
+      const overduePenalty = overdueEmis.reduce((sum, e) => sum + (e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0)), 0);
 
-      // All penalties implied on the client (across all installments, collected + unpaid)
-      const totalPenaltyImplied = emis.reduce((sum, e) => sum + Number(e.penaltyAmount || 0), 0);
+      // All penalties implied on the client (across all installments, collected + unpaid, excluding waived)
+      const totalPenaltyImplied = emis.reduce((sum, e) => sum + (e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0)), 0);
 
       // Total remaining balance to be recovered on the loan
       const totalRemainingDue = unpaidEmis.reduce((sum, e) => {
-        const d = (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0);
+        const pen = e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0);
+        const d = (Number(e.amount || 0) + pen) - Number(e.paidAmount || 0);
         return sum + Math.max(0, d);
       }, 0);
 
@@ -839,12 +854,26 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     const unpaidPrincipal = Math.max(0, Number(emi.amount || 0) - Number(emi.paidAmount || 0));
     const isTargetEmi = (i === startIndex);
 
-    if (isTargetEmi && paymentDetails.collectPenalty === false) {
-      // User explicitly opted NOT to collect penalty on this EMI
+    let penaltyWaived = false;
+    let penaltyLocked = false;
+
+    if (isTargetEmi && (paymentDetails.waivePenalty === true || paymentDetails.collectPenalty === false)) {
+      // User explicitly opted to WAIVE OFF penalty on this EMI
       applicablePenalty = 0;
+      penaltyWaived = true;
+      penaltyLocked = true;
     } else if (isTargetEmi && paymentDetails.penaltyAmount !== undefined && paymentDetails.penaltyAmount !== null && !isNaN(Number(paymentDetails.penaltyAmount))) {
-      // User explicitly set/edited the penalty amount
+      // User explicitly set/edited penalty amount to replace existing penalty
       applicablePenalty = Math.max(0, Number(paymentDetails.penaltyAmount));
+      penaltyWaived = (applicablePenalty === 0 && paymentDetails.waivePenalty === true);
+      penaltyLocked = true;
+    } else if (emi.penaltyWaived) {
+      applicablePenalty = 0;
+      penaltyWaived = true;
+      penaltyLocked = true;
+    } else if (emi.penaltyLocked) {
+      applicablePenalty = Number(emi.penaltyAmount || 0);
+      penaltyLocked = true;
     } else if (daysLate > 3 && unpaidPrincipal > 0) {
       const penaltyRate = Number(loan?.penaltyRate || 0.1);
       applicablePenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysLate);
@@ -890,6 +919,8 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     await db.updateEmiPayment(emi.paymentId, {
       paidAmount: newPaidAmount,
       penaltyAmount: applicablePenalty,
+      penaltyWaived: penaltyWaived,
+      penaltyLocked: penaltyLocked,
       status: newStatus,
       paidDate: effectivePaidDate,
       markedBy: userId,
