@@ -33,12 +33,13 @@ export default function EmiScheduleLedger({
   return (
     <View style={styles.container}>
       {sortedEmis.map((emi, idx) => {
-        const paidAmount = Number(emi.paidAmount || 0);
-        const baseAmount = (approvedEmi > 0 && emi.status !== 'paid' && paidAmount === 0)
+        const paidAmount = Math.round(Number(emi.paidAmount || 0));
+        const rawBase = (approvedEmi > 0 && emi.status !== 'paid' && paidAmount === 0)
           ? approvedEmi
           : Number(emi.amount || 0);
+        const baseAmount = Math.round(rawBase);
 
-        const penalty = emi.penaltyWaived ? 0 : Number(emi.penaltyAmount || 0);
+        const penalty = Math.round(emi.penaltyWaived ? 0 : Number(emi.penaltyAmount || 0));
         const totalRequired = baseAmount + penalty;
         const remainingDue = Math.max(0, totalRequired - paidAmount);
 
@@ -194,7 +195,7 @@ export default function EmiScheduleLedger({
                           <Text style={styles.partPillTxt}>Part {pIdx + 1}</Text>
                         </View>
                         <Text style={styles.partAmountTxt}>
-                          ₹{Number(p.amount || 0).toLocaleString('en-IN')}
+                          ₹{Math.round(Number(p.amount || 0)).toLocaleString('en-IN')}
                         </Text>
                         <View style={styles.modeBadge}>
                           <Text style={styles.modeBadgeTxt}>{mode}</Text>

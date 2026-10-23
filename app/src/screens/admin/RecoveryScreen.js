@@ -37,6 +37,30 @@ const getOrdinalDay = (dayNum) => {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
 
+/**
+ * Formats currency amounts cleanly:
+ * - Strictly 0 decimal digits (all fractional values rounded)
+ * - Exact Lakhs formatted concisely without decimals (e.g. 4,00,000 -> ₹4L, 10,00,000 -> ₹10L)
+ * - Exact Crores formatted concisely without decimals (e.g. 1,00,00,000 -> ₹1Cr)
+ * - Other amounts formatted with Indian comma notation (e.g. 5,53,256.8 -> ₹5,53,257)
+ */
+const formatCurrencyClean = (amount) => {
+  if (amount == null || isNaN(amount)) return '₹0';
+  const rounded = Math.round(Number(amount));
+  if (rounded === 0) return '₹0';
+  const abs = Math.abs(rounded);
+  const sign = rounded < 0 ? '-' : '';
+
+  if (abs >= 10000000 && abs % 10000000 === 0) {
+    return `${sign}₹${abs / 10000000}Cr`;
+  }
+  if (abs >= 100000 && abs % 100000 === 0) {
+    return `${sign}₹${abs / 100000}L`;
+  }
+
+  return `${sign}₹${abs.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+};
+
 export default function RecoveryScreen({ navigation }) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
@@ -298,10 +322,15 @@ export default function RecoveryScreen({ navigation }) {
     const totalCount = emisSorted.length;
     const paidCount = paidEmis.length;
     const progressPct = totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
-    const totalRemainingDue = unpaidEmis.reduce((s, e) => s + Math.max(0, (Number(e.amount || 0) + Number(e.penaltyAmount || 0)) - Number(e.paidAmount || 0)), 0);
+    const totalRemainingDue = Math.round(
+      unpaidEmis.reduce((s, e) => {
+        const penalty = e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0);
+        return s + Math.max(0, (Number(e.amount || 0) + penalty) - Number(e.paidAmount || 0));
+      }, 0)
+    );
 
     // Metric 1: Total Principal Amount Disbursed
-    const totalPrincipal = Number(
+    const totalPrincipal = Math.round(Number(
       selectedScheduleLoan.approvedAmount ||
       selectedScheduleLoan.loanAmount ||
       selectedScheduleLoan.principalAmount ||
@@ -310,17 +339,44 @@ export default function RecoveryScreen({ navigation }) {
       selectedScheduleLoan.disbursementAmount ||
       (selectedScheduleLoan.disbursements && selectedScheduleLoan.disbursements[0]?.amount) ||
       0
-    );
+    ));
 
     // Metric 2: Total EMI Amount to be Collected (Tenure * Monthly EMI)
     const totalTenure = Number(selectedScheduleLoan.tenureMonths || totalCount || emisSorted.length || 0);
     const monthlyEmiVal = Number(selectedScheduleLoan.emiAmount || selectedScheduleLoan.amount || (emisSorted[0]?.amount || 0));
     const scheduledEmisSum = emisSorted.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    const totalEmiToCollect = scheduledEmisSum > 0
-      ? scheduledEmisSum
-      : (Number(selectedScheduleLoan.totalRepayable || 0) || (monthlyEmiVal * totalTenure));
+    const totalEmiToCollect = Math.round(
+      scheduledEmisSum > 0
+        ? scheduledEmisSum
+        : (Number(selectedScheduleLoan.totalRepayable || 0) || (monthlyEmiVal * totalTenure))
+    );
 
-    // Metric 3: Total Overdue (EMI Due Total + All Implied Penalties with + sign)
+    // Metric 3: Total Amount Collected through EMIs up to the current date
+    const computedCollected = emisSorted.reduce((sum, e) => {
+      const p = Number(e.paidAmount || 0);
+      if (p > 0) return sum + p;
+      if (e.status === 'paid') return sum + Number(e.amount || 0);
+      if (Array.isArray(e.payments) && e.payments.length > 0) {
+        return sum + e.payments.reduce((pSum, pm) => pSum + Number(pm.amount || 0), 0);
+      }
+      return sum;
+    }, 0);
+    const totalEmiCollected = Math.max(
+      0,
+      Math.round(
+        computedCollected > 0
+          ? computedCollected
+          : Number(
+              selectedScheduleLoan.totalCollected ||
+              selectedScheduleLoan.totalPaid ||
+              selectedScheduleLoan.totalPaidAmount ||
+              selectedScheduleLoan.amountPaid ||
+              0
+            )
+      )
+    );
+
+    // Metric 4: Total Overdue (EMI Due Total + All Implied Penalties with + sign)
     let finalOverdueEmiDue = overdueEmis.reduce(
       (sum, e) => sum + Math.max(0, Number(e.amount || 0) - Number(e.paidAmount || 0)),
       0
@@ -330,12 +386,13 @@ export default function RecoveryScreen({ navigation }) {
     } else if (finalOverdueEmiDue === 0 && Number(selectedScheduleLoan.totalOverdue || 0) > 0) {
       finalOverdueEmiDue = Math.max(0, Number(selectedScheduleLoan.totalOverdue || 0) - Number(selectedScheduleLoan.penaltyAmount || 0));
     }
+    finalOverdueEmiDue = Math.round(finalOverdueEmiDue);
 
-    // All penalties ever implied/added to client across all EMIs (collected or not)
-    const allPenaltiesImplied = Math.max(
-      emisSorted.reduce((sum, e) => sum + Number(e.penaltyAmount || 0), 0),
+    // All penalties ever implied/added to client across all EMIs (collected or not, excluding waived)
+    const allPenaltiesImplied = Math.round(Math.max(
+      emisSorted.reduce((sum, e) => sum + (e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0)), 0),
       Number(selectedScheduleLoan.totalPenaltyImplied || selectedScheduleLoan.totalPenalty || selectedScheduleLoan.penaltyAmount || 0)
-    );
+    ));
 
     return (
       <ScrollView
@@ -389,12 +446,13 @@ export default function RecoveryScreen({ navigation }) {
 
           {/* Key Metrics Grid */}
           <View style={styles.scheduleMetricsGrid}>
+            {/* Row 1: Principal Disbursed & Total Contractual EMI Amount */}
             <View style={styles.scheduleMetricsRow}>
               {/* Metric 1: Total Principal Amount Disbursed */}
               <View style={styles.scheduleMetricItem}>
                 <Text style={styles.scheduleMetricLabel}>Total Principal</Text>
                 <Text style={styles.scheduleMetricVal}>
-                  ₹{totalPrincipal.toLocaleString('en-IN')}
+                  {formatCurrencyClean(totalPrincipal)}
                 </Text>
               </View>
 
@@ -402,16 +460,37 @@ export default function RecoveryScreen({ navigation }) {
               <View style={styles.scheduleMetricItem}>
                 <Text style={styles.scheduleMetricLabel}>Total EMI Amount</Text>
                 <Text style={styles.scheduleMetricVal}>
-                  ₹{totalEmiToCollect.toLocaleString('en-IN')}
+                  {formatCurrencyClean(totalEmiToCollect)}
                 </Text>
               </View>
             </View>
 
             <View style={styles.scheduleMetricsDivider} />
 
+            {/* Row 2: Total Collected to Date & Total Remaining Balance */}
             <View style={styles.scheduleMetricsRow}>
-              {/* Metric 3: Total Overdue (EMI Due + All Implied Penalties with + sign) */}
+              {/* Metric 3: Total Amount Collected through EMIs to date */}
               <View style={styles.scheduleMetricItem}>
+                <Text style={styles.scheduleMetricLabel}>Total Collected</Text>
+                <Text style={[styles.scheduleMetricVal, { color: '#059669', fontFamily: fonts.bold }]}>
+                  {formatCurrencyClean(totalEmiCollected)}
+                </Text>
+              </View>
+
+              {/* Metric 4: Total Remaining Balance */}
+              <View style={styles.scheduleMetricItem}>
+                <Text style={styles.scheduleMetricLabel}>Total Balance</Text>
+                <Text style={[styles.scheduleMetricVal, { color: colors.primary, fontFamily: fonts.bold }]}>
+                  {formatCurrencyClean(totalRemainingDue || selectedScheduleLoan.totalRemainingDue || 0)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.scheduleMetricsDivider} />
+
+            {/* Row 3: Total Overdue (Full width for clear presentation of Base + Penalties) */}
+            <View style={styles.scheduleMetricsRow}>
+              <View style={[styles.scheduleMetricItem, { flex: 1 }]}>
                 <Text style={styles.scheduleMetricLabel}>Total Overdue</Text>
                 {(finalOverdueEmiDue > 0 || allPenaltiesImplied > 0) ? (
                   <View>
@@ -421,15 +500,15 @@ export default function RecoveryScreen({ navigation }) {
                         {
                           color: colors.error,
                           fontFamily: fonts.bold,
-                          fontSize: allPenaltiesImplied > 0 ? 13 : 14,
+                          fontSize: 14,
                         },
                       ]}
-                      numberOfLines={2}
+                      numberOfLines={1}
                     >
-                      ₹{finalOverdueEmiDue.toLocaleString('en-IN')}
+                      {formatCurrencyClean(finalOverdueEmiDue)}
                       {allPenaltiesImplied > 0 ? (
                         <Text style={{ color: colors.error, fontFamily: fonts.bold, fontSize: 13 }}>
-                          {' '}+ ₹{allPenaltiesImplied.toLocaleString('en-IN')}
+                          {' '}+ {formatCurrencyClean(allPenaltiesImplied)}
                         </Text>
                       ) : null}
                     </Text>
@@ -444,14 +523,6 @@ export default function RecoveryScreen({ navigation }) {
                     ₹0
                   </Text>
                 )}
-              </View>
-
-              {/* Metric 4: Total Balance */}
-              <View style={styles.scheduleMetricItem}>
-                <Text style={styles.scheduleMetricLabel}>Total Balance</Text>
-                <Text style={[styles.scheduleMetricVal, { color: colors.primary, fontFamily: fonts.bold }]}>
-                  ₹{Number(totalRemainingDue || selectedScheduleLoan.totalRemainingDue || 0).toLocaleString('en-IN')}
-                </Text>
               </View>
             </View>
           </View>
@@ -477,7 +548,7 @@ export default function RecoveryScreen({ navigation }) {
                   {selectedScheduleLoan.totalOverdue > 0 ? 'Overdue Dues Pending' : 'Next Installment Due'}
                 </Text>
                 <Text style={styles.quickPayAmount}>
-                  ₹{(selectedScheduleLoan.totalOverdue > 0 ? selectedScheduleLoan.totalOverdue : (unpaidEmis[0]?.amount || selectedScheduleLoan.dueAmount || 0)).toLocaleString('en-IN')}
+                  {formatCurrencyClean(selectedScheduleLoan.totalOverdue > 0 ? selectedScheduleLoan.totalOverdue : (unpaidEmis[0]?.amount || selectedScheduleLoan.dueAmount || 0))}
                 </Text>
               </View>
               <TouchableOpacity
@@ -568,7 +639,7 @@ export default function RecoveryScreen({ navigation }) {
                 <Text style={styles.metricLabel}>Overdue</Text>
               </View>
               <Text style={[styles.metricValue, { color: colors.error }]}>
-                ₹{totalOverdueAmount.toLocaleString('en-IN')}
+                {formatCurrencyClean(totalOverdueAmount)}
               </Text>
               <Text style={styles.metricSub}>{overdueItems.length} Loans</Text>
             </View>
@@ -585,7 +656,7 @@ export default function RecoveryScreen({ navigation }) {
                 </Text>
               </View>
               <Text style={[styles.metricValue, { color: totalAdvanceCollected > 0 ? '#059669' : '#D97706' }]}>
-                ₹{(totalAdvanceCollected > 0 ? totalAdvanceCollected : upcomingItems.reduce((s, i) => s + (i.dueAmount || 0), 0)).toLocaleString('en-IN')}
+                {formatCurrencyClean(totalAdvanceCollected > 0 ? totalAdvanceCollected : upcomingItems.reduce((s, i) => s + (i.dueAmount || 0), 0))}
               </Text>
               <Text style={styles.metricSub}>
                 {totalAdvanceCollected > 0 ? `${advanceItems.length} Loans in Advance` : `${upcomingItems.length} Loans`}
@@ -598,7 +669,7 @@ export default function RecoveryScreen({ navigation }) {
                 <Text style={styles.metricLabel}>Total Balance</Text>
               </View>
               <Text style={[styles.metricValue, { color: colors.primary }]}>
-                ₹{totalRemainingBalance.toLocaleString('en-IN')}
+                {formatCurrencyClean(totalRemainingBalance)}
               </Text>
               <Text style={styles.metricSub}>{items.length} Active Loans</Text>
             </View>
