@@ -42,16 +42,21 @@ export default function CollectEmiModal({
 
   // Standard calculated penalty for this EMI
   const isAlreadyWaived = Boolean(emi?.penaltyWaived);
-  let calcStandardPenalty = Number(emi?.penaltyAmount || 0);
-  const todayStr = getTodayFormatted();
-  if (calcStandardPenalty === 0 && !isAlreadyWaived && emi?.dueDate && emi.dueDate < todayStr && standardEmiDue > 0) {
-    const diffDays = Math.max(0, Math.floor((new Date(todayStr) - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
-    if (diffDays > 3) {
-      const rate = Number(loan?.penaltyRate || 0.1);
-      calcStandardPenalty = Math.round(standardEmiDue * (rate / 100) * diffDays);
-    }
-  }
-  const standardPenalty = isAlreadyWaived ? 0 : calcStandardPenalty;
+
+  const computePenaltyForDate = (dateStr) => {
+    if (isAlreadyWaived || !emi?.dueDate || standardEmiDue <= 0) return 0;
+    const effDate = dateStr || getTodayFormatted();
+    if (effDate <= emi.dueDate) return 0;
+    const diffDays = Math.max(0, Math.floor((new Date(effDate) - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
+    if (diffDays <= 3) return 0;
+    const rate = Number(loan?.penaltyRate || 0.1);
+    return Math.round(standardEmiDue * (rate / 100) * diffDays);
+  };
+
+  const [paymentDate, setPaymentDate] = useState(getTodayFormatted());
+  const standardPenalty = isAlreadyWaived
+    ? 0
+    : (Number(emi?.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : computePenaltyForDate(paymentDate));
 
   const [waivePenalty, setWaivePenalty] = useState(isAlreadyWaived);
   const [collectPenalty, setCollectPenalty] = useState(false);
@@ -59,7 +64,6 @@ export default function CollectEmiModal({
   const [amount, setAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash'); // 'Cash', 'UPI', 'Bank', 'Cheque'
   const [txnRef, setTxnRef] = useState('');
-  const [paymentDate, setPaymentDate] = useState(getTodayFormatted());
   const [activeDatePicker, setActiveDatePicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [waivingDirectly, setWaivingDirectly] = useState(false);
@@ -68,15 +72,19 @@ export default function CollectEmiModal({
   useEffect(() => {
     if (visible && emi) {
       const isWaived = Boolean(emi.penaltyWaived);
+      const initDate = getTodayFormatted();
+      const stdPen = isWaived
+        ? 0
+        : (Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : computePenaltyForDate(initDate));
+      const initCollect = !isWaived && stdPen > 0;
       setWaivePenalty(isWaived);
-      const initCollect = !isWaived && (standardEmiDue === 0 && standardPenalty > 0);
       setCollectPenalty(initCollect);
-      setCustomPenalty(String(standardPenalty || 0));
-      const initTotal = standardEmiDue + (initCollect ? standardPenalty : 0);
-      setAmount(String(initTotal > 0 ? initTotal : (isWaived ? standardEmiDue : standardPenalty) || ''));
+      setCustomPenalty(String(stdPen || 0));
+      const initTotal = standardEmiDue + (initCollect ? stdPen : 0);
+      setAmount(String(initTotal > 0 ? initTotal : (isWaived ? standardEmiDue : stdPen) || ''));
       setPaymentMode('Cash');
       setTxnRef('');
-      setPaymentDate(getTodayFormatted());
+      setPaymentDate(initDate);
       setActiveDatePicker(false);
       setSubmitting(false);
       setWaivingDirectly(false);
@@ -334,6 +342,15 @@ export default function CollectEmiModal({
               onSelect={(d) => {
                 setPaymentDate(d);
                 setActiveDatePicker(false);
+                if (!waivePenalty && !isAlreadyWaived) {
+                  const newPen = computePenaltyForDate(d);
+                  if (collectPenalty) {
+                    setCustomPenalty(String(newPen));
+                    setAmount(String(standardEmiDue + newPen));
+                  } else if (newPen > 0) {
+                    setCustomPenalty(String(newPen));
+                  }
+                }
               }}
               onClose={() => setActiveDatePicker(false)}
             />

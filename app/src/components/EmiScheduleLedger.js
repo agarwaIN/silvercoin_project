@@ -50,6 +50,26 @@ export default function EmiScheduleLedger({
         const isOverdue = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate < todayStr;
         const isDueToday = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate === todayStr;
 
+        // Calculate days late at actual time of payment
+        const paidDateStr = emi.paidDate ? String(emi.paidDate).slice(0, 10) : '';
+        const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
+        let daysLateAtPayment = 0;
+        if (paidDateStr && dueDateStr && paidDateStr > dueDateStr) {
+          const pD = new Date(paidDateStr);
+          const dD = new Date(dueDateStr);
+          if (!isNaN(pD.getTime()) && !isNaN(dD.getTime())) {
+            daysLateAtPayment = Math.max(0, Math.floor((pD - dD) / (1000 * 60 * 60 * 24)));
+          }
+        }
+
+        // Determine if late penalty was waived:
+        // 1. Explicitly flagged as emi.penaltyWaived
+        // 2. Cleared or fully paid after the 3-day grace period with zero penalty
+        const isPenaltyWaived = Boolean(
+          emi.penaltyWaived ||
+          (daysLateAtPayment > 3 && penalty === 0 && (isPaid || paidAmount >= baseAmount))
+        );
+
         // Bounced installment detection: strictly unpaid installment where a later installment has already been paid
         const isBounced = !isPaid && !isForeclosed && sortedEmis.slice(idx + 1).some(
           (laterEmi) => laterEmi.status === 'paid' || (Number(laterEmi.paidAmount || 0) > 0)
@@ -124,7 +144,9 @@ export default function EmiScheduleLedger({
                     )}
                   </View>
                   {isPaid && emi.paidDate ? (
-                    <Text style={styles.paidDateTxt}>Completed on {formatDate(emi.paidDate)}</Text>
+                    <Text style={styles.paidDateTxt}>
+                      Completed on {formatDate(emi.paidDate)}{daysLateAtPayment > 3 ? ` (${daysLateAtPayment}d late)` : ''}
+                    </Text>
                   ) : null}
                 </View>
               </View>
@@ -149,7 +171,7 @@ export default function EmiScheduleLedger({
                   <Text style={styles.finLabel} numberOfLines={1}>Late Penalty</Text>
                   <Text style={[styles.finVal, { color: colors.error }]} numberOfLines={1}>+₹{penalty.toLocaleString('en-IN')}</Text>
                 </View>
-              ) : emi.penaltyWaived ? (
+              ) : isPenaltyWaived ? (
                 <View style={styles.finCol}>
                   <Text style={styles.finLabel} numberOfLines={1}>Late Penalty</Text>
                   <Text style={[styles.finVal, { color: '#059669' }]} numberOfLines={1}>Waived (₹0)</Text>
