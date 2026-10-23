@@ -217,11 +217,13 @@ export default function LoanDetailsView({ loan, onEditDates }) {
 
       {(loan.isForeclosed || loan.foreclosureDetails) && (
         <View style={[rv.card, { borderColor: '#FDE68A', backgroundColor: '#FFFDF5' }]}>
-          <View style={[rv.headerRow, { borderBottomColor: '#FEF3C7' }]}>
-            <Ionicons name="shield-checkmark" size={18} color="#B45309" />
-            <Text style={[rv.section, { color: '#B45309' }]}>Foreclosure Settlement</Text>
-            <View style={{ marginLeft: 'auto', backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>Foreclosed & Settled</Text>
+          <View style={[rv.headerRow, { borderBottomColor: '#FEF3C7', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0 }}>
+              <Ionicons name="shield-checkmark" size={18} color="#B45309" />
+              <Text style={[rv.section, { color: '#B45309', flexShrink: 1 }]} numberOfLines={1}>Foreclosure Settlement</Text>
+            </View>
+            <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, flexShrink: 0 }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#92400E' }}>Foreclosed & Settled</Text>
             </View>
           </View>
 
@@ -237,19 +239,19 @@ export default function LoanDetailsView({ loan, onEditDates }) {
           )}
           <Row
             label="Principal Outstanding"
-            value={`₹${Number(loan.foreclosureDetails?.principalAmount || 0).toLocaleString('en-IN')}`}
+            value={`₹${Math.round(Number(loan.foreclosureDetails?.principalAmount || 0)).toLocaleString('en-IN')}`}
           />
           <Row
             label="Accrued Interest"
-            value={`₹${Number(loan.foreclosureDetails?.interestAmount || 0).toLocaleString('en-IN')}`}
+            value={`₹${Math.round(Number(loan.foreclosureDetails?.interestAmount || 0)).toLocaleString('en-IN')}`}
           />
           <Row
             label="Pre-Closure Penalty"
-            value={Number(loan.foreclosureDetails?.penaltyAmount || 0) > 0 ? `₹${Number(loan.foreclosureDetails.penaltyAmount).toLocaleString('en-IN')}` : 'Exempt / Waived (₹0)'}
+            value={Number(loan.foreclosureDetails?.penaltyAmount || 0) > 0 ? `₹${Math.round(Number(loan.foreclosureDetails.penaltyAmount)).toLocaleString('en-IN')}` : 'Exempt / Waived (₹0)'}
           />
           <Row
             label="Total Settled Amount"
-            value={`₹${Number(loan.foreclosureDetails?.totalAmount || loan.foreclosureRequest?.foreclosureAmount || 0).toLocaleString('en-IN')}`}
+            value={`₹${Math.round(Number(loan.foreclosureDetails?.totalAmount || loan.foreclosureRequest?.foreclosureAmount || 0)).toLocaleString('en-IN')}`}
           />
           {loan.foreclosureDetails?.reason && (
             <Row label="Settlement Reason" value={loan.foreclosureDetails.reason} />
@@ -264,13 +266,19 @@ export default function LoanDetailsView({ loan, onEditDates }) {
                 Payment Mode Breakdown ({loan.foreclosureDetails.paymentModes.length}):
               </Text>
               {loan.foreclosureDetails.paymentModes.map((pm, idx) => (
-                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-                  <Text style={{ fontSize: 12.5, color: colors.text, fontWeight: '600' }}>
-                    {idx + 1}. {pm.mode} {pm.bankName ? `(${pm.bankName})` : ''}
-                    {pm.txnRef ? ` • Ref: ${pm.txnRef}` : ''}
-                  </Text>
-                  <Text style={{ fontSize: 13, color: '#059669', fontWeight: '700' }}>
-                    ₹{Number(pm.amount || 0).toLocaleString('en-IN')}
+                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 5, gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 0, paddingRight: 4 }}>
+                    <Text style={{ fontSize: 12.5, color: colors.text, fontWeight: '600', lineHeight: 18 }}>
+                      {idx + 1}. {pm.mode} {pm.bankName ? `(${pm.bankName})` : ''}
+                    </Text>
+                    {pm.txnRef ? (
+                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }} numberOfLines={2}>
+                        Ref: {pm.txnRef}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={{ fontSize: 13, color: '#059669', fontWeight: '700', textAlign: 'right', flexShrink: 0, marginTop: 1 }}>
+                    ₹{Math.round(Number(pm.amount || 0)).toLocaleString('en-IN')}
                   </Text>
                 </View>
               ))}

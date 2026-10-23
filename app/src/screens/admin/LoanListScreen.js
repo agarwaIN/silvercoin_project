@@ -4,6 +4,7 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
@@ -21,12 +22,15 @@ import { getLoans } from '../../api/adminApi';
 import { formatDate, formatDateTime, getLoanSubmissionInfo, sortLoansByLatestSubmitted } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
-const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Rejected'];
+const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Completed / Foreclosed', 'Rejected'];
 const filterMap = {
   All: null,
   Draft: ['draft'],
   Pending: ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'],
-  Approved: ['approved', 'active', 'completed'],
+  Approved: ['approved', 'active'],
+  'Completed / Foreclosed': ['completed', 'foreclosed'],
+  Completed: ['completed', 'foreclosed'],
+  Foreclosed: ['completed', 'foreclosed'],
   Rejected: ['rejected', 'returned'],
 };
 
@@ -61,7 +65,25 @@ export default function AdminLoanListScreen({ navigation, route }) {
   };
 
   const filtered = useMemo(() => {
-    const byStatus = filterMap[filter] ? loans.filter((l) => filterMap[filter].includes(l.status)) : loans;
+    let byStatus = loans;
+    if (filter === 'Completed / Foreclosed' || filter === 'Completed' || filter === 'Foreclosed') {
+      byStatus = loans.filter((l) =>
+        l.status === 'completed' ||
+        l.status === 'foreclosed' ||
+        l.isForeclosed ||
+        Boolean(l.foreclosureDetails)
+      );
+    } else if (filter === 'Approved') {
+      byStatus = loans.filter((l) =>
+        (l.status === 'approved' || l.status === 'active') &&
+        !l.isForeclosed &&
+        !l.foreclosureDetails &&
+        l.status !== 'completed' &&
+        l.status !== 'foreclosed'
+      );
+    } else if (filterMap[filter]) {
+      byStatus = loans.filter((l) => filterMap[filter].includes(l.status));
+    }
     const searchFiltered = byStatus.filter((l) => loanMatchesSearch(l, search));
     return sortLoansWithReturnedFirst(searchFiltered);
   }, [loans, filter, search]);
@@ -87,12 +109,18 @@ export default function AdminLoanListScreen({ navigation, route }) {
           </TouchableOpacity>
         ) : null}
       </View>
-      <View style={styles.tabs}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity key={f} onPress={() => setFilter(f)} style={[styles.tab, filter === f && styles.tabActive]}>
-            <Text style={[styles.tabText, filter === f && styles.tabTextActive]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.tabsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsScrollContent}
+        >
+          {FILTERS.map((f) => (
+            <TouchableOpacity key={f} onPress={() => setFilter(f)} style={[styles.tab, filter === f && styles.tabActive]}>
+              <Text style={[styles.tabText, filter === f && styles.tabTextActive]}>{f}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
       <FlatList
         style={styles.listFlex}
@@ -120,7 +148,7 @@ export default function AdminLoanListScreen({ navigation, route }) {
                     </Text>
                   </View>
                   <View style={styles.right}>
-                    <StatusBadge status={item.status} />
+                    <StatusBadge status={(item.isForeclosed || item.foreclosureDetails || item.status === 'foreclosed') ? 'foreclosed' : item.status} />
                     <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
                   </View>
                 </View>
@@ -233,6 +261,8 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 4 },
   searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.text, padding: 0 },
+  tabsWrapper: { paddingVertical: 8 },
+  tabsScrollContent: { paddingHorizontal: 16, gap: 8, flexDirection: 'row', alignItems: 'center' },
   tabs: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, gap: 8, flexWrap: 'wrap' },
   tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: `${colors.border}80` },
   tabActive: { backgroundColor: colors.dark },
