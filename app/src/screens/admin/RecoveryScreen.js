@@ -61,6 +61,23 @@ const formatCurrencyClean = (amount) => {
   return `${sign}₹${abs.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 };
 
+const calculatePaidEmiCount = (emis, defaultEmi = 0) => {
+  if (!Array.isArray(emis) || emis.length === 0) return 0;
+  let totalPaid = 0;
+  for (const emi of emis) {
+    if (emi.status === 'paid') {
+      totalPaid += 1;
+    } else if (emi.status !== 'foreclosed') {
+      const paid = Number(emi.paidAmount || 0);
+      const base = Number(emi.amount || defaultEmi || 0);
+      if (paid > 0 && base > 0) {
+        totalPaid += Math.min(0.99, paid / base);
+      }
+    }
+  }
+  return Math.round(totalPaid * 100) / 100;
+};
+
 export default function RecoveryScreen({ navigation }) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
@@ -320,8 +337,8 @@ export default function RecoveryScreen({ navigation }) {
     }
 
     const totalCount = emisSorted.length;
-    const paidCount = paidEmis.length;
-    const progressPct = totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
+    const paidCount = calculatePaidEmiCount(emisSorted, Number(selectedScheduleLoan?.emiAmount || 0));
+    const progressPct = totalCount > 0 ? Math.min(100, Math.round((paidCount / totalCount) * 100)) : 0;
     const totalRemainingDue = Math.round(
       unpaidEmis.reduce((s, e) => {
         const penalty = e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0);

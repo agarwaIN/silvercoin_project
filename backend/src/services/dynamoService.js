@@ -353,17 +353,42 @@ async function findTransactionRefExists(txnRef) {
   return false;
 }
 
-async function findLoanByAadhaar(aadhaar, excludeLoanId = null) {
+function isClosedLoan(l) {
+  if (!l) return false;
+  if (l.isForeclosed === true || String(l.isForeclosed).toLowerCase() === 'true') return true;
+  const status = String(l.status || '').toLowerCase().trim();
+  return status === 'completed' || status === 'foreclosed' || status === 'rejected' || status === 'owner_not_interested';
+}
+
+async function findLoanByAadhaar(aadhaar, excludeLoanId = null, options = {}) {
   if (!aadhaar) return null;
   const cleanAadhaar = String(aadhaar).replace(/\D/g, '');
   if (!cleanAadhaar || cleanAadhaar.length < 4) return null;
 
+  const { activeOnly = true } = options || {};
+
   const loans = await scanAll(tableName('loans'));
   return loans.find(l => {
-    if (excludeLoanId && String(l.loanId) === String(excludeLoanId)) return false;
+    if (excludeLoanId && (String(l.loanId) === String(excludeLoanId) || String(l.applicationNumber) === String(excludeLoanId))) {
+      return false;
+    }
+    const loanAadhaar = String(l.aadhaar || l.borrowerAadhaar || l.aadhaarNumber || '').replace(/\D/g, '');
+    if (!loanAadhaar || loanAadhaar !== cleanAadhaar) return false;
+    if (activeOnly && isClosedLoan(l)) return false;
+    return true;
+  }) || null;
+}
+
+async function findAllLoansByAadhaar(aadhaar) {
+  if (!aadhaar) return [];
+  const cleanAadhaar = String(aadhaar).replace(/\D/g, '');
+  if (!cleanAadhaar || cleanAadhaar.length < 4) return [];
+
+  const loans = await scanAll(tableName('loans'));
+  return loans.filter(l => {
     const loanAadhaar = String(l.aadhaar || l.borrowerAadhaar || l.aadhaarNumber || '').replace(/\D/g, '');
     return loanAadhaar && loanAadhaar === cleanAadhaar;
-  }) || null;
+  });
 }
 
 async function createOtpSession(session) {
@@ -490,6 +515,8 @@ module.exports = {
   findEmiByTxnRef,
   findTransactionRefExists,
   findLoanByAadhaar,
+  findAllLoansByAadhaar,
+  isClosedLoan,
   createOtpSession,
   getOtpSession,
   updateOtpSession,

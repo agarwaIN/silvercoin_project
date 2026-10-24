@@ -334,6 +334,7 @@ router.get('/loans/check-aadhaar', async (req, res) => {
         exists: true,
         loanId: existing.displayLoanId || existing.applicationNumber || existing.loanId,
         ownerName: existing.ownerName,
+        status: existing.status,
       });
     }
     return res.json({ exists: false });

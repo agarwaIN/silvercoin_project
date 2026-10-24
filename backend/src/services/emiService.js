@@ -412,6 +412,33 @@ async function rescheduleEmis(loan, newTerms) {
 }
 
 /**
+ * Calculates total number of paid EMIs, taking into account partial payments as fractional decimals.
+ * E.g., if 5 EMIs are fully paid, and 6th EMI of ₹50,000 has ₹25,000 paid -> 5.5
+ * E.g., if 5 EMIs are fully paid, and 6th EMI of ₹50,000 has ₹10,000 paid -> 5.2
+ * @param {Array} emis 
+ * @param {number} defaultEmiAmount 
+ * @returns {number}
+ */
+function calculatePaidEmiCount(emis, defaultEmiAmount = 0) {
+  if (!Array.isArray(emis) || emis.length === 0) return 0;
+  let totalPaid = 0;
+  for (const emi of emis) {
+    if (emi.status === 'paid') {
+      totalPaid += 1;
+    } else if (emi.status !== 'foreclosed') {
+      const paid = Number(emi.paidAmount || 0);
+      const base = Number(emi.amount || defaultEmiAmount || 0);
+      if (paid > 0 && base > 0) {
+        // Partial fraction of the scheduled EMI paid
+        const fraction = Math.min(0.99, paid / base);
+        totalPaid += fraction;
+      }
+    }
+  }
+  return Math.round(totalPaid * 100) / 100;
+}
+
+/**
  * Calculates foreclosure breakdown according to foreclosure date and EMIs paid.
  * @param {Object} loan 
  * @param {string} foreclosureDateStr 
@@ -434,11 +461,11 @@ async function calculateForeclosureDetails(loan, foreclosureDateStr = null) {
   const emis = await db.listEmiByLoan(loan.loanId);
   const sortedEmis = [...(emis || [])].sort((a, b) => toTimestamp(a.dueDate) - toTimestamp(b.dueDate));
 
-  const paidEmis = sortedEmis.filter(e => e.status === 'paid');
-  const paidCount = paidEmis.length;
-  const unpaidCount = Math.max(0, tenure - paidCount);
+  const regularEmi = Number(loan.emiAmount || (sortedEmis[0] ? sortedEmis[0].amount : 0));
+  const paidCount = calculatePaidEmiCount(sortedEmis, regularEmi);
+  const unpaidCount = Math.max(0, Math.round((tenure - paidCount) * 100) / 100);
 
-  // 1. Outstanding Principal: (P / T) * unpaidCount
+  // 1. Outstanding Principal: (P / T) * unpaidCount (takes into account partial EMI payments)
   const principalPerMonth = totalPrincipal / tenure;
   const outstandingPrincipal = Math.max(0, Math.round(principalPerMonth * unpaidCount));
 
@@ -524,7 +551,7 @@ async function closeEmisForForeclosure(loanId, foreclosureDate = null, reason = 
     if (emi.status !== 'paid') {
       await db.updateEmiPayment(emi.paymentId, {
         status: 'foreclosed',
-        paidAmount: 0,
+        paidAmount: Number(emi.paidAmount || 0),
         paidDate: dateStr,
         penaltyAmount: 0,
         note: `Loan Foreclosed on ${dateStr}${reason ? ` (${reason})` : ''}`
@@ -668,7 +695,8 @@ async function buildLoanRecoveryItems(loans) {
         return sum + Math.max(0, d);
       }, 0);
 
-      const paidCount = emis.filter(e => e.status === 'paid').length;
+      const regularEmiAmount = Number(loan.emiAmount || (currentEmi ? currentEmi.amount : (allEmisSorted[0] ? allEmisSorted[0].amount : 0)));
+      const paidCount = calculatePaidEmiCount(emis, regularEmiAmount);
       const totalCount = emis.length;
 
       let recoveryStatus = overdueEmis.length > 0 ? 'overdue' : 'upcoming';
@@ -1071,4 +1099,5 @@ module.exports = {
   recordLoanPayment,
   hasFirstEmiBeenCollected,
   calculateForeclosureDetails,
+  calculatePaidEmiCount,
 };

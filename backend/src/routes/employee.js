@@ -212,7 +212,7 @@ router.patch('/loans/:loanId', async (req, res) => {
     return res.status(400).json({ message: 'Loan application details cannot be edited after first EMI has been collected.' });
   }
 
-  // Validate that Aadhaar is unique across all loan applications
+  // Validate that Aadhaar is unique across active loan applications
   if (req.body.aadhaar) {
     const cleanAadhaar = String(req.body.aadhaar).replace(/\D/g, '');
     if (cleanAadhaar.length === 12) {
@@ -220,7 +220,7 @@ router.patch('/loans/:loanId', async (req, res) => {
       if (existing) {
         const existingId = existing.displayLoanId || existing.applicationNumber || existing.loanId;
         return res.status(400).json({
-          message: `A loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${existingId}). Only one loan application can be created for 1 Aadhaar number.`,
+          message: `An active loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${existingId}). Only one active loan can exist for 1 Aadhaar number.`,
         });
       }
     }
@@ -275,7 +275,7 @@ router.post('/loans/:loanId/submit', async (req, res) => {
     return res.status(400).json({ message: 'Cannot edit or resubmit loan application after first EMI has been collected.' });
   }
 
-  // Enforce unique Aadhaar before final submission
+  // Enforce unique Aadhaar before final submission across active loan applications
   const targetAadhaar = (req.body && req.body.aadhaar) || loan.aadhaar;
   if (targetAadhaar) {
     const cleanAadhaar = String(targetAadhaar).replace(/\D/g, '');
@@ -284,7 +284,7 @@ router.post('/loans/:loanId/submit', async (req, res) => {
       if (existing) {
         const existingId = existing.displayLoanId || existing.applicationNumber || existing.loanId;
         return res.status(400).json({
-          message: `Cannot submit: A loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${existingId}). Only one loan application can be created for 1 Aadhaar number.`,
+          message: `Cannot submit: An active loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${existingId}). Only one active loan can exist for 1 Aadhaar number.`,
         });
       }
     }

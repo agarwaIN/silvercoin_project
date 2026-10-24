@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import DatePickerField from '../../components/DatePickerField';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
 import { formatDate, getTodayFormatted } from '../../utils/date';
-import { getForeclosureQuote, forecloseLoan } from '../../api/adminApi';
+import { getForeclosureQuote, forecloseLoan, getLoan } from '../../api/adminApi';
 import { usePopup } from '../../context/PopupContext';
 
 const PAYMENT_MODE_OPTIONS = [
@@ -31,10 +31,46 @@ const PAYMENT_MODE_OPTIONS = [
   'NEFT / RTGS',
 ];
 
+const formatEmiCount = (val) => {
+  if (val === undefined || val === null || isNaN(Number(val))) return '0';
+  const num = Math.round(Number(val) * 100) / 100;
+  return String(num);
+};
+
+const calculatePaidEmiCount = (emis, defaultEmi = 0) => {
+  if (!Array.isArray(emis) || emis.length === 0) return 0;
+  let totalPaid = 0;
+  for (const emi of emis) {
+    const paidAmount = Number(emi.paidAmount || 0);
+    const baseAmount = Number(emi.amount || defaultEmi || 0);
+    const penalty = emi.penaltyWaived ? 0 : Number(emi.penaltyAmount || 0);
+    const remainingDue = Math.max(0, (baseAmount + penalty) - paidAmount);
+
+    const isPaid = emi.status === 'paid' || (remainingDue === 0 && paidAmount > 0 && paidAmount >= baseAmount);
+    if (isPaid) {
+      totalPaid += 1;
+    } else if (emi.status !== 'foreclosed' && paidAmount > 0 && baseAmount > 0) {
+      const fraction = Math.min(0.99, paidAmount / baseAmount);
+      totalPaid += fraction;
+    }
+  }
+  return Math.round(totalPaid * 100) / 100;
+};
+
 export default function ForecloseLoanScreen({ route, navigation }) {
   const { loan, loanId: paramLoanId, onSettled } = route.params || {};
   const loanId = paramLoanId || loan?.loanId;
   const { showAlert } = usePopup();
+
+  const [loanData, setLoanData] = useState(loan || null);
+  const loanRef = useRef(loan || null);
+
+  useEffect(() => {
+    if (loan) {
+      loanRef.current = loan;
+      setLoanData(loan);
+    }
+  }, [loan]);
 
   // Selected closure date (defaults to today in DD-MM-YYYY format)
   const [foreclosureDate, setForeclosureDate] = useState(() => getTodayFormatted());
@@ -71,23 +107,79 @@ export default function ForecloseLoanScreen({ route, navigation }) {
     if (!loanId) return;
     setQuoteLoading(true);
     try {
-      const q = await getForeclosureQuote(loanId, selectedDate);
-      setQuote(q);
+      const [q, freshLoan] = await Promise.all([
+        getForeclosureQuote(loanId, selectedDate).catch(() => null),
+        getLoan(loanId).catch(() => null),
+      ]);
+
+      const activeLoan = freshLoan || loanRef.current || loan;
+      if (freshLoan) {
+        loanRef.current = freshLoan;
+        setLoanData(freshLoan);
+      }
+
+      const emis = Array.isArray(activeLoan?.emis) ? activeLoan.emis : [];
+      const tenure = parseInt(activeLoan?.tenureMonths || activeLoan?.tenure || q?.tenure || 12, 10) || 12;
+      const totalPrincipal = Number(activeLoan?.approvedAmount || activeLoan?.loanAmount || q?.totalPrincipal || 0);
+      const interestRate = Number(activeLoan?.interestRate || q?.interestRate || 2.15);
+
+      let effectivePaidCount = q?.paidEmiCount;
+      let effectiveUnpaidCount = q?.unpaidEmiCount;
+      let effectiveOutstandingPrincipal = Number(q?.outstandingPrincipal || 0);
+
+      if (emis.length > 0) {
+        effectivePaidCount = calculatePaidEmiCount(emis, Number(activeLoan?.emiAmount || 0));
+        effectiveUnpaidCount = Math.max(0, Math.round((tenure - effectivePaidCount) * 100) / 100);
+
+        // Accurately adjust outstanding principal based on fractional unpaid count
+        if (totalPrincipal > 0 && tenure > 0) {
+          const principalPerMonth = totalPrincipal / tenure;
+          effectiveOutstandingPrincipal = Math.max(0, Math.round(principalPerMonth * effectiveUnpaidCount));
+        }
+      }
+
+      const daysElapsed = q?.daysElapsed !== undefined ? Number(q.daysElapsed) : 0;
+      const monthlyInterest = effectiveOutstandingPrincipal * (interestRate / 100);
+      const dailyInterest = monthlyInterest / 30;
+      const effectiveAccruedInterest = Math.max(0, Math.round(dailyInterest * daysElapsed));
+
+      const isUnderSix = q ? Boolean(q.isBeforeSixMonths) : false;
+      const penaltyRate = Number(activeLoan?.penaltyRate || q?.penaltyRate || 0);
+      let effectiveSuggestedPenalty = Number(q?.suggestedPenalty || 0);
+      if (isUnderSix && penaltyRate > 0) {
+        effectiveSuggestedPenalty = Math.round(effectiveOutstandingPrincipal * (penaltyRate / 100));
+      }
+
+      const mergedQuote = {
+        ...(q || {}),
+        loanId,
+        tenure,
+        totalPrincipal,
+        interestRate,
+        paidEmiCount: effectivePaidCount !== undefined ? effectivePaidCount : (q?.paidEmiCount || 0),
+        unpaidEmiCount: effectiveUnpaidCount !== undefined ? effectiveUnpaidCount : (q?.unpaidEmiCount || 0),
+        outstandingPrincipal: effectiveOutstandingPrincipal,
+        accruedInterest: effectiveAccruedInterest,
+        dailyInterest: Number(dailyInterest.toFixed(2)),
+        monthlyInterest: Math.round(monthlyInterest),
+        suggestedPenalty: effectiveSuggestedPenalty,
+      };
+
+      setQuote(mergedQuote);
 
       // Pre-fill fields from quote
-      setPrincipalInput(String(q.outstandingPrincipal || 0));
-      setInterestInput(String(q.accruedInterest || 0));
+      setPrincipalInput(String(mergedQuote.outstandingPrincipal || 0));
+      setInterestInput(String(mergedQuote.accruedInterest || 0));
 
       // 6-month rule: if before 6 months, suggest penalty by default, else 0
-      const isUnderSix = Boolean(q.isBeforeSixMonths);
-      setPenaltyApplicable(isUnderSix && Number(q.suggestedPenalty || 0) > 0);
-      setPenaltyInput(isUnderSix && Number(q.suggestedPenalty || 0) > 0 ? String(q.suggestedPenalty) : '0');
+      setPenaltyApplicable(isUnderSix && Number(mergedQuote.suggestedPenalty || 0) > 0);
+      setPenaltyInput(isUnderSix && Number(mergedQuote.suggestedPenalty || 0) > 0 ? String(mergedQuote.suggestedPenalty) : '0');
 
       // Auto-set the single payment mode amount to total settlement
       const initialTotal = Math.round(
-        Number(q.outstandingPrincipal || 0) +
-        Number(q.accruedInterest || 0) +
-        (isUnderSix ? Number(q.suggestedPenalty || 0) : 0)
+        Number(mergedQuote.outstandingPrincipal || 0) +
+        Number(mergedQuote.accruedInterest || 0) +
+        (isUnderSix ? Number(mergedQuote.suggestedPenalty || 0) : 0)
       );
 
       setPaymentModes((prev) => {
@@ -111,7 +203,7 @@ export default function ForecloseLoanScreen({ route, navigation }) {
     } finally {
       setQuoteLoading(false);
     }
-  }, [loanId, showAlert]);
+  }, [loanId, loan, showAlert]);
 
   useEffect(() => {
     loadQuote(foreclosureDate);
@@ -259,8 +351,9 @@ export default function ForecloseLoanScreen({ route, navigation }) {
     }
   };
 
-  const borrowerName = loan?.borrowerName || loan?.applicantName || loan?.name || 'Borrower';
-  const displayId = loan?.displayLoanId || loan?.applicationNumber || loan?.loanId || '';
+  const activeLoan = loanData || loan;
+  const borrowerName = activeLoan?.borrowerName || activeLoan?.applicantName || activeLoan?.name || 'Borrower';
+  const displayId = activeLoan?.displayLoanId || activeLoan?.applicationNumber || activeLoan?.loanId || '';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -292,16 +385,16 @@ export default function ForecloseLoanScreen({ route, navigation }) {
               <View style={styles.bannerCol}>
                 <Text style={styles.bannerLabel}>Sanctioned Amount</Text>
                 <Text style={styles.bannerValue}>
-                  ₹{Number(loan?.approvedAmount || loan?.loanAmount || 0).toLocaleString('en-IN')}
+                  ₹{Number(activeLoan?.approvedAmount || activeLoan?.loanAmount || 0).toLocaleString('en-IN')}
                 </Text>
               </View>
               <View style={styles.bannerCol}>
                 <Text style={styles.bannerLabel}>Interest Rate</Text>
-                <Text style={styles.bannerValue}>{loan?.interestRate || 2.15}% / mo</Text>
+                <Text style={styles.bannerValue}>{activeLoan?.interestRate || 2.15}% / mo</Text>
               </View>
               <View style={styles.bannerCol}>
                 <Text style={styles.bannerLabel}>Tenure</Text>
-                <Text style={styles.bannerValue}>{loan?.tenureMonths || loan?.tenure || 12} Months</Text>
+                <Text style={styles.bannerValue}>{activeLoan?.tenureMonths || activeLoan?.tenure || 12} Months</Text>
               </View>
             </View>
           </View>
@@ -353,7 +446,7 @@ export default function ForecloseLoanScreen({ route, navigation }) {
                   <View style={styles.analysisItem}>
                     <Text style={styles.analysisLabel}>EMIs Paid / Total</Text>
                     <Text style={styles.analysisValue}>
-                      {quote.paidEmiCount} of {quote.tenure} ({quote.unpaidEmiCount} unpaid)
+                      {formatEmiCount(quote.paidEmiCount)} of {quote.tenure} ({formatEmiCount(quote.unpaidEmiCount)} unpaid)
                     </Text>
                   </View>
                 </View>
@@ -435,7 +528,7 @@ export default function ForecloseLoanScreen({ route, navigation }) {
                   <Text style={[styles.columnTitle, { color: '#1D4ED8' }]}>PRINCIPAL AMOUNT</Text>
                 </View>
                 <Text style={styles.columnDesc}>
-                  Unpaid Principal ({quote?.unpaidEmiCount || 0} EMIs)
+                  Unpaid Principal ({formatEmiCount(quote?.unpaidEmiCount)} EMIs)
                 </Text>
 
                 <View style={styles.columnInputWrapper}>

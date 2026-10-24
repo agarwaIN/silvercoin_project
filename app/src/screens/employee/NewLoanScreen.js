@@ -454,7 +454,7 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
 
       <FieldLabel text="Owner Aadhaar Number" required />
       <StyledInput value={data.aadhaar} onChangeText={v => setData(d => ({ ...d, aadhaar: v }))} placeholder="Enter 12-Digit Aadhaar Number" keyboardType="numeric" maxLength={12} />
-      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>Required — 12 digits. Only one loan application can be created for 1 Aadhaar number.</Text>
+      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>Required — 12 digits. Only one active loan can exist for 1 Aadhaar number.</Text>
 
       <FieldLabel text="Spouse Name (Husband/Wife)" required />
       <StyledInput value={data.spouseName} onChangeText={v => setData(d => ({ ...d, spouseName: v }))} placeholder="Enter Spouse Full Name" />
@@ -2037,8 +2037,8 @@ export default function NewLoanScreen({ route, navigation }) {
             const check = await checkAadhaar(cleanAadhaar, currentLoanId);
             if (check?.exists) {
               showAlert(
-                'Aadhaar Already Exists',
-                `A loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). Only one loan application can be created for 1 Aadhaar number.`,
+                'Active Loan Exists',
+                `An active loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). A customer can only have one active loan at a time.`,
               );
               setLoading(false);
               return;
@@ -2222,8 +2222,8 @@ export default function NewLoanScreen({ route, navigation }) {
         const check = await checkAadhaar(targetAadhaar, currentLoanId);
         if (check?.exists) {
           showAlert(
-            'Aadhaar Already Exists',
-            `Cannot submit: A loan application already exists with Aadhaar ending in ${targetAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). Only one loan application can be created for 1 Aadhaar number.`,
+            'Active Loan Exists',
+            `Cannot submit: An active loan application already exists with Aadhaar ending in ${targetAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). A customer can only have one active loan at a time.`,
           );
           setLoading(false);
           return;
