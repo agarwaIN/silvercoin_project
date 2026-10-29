@@ -56,7 +56,7 @@ export default function EmployeeDashboard({ navigation }) {
     total: loans.length,
     draft: loans.filter((l) => l.status === 'draft').length,
     pending: loans.filter((l) => ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'].includes(l.status)).length,
-    approved: loans.filter((l) => ['approved', 'active', 'completed'].includes(l.status)).length,
+    approved: loans.filter((l) => l.status === 'approved').length,
     rejected: loans.filter((l) => ['rejected', 'returned'].includes(l.status)).length,
     returned: loans.filter((l) => l.status === 'returned').length,
   };

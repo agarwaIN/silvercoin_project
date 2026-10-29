@@ -30,8 +30,24 @@ export default function EmiScheduleLedger({
 
   const approvedEmi = Number(loan?.approvedAmount ? loan?.emiAmount : loan?.emiAmount || 0);
 
+  const isDisbursed = Boolean(
+    loan?.status === 'active' ||
+    loan?.status === 'completed' ||
+    (Array.isArray(loan?.disbursements) && loan?.disbursements.length > 0) ||
+    loan?.disbursementDate
+  );
+  const effectiveCanCollect = Boolean(canCollect && isDisbursed);
+
   return (
     <View style={styles.container}>
+      {!isDisbursed && (
+        <View style={styles.notDisbursedBanner}>
+          <Ionicons name="information-circle-outline" size={18} color="#B45309" />
+          <Text style={styles.notDisbursedTxt}>
+            EMI collection will be enabled once the loan disbursement is recorded.
+          </Text>
+        </View>
+      )}
       {sortedEmis.map((emi, idx) => {
         const paidAmount = Math.round(Number(emi.paidAmount || 0));
         const rawBase = (approvedEmi > 0 && emi.status !== 'paid' && paidAmount === 0)
@@ -242,7 +258,7 @@ export default function EmiScheduleLedger({
             ) : null}
 
             {/* Action Row: Collect Payment or Pay Remaining */}
-            {!isPaid && !isForeclosed && canCollect && (
+            {!isPaid && !isForeclosed && effectiveCanCollect && (
               <View style={styles.actionRow}>
                 <TouchableOpacity
                   style={[styles.payBtn, isPartial && styles.payBtnPartial]}
@@ -535,5 +551,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.bold,
     color: colors.white,
+  },
+  notDisbursedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    gap: 8,
+  },
+  notDisbursedTxt: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: fonts.medium,
+    color: '#92400E',
+    lineHeight: 16,
   },
 });

@@ -256,6 +256,16 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
     const loan = await db.getLoanById(req.params.loanId);
     if (!loan || (loan.adminId && loan.adminId !== req.user.userId)) return res.status(404).json({ message: 'Loan not found' });
 
+    const isDisbursed = Boolean(
+      loan.status === 'active' ||
+      loan.status === 'completed' ||
+      (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) ||
+      loan.disbursementDate
+    );
+    if (!isDisbursed) {
+      return res.status(400).json({ message: 'EMI collection is not allowed until the loan has been disbursed.' });
+    }
+
     const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty, waivePenalty } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {
       paymentMode,
@@ -382,7 +392,7 @@ router.get('/reports', async (req, res) => {
       return acc;
     }, {});
 
-    const activeLoanIds = loans.filter(l => ['active', 'approved'].includes(l.status)).map(l => l.loanId);
+    const activeLoanIds = loans.filter(l => l.status === 'active' || (Array.isArray(l.disbursements) && l.disbursements.length > 0)).map(l => l.loanId);
     
     const emiPromises = loans.map(l => db.listEmiByLoan(l.loanId));
     const allEmisNested = await Promise.all(emiPromises);
@@ -396,6 +406,8 @@ router.get('/reports', async (req, res) => {
       
       if (['approved', 'active', 'completed'].includes(loan.status)) {
         loanApprovals++;
+      }
+      if (loan.status === 'active' || loan.status === 'completed' || (Array.isArray(loan.disbursements) && loan.disbursements.length > 0)) {
         totalDisbursement += Number(loan.approvedAmount || loan.loanAmount || 0);
       }
 

@@ -240,10 +240,28 @@ router.patch('/loans/:loanId', async (req, res) => {
   }
 
   if (Array.isArray(updates.propertyDocs)) {
-    updates.propertyDocs = sanitizeMediaList(updates.propertyDocs, loan.propertyDocs);
+    const existingDocs = Array.isArray(loan.propertyDocs) ? loan.propertyDocs : [];
+    const sanitized = sanitizeMediaList(updates.propertyDocs, existingDocs);
+    const keptKeys = new Set(sanitized.map(d => d.serverKey || d.uri).filter(Boolean));
+    for (const ed of existingDocs) {
+      const k = ed.serverKey || ed.uri;
+      if (k && !keptKeys.has(k)) {
+        deleteFile(k).catch(() => {});
+      }
+    }
+    updates.propertyDocs = sanitized;
   }
   if (Array.isArray(updates.propertyPhotos)) {
-    updates.propertyPhotos = sanitizeMediaList(updates.propertyPhotos, loan.propertyPhotos);
+    const existingPhotos = Array.isArray(loan.propertyPhotos) ? loan.propertyPhotos : [];
+    const sanitized = sanitizeMediaList(updates.propertyPhotos, existingPhotos);
+    const keptKeys = new Set(sanitized.map(p => p.serverKey || p.uri).filter(Boolean));
+    for (const ep of existingPhotos) {
+      const k = ep.serverKey || ep.uri;
+      if (k && !keptKeys.has(k)) {
+        deleteFile(k).catch(() => {});
+      }
+    }
+    updates.propertyPhotos = sanitized;
   }
   if (Array.isArray(updates.videos)) {
     updates.videos = sanitizeMediaList(updates.videos, loan.videos);
@@ -308,39 +326,29 @@ router.post('/loans/:loanId/submit', async (req, res) => {
     }
 
     const existingDocs = Array.isArray(loan.propertyDocs) ? [...loan.propertyDocs] : [];
-    if (Array.isArray(req.body.propertyDocs) && req.body.propertyDocs.length > 0) {
+    if (Array.isArray(req.body.propertyDocs)) {
       const sanitized = sanitizeMediaList(req.body.propertyDocs, existingDocs);
-      for (const d of sanitized) {
-        const idx = existingDocs.findIndex(ed => {
-          if (ed.id && d.id && String(ed.id) === String(d.id)) return true;
-          if (ed.uri && d.uri && ed.uri === d.uri) return true;
-          return false;
-        });
-        if (idx >= 0) {
-          existingDocs[idx] = { ...existingDocs[idx], ...d };
-        } else {
-          existingDocs.push(d);
+      const keptKeys = new Set(sanitized.map(d => d.serverKey || d.uri).filter(Boolean));
+      for (const ed of existingDocs) {
+        const k = ed.serverKey || ed.uri;
+        if (k && !keptKeys.has(k)) {
+          deleteFile(k).catch(() => {});
         }
       }
-      updates.propertyDocs = existingDocs;
+      updates.propertyDocs = sanitized;
     }
 
     const existingPhotos = Array.isArray(loan.propertyPhotos) ? [...loan.propertyPhotos] : [];
-    if (Array.isArray(req.body.propertyPhotos) && req.body.propertyPhotos.length > 0) {
+    if (Array.isArray(req.body.propertyPhotos)) {
       const sanitized = sanitizeMediaList(req.body.propertyPhotos, existingPhotos);
-      for (const p of sanitized) {
-        const idx = existingPhotos.findIndex(ep => {
-          if (ep.id && p.id && String(ep.id) === String(p.id)) return true;
-          if (ep.uri && p.uri && ep.uri === p.uri) return true;
-          return false;
-        });
-        if (idx >= 0) {
-          existingPhotos[idx] = { ...existingPhotos[idx], ...p };
-        } else {
-          existingPhotos.push(p);
+      const keptKeys = new Set(sanitized.map(p => p.serverKey || p.uri).filter(Boolean));
+      for (const ep of existingPhotos) {
+        const k = ep.serverKey || ep.uri;
+        if (k && !keptKeys.has(k)) {
+          deleteFile(k).catch(() => {});
         }
       }
-      updates.propertyPhotos = existingPhotos;
+      updates.propertyPhotos = sanitized;
     }
   }
 
@@ -394,6 +402,16 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
     const loan = await db.getLoanById(req.params.loanId);
     const isEmp = loan && (String(loan.employeeId || '') === String(req.user.userId) || String(loan.assignedEmployeeId || '') === String(req.user.userId));
     if (!loan || !isEmp) return res.status(404).json({ message: 'Loan not found' });
+
+    const isDisbursed = Boolean(
+      loan.status === 'active' ||
+      loan.status === 'completed' ||
+      (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) ||
+      loan.disbursementDate
+    );
+    if (!isDisbursed) {
+      return res.status(400).json({ message: 'EMI collection is not allowed until the loan has been disbursed.' });
+    }
 
     const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty, waivePenalty } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {

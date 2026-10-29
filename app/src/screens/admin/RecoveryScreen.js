@@ -611,7 +611,7 @@ export default function RecoveryScreen({ navigation }) {
         <EmiScheduleLedger
           emis={displayEmis}
           loan={selectedScheduleLoan}
-          canCollect={true}
+          canCollect={Boolean((selectedScheduleLoan?.status === 'active' || (Array.isArray(selectedScheduleLoan?.disbursements) && selectedScheduleLoan?.disbursements.length > 0) || selectedScheduleLoan?.disbursementDate) && selectedScheduleLoan?.status !== 'completed' && selectedScheduleLoan?.status !== 'foreclosed')}
           onPayEmi={(targetEmi) => openPayModal(selectedScheduleLoan, targetEmi)}
         />
 

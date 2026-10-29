@@ -22,12 +22,13 @@ import { getLoans } from '../../api/adminApi';
 import { formatDate, formatDateTime, getLoanSubmissionInfo, sortLoansByLatestSubmitted } from '../../utils/date';
 import { loanMatchesSearch } from '../../utils/loanSearch';
 
-const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Completed / Foreclosed', 'Rejected'];
+const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Active', 'Completed / Foreclosed', 'Rejected'];
 const filterMap = {
   All: null,
   Draft: ['draft'],
   Pending: ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'],
-  Approved: ['approved', 'active'],
+  Approved: ['approved'],
+  Active: ['active'],
   'Completed / Foreclosed': ['completed', 'foreclosed'],
   Completed: ['completed', 'foreclosed'],
   Foreclosed: ['completed', 'foreclosed'],
@@ -75,7 +76,15 @@ export default function AdminLoanListScreen({ navigation, route }) {
       );
     } else if (filter === 'Approved') {
       byStatus = loans.filter((l) =>
-        (l.status === 'approved' || l.status === 'active') &&
+        l.status === 'approved' &&
+        !l.isForeclosed &&
+        !l.foreclosureDetails &&
+        l.status !== 'completed' &&
+        l.status !== 'foreclosed'
+      );
+    } else if (filter === 'Active') {
+      byStatus = loans.filter((l) =>
+        l.status === 'active' &&
         !l.isForeclosed &&
         !l.foreclosureDetails &&
         l.status !== 'completed' &&

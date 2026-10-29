@@ -48,7 +48,7 @@ export default function AdminDashboard({ navigation }) {
   const pending = loans.filter((l) =>
     ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'].includes(l.status),
   ).length;
-  const approved = loans.filter((l) => ['approved', 'active', 'completed'].includes(l.status)).length;
+  const approved = loans.filter((l) => l.status === 'approved').length;
   const activeLoans = loans.filter((l) => l.status === 'active').length;
 
   return (
@@ -99,7 +99,7 @@ export default function AdminDashboard({ navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={statsFourAcross ? styles.statTouchFlex : styles.statTouchHalf}
-            onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Approved' } })}
+            onPress={() => navigation.navigate('Loans', { screen: 'LoanList', params: { initialFilter: 'Active' } })}
             activeOpacity={0.7}
           >
             <StatBox

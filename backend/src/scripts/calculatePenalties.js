@@ -6,7 +6,7 @@ const GRACE_PERIOD_DAYS = 3;
 async function calculatePenalties() {
   console.log('Starting penalty calculation job...');
   const loans = await db.listAllLoans();
-  const activeLoans = loans.filter(l => l.status === 'active' || l.status === 'approved');
+  const activeLoans = loans.filter(l => l.status === 'active' || (Array.isArray(l.disbursements) && l.disbursements.length > 0));
 
   let processedCount = 0;
   let penaltyCount = 0;

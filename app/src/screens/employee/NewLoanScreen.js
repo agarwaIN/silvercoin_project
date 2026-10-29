@@ -324,6 +324,30 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
   const [ifscLoading, setIfscLoading] = useState(false);
   const [ownerUploading, setOwnerUploading] = useState(false);
   const [houseUploading, setHouseUploading] = useState(false);
+  const [aadhaarChecking, setAadhaarChecking] = useState(false);
+
+  const checkAadhaarUniquenessLive = async (cleanDigits) => {
+    if (cleanDigits.length !== 12) {
+      setData(d => ({ ...d, aadhaarError: null }));
+      return;
+    }
+    const currentId = loanIdRef?.current || loanId;
+    setAadhaarChecking(true);
+    try {
+      const res = await checkAadhaar(cleanDigits, currentId);
+      if (res?.exists) {
+        const errorMsg = `An active loan application already exists with Aadhaar ending in ${cleanDigits.slice(-4)} (${res.loanId || ''} - ${res.ownerName || 'Borrower'}). A customer can only have one active loan at a time.`;
+        setData(d => ({ ...d, aadhaarError: errorMsg }));
+        Alert.alert('Active Loan Exists', errorMsg);
+      } else {
+        setData(d => ({ ...d, aadhaarError: null }));
+      }
+    } catch (e) {
+      console.warn('Live Aadhaar check warning:', e);
+    } finally {
+      setAadhaarChecking(false);
+    }
+  };
 
   const ownerSource = (data.localVideoUri || data.videoUri) ? resolveMediaUri(data.localVideoUri || data.videoUri) : null;
   const houseSource = (data.localHouseVideoUri || data.houseVideoUri) ? resolveMediaUri(data.localHouseVideoUri || data.houseVideoUri) : null;
@@ -453,8 +477,41 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
       <StyledInput value={data.ownerEmail} onChangeText={v => setData(d => ({ ...d, ownerEmail: v }))} placeholder="Enter Email Address (Optional)" keyboardType="email-address" />
 
       <FieldLabel text="Owner Aadhaar Number" required />
-      <StyledInput value={data.aadhaar} onChangeText={v => setData(d => ({ ...d, aadhaar: v }))} placeholder="Enter 12-Digit Aadhaar Number" keyboardType="numeric" maxLength={12} />
-      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>Required — 12 digits. Only one active loan can exist for 1 Aadhaar number.</Text>
+      <StyledInput
+        value={data.aadhaar}
+        onChangeText={v => {
+          const digits = v.replace(/\D/g, '').slice(0, 12);
+          setData(d => ({ ...d, aadhaar: digits }));
+          if (digits.length === 12) {
+            checkAadhaarUniquenessLive(digits);
+          } else if (data.aadhaarError) {
+            setData(d => ({ ...d, aadhaarError: null }));
+          }
+        }}
+        placeholder="Enter 12-Digit Aadhaar Number"
+        keyboardType="numeric"
+        maxLength={12}
+      />
+      {aadhaarChecking && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={{ fontSize: 11, color: colors.primary, fontFamily: fonts.medium }}>
+            Verifying Aadhaar uniqueness...
+          </Text>
+        </View>
+      )}
+      {data.aadhaarError ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 6, backgroundColor: '#FEE2E2', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5' }}>
+          <Ionicons name="alert-circle" size={16} color="#DC2626" style={{ marginTop: 2 }} />
+          <Text style={{ flex: 1, fontSize: 11, color: '#B91C1C', fontFamily: fonts.medium, lineHeight: 15 }}>
+            {data.aadhaarError}
+          </Text>
+        </View>
+      ) : (
+        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>
+          Required — 12 digits. Only one active loan can exist for 1 Aadhaar number.
+        </Text>
+      )}
 
       <FieldLabel text="Spouse Name (Husband/Wife)" required />
       <StyledInput value={data.spouseName} onChangeText={v => setData(d => ({ ...d, spouseName: v }))} placeholder="Enter Spouse Full Name" />
@@ -588,13 +645,22 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
   const [pickedAsset, setPickedAsset] = useState(null);
 
   // Remove photo/video
-  const removePhoto = (uriOrId) =>
+  const removePhoto = (uriOrId) => {
+    const updated = (data.propertyPhotos || []).filter(
+      p => (p.uri || p) !== uriOrId && p.id !== uriOrId && p.serverKey !== uriOrId && p.localUri !== uriOrId
+    );
     setData(d => ({
       ...d,
-      propertyPhotos: (d.propertyPhotos || []).filter(
-        p => (p.uri || p) !== uriOrId && p.id !== uriOrId && p.serverKey !== uriOrId && p.localUri !== uriOrId
-      ),
+      propertyPhotos: updated,
     }));
+    const activeLoanId = loanIdRef?.current || loanId;
+    if (activeLoanId) {
+      const sanitized = updated.filter(p => p.uploaded || (p.uri && !isLocalMediaUri(p.uri)));
+      updateLoan(activeLoanId, { propertyPhotos: sanitized }).catch(err => {
+        console.warn('Failed to sync photo removal to backend:', err);
+      });
+    }
+  };
 
   // ActionSheet — Cancel / Photo Library / Camera
   const showPhotoOptions = () => {
@@ -902,7 +968,17 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
     }
   };
 
-  const removeDoc = (id) => setData(d => ({ ...d, propertyDocs: (d.propertyDocs || []).filter(doc => doc.id !== id) }));
+  const removeDoc = (id) => {
+    const updated = (data.propertyDocs || []).filter(doc => doc.id !== id);
+    setData(d => ({ ...d, propertyDocs: updated }));
+    const activeLoanId = loanIdRef?.current || loanId;
+    if (activeLoanId) {
+      const sanitized = updated.filter(doc => doc.uploaded || (doc.uri && !isLocalMediaUri(doc.uri)));
+      updateLoan(activeLoanId, { propertyDocs: sanitized }).catch(err => {
+        console.warn('Failed to sync doc removal to backend:', err);
+      });
+    }
+  };
 
   return (
     <View style={{ paddingHorizontal: 16 }}>
@@ -1977,6 +2053,7 @@ export default function NewLoanScreen({ route, navigation }) {
       if (!mobile || !/^\d{10}$/.test(mobile)) return 'Please enter a valid 10-digit Owner Mobile number.';
       const aadhar = (data.aadhaar || '').trim();
       if (!aadhar || !/^\d{12}$/.test(aadhar)) return 'Please enter a valid 12-digit Aadhaar Number.';
+      if (data.aadhaarError) return data.aadhaarError;
       if (!data.spouseName?.trim()) return 'Please enter Spouse Name.';
       if (!data.familyOccupation?.trim()) return 'Please enter Family Occupation.';
       if (!data.monthlyIncome || Number(data.monthlyIncome) <= 0) return 'Please enter a valid Monthly Income.';
@@ -2024,28 +2101,30 @@ export default function NewLoanScreen({ route, navigation }) {
     setLoading(true);
     try {
       let currentLoanId = loanIdRef.current || loanId;
-      if (!currentLoanId) {
-        const loan = await createLoan();
-        currentLoanId = loan.loanId;
-        loanIdRef.current = currentLoanId;
-        setLoanId(currentLoanId);
-      }
+
       if (step === 0) {
+        // FIRST STEP VALIDATION: Block duplicate Aadhaar before creating or saving loan
         const cleanAadhaar = (formData.aadhaar || '').replace(/\D/g, '');
         if (cleanAadhaar.length === 12) {
           try {
             const check = await checkAadhaar(cleanAadhaar, currentLoanId);
             if (check?.exists) {
-              showAlert(
-                'Active Loan Exists',
-                `An active loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). A customer can only have one active loan at a time.`,
-              );
+              const errorMsg = `An active loan application already exists with Aadhaar ending in ${cleanAadhaar.slice(-4)} (${check.loanId || ''} - ${check.ownerName || 'Borrower'}). A customer can only have one active loan at a time.`;
+              setFormData(d => ({ ...d, aadhaarError: errorMsg }));
+              showAlert('Active Loan Exists', errorMsg);
               setLoading(false);
               return;
             }
           } catch (chkErr) {
             console.warn('Aadhaar check warning:', chkErr);
           }
+        }
+
+        if (!currentLoanId) {
+          const loan = await createLoan();
+          currentLoanId = loan.loanId;
+          loanIdRef.current = currentLoanId;
+          setLoanId(currentLoanId);
         }
 
         await updateLoan(currentLoanId, {
@@ -2124,6 +2203,7 @@ export default function NewLoanScreen({ route, navigation }) {
           propertyAddress: formData.geoAddress?.trim() || '',
           possessionStatus: formData.possessionStatus,
           propertyRemark: formData.propertyRemark?.trim() || '',
+          propertyPhotos: (formData.propertyPhotos || []).filter(p => p.uploaded || !isMediaPendingUpload(p)),
         });
 
         // Upload any pending property photos (only local unuploaded files)
@@ -2137,15 +2217,26 @@ export default function NewLoanScreen({ route, navigation }) {
               fd.append('photos', makeFormDataFile(u, isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
             });
             const pRes = await uploadPropertyPhotos(currentLoanId, fd);
-            if (pRes?.photos && Array.isArray(pRes.photos)) {
-              setFormData(d => ({
-                ...d,
-                propertyPhotos: pRes.photos.map(p => ({
-                  ...p,
-                  uploaded: true,
-                  serverKey: p.uri || p.key || p.serverKey,
-                })),
-              }));
+            if (pRes) {
+              const uploadedItems = pRes.uploaded || (Array.isArray(pRes.photos) ? pRes.photos.slice(-unuploadedPhotos.length) : []);
+              setFormData(d => {
+                const current = [...(d.propertyPhotos || [])];
+                unuploadedPhotos.forEach((item, idx) => {
+                  const sItem = uploadedItems[idx];
+                  const sKey = sItem?.uri || sItem?.key;
+                  const pIdx = current.findIndex(p => (p.localUri && p.localUri === item.localUri) || (p.uri && p.uri === item.uri));
+                  if (pIdx >= 0 && sKey) {
+                    current[pIdx] = {
+                      ...current[pIdx],
+                      uri: sKey,
+                      serverKey: sKey,
+                      uploaded: true,
+                      name: sItem?.name || current[pIdx].name,
+                    };
+                  }
+                });
+                return { ...d, propertyPhotos: current };
+              });
             }
           } catch (pErr) {
             console.warn('Property photos upload error:', pErr);
@@ -2286,12 +2377,22 @@ export default function NewLoanScreen({ route, navigation }) {
             fdPhotos.append('photos', makeFormDataFile(u, isVid ? `photo_vid_${Date.now()}_${i}.mp4` : `photo_${Date.now()}_${i}.jpg`, isVid ? 'video/mp4' : 'image/jpeg'));
           });
           const pRes = await uploadPropertyPhotos(currentLoanId, fdPhotos);
-          if (pRes?.photos && Array.isArray(pRes.photos)) {
-            currentPhotos = pRes.photos.map(p => ({
-              ...p,
-              uploaded: true,
-              serverKey: p.uri || p.key || p.serverKey,
-            }));
+          if (pRes) {
+            const uploadedItems = pRes.uploaded || (Array.isArray(pRes.photos) ? pRes.photos.slice(-pendingPhotos.length) : []);
+            pendingPhotos.forEach((item, idx) => {
+              const sItem = uploadedItems[idx];
+              const sKey = sItem?.uri || sItem?.key;
+              const pIdx = currentPhotos.findIndex(p => (p.localUri && p.localUri === item.localUri) || (p.uri && p.uri === item.uri));
+              if (pIdx >= 0 && sKey) {
+                currentPhotos[pIdx] = {
+                  ...currentPhotos[pIdx],
+                  uri: sKey,
+                  serverKey: sKey,
+                  uploaded: true,
+                  name: sItem?.name || currentPhotos[pIdx].name,
+                };
+              }
+            });
             setFormData(d => ({ ...d, propertyPhotos: currentPhotos }));
           }
         } catch (pErr) {

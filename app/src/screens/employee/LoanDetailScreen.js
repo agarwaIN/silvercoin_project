@@ -254,7 +254,7 @@ export default function LoanDetailScreen({ route, navigation }) {
             <EmiScheduleLedger
               emis={loan.emis}
               loan={loan}
-              canCollect={loan.status === 'active' || loan.status === 'approved'}
+              canCollect={Boolean((loan.status === 'active' || (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || loan.disbursementDate) && loan.status !== 'completed' && loan.status !== 'foreclosed' && !loan.isForeclosed)}
               onPayEmi={(targetEmi) => {
                 setSelectedPayEmi(targetEmi);
                 setPayEmiModalVisible(true);

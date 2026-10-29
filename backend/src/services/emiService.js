@@ -568,9 +568,9 @@ async function closeEmisForForeclosure(loanId, foreclosureDate = null, reason = 
 async function buildLoanRecoveryItems(loans) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const eligibleLoans = (loans || []).filter(loan => {
-    const isDisbursed = Array.isArray(loan.disbursements) && loan.disbursements.length > 0;
-    if (!['active', 'approved', 'disbursed'].includes(loan.status) && !isDisbursed) return false;
-    if (loan.status === 'completed') return false;
+    const isDisbursed = (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || Boolean(loan.disbursementDate) || loan.status === 'active';
+    if (!isDisbursed) return false;
+    if (loan.status === 'completed' || loan.status === 'foreclosed' || loan.isForeclosed) return false;
     return true;
   });
 
@@ -886,6 +886,20 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
   }
 
   const loan = await db.getLoanById(loanId);
+  if (!loan) {
+    throw new Error('Loan not found');
+  }
+
+  const isDisbursed = Boolean(
+    loan.status === 'active' ||
+    loan.status === 'completed' ||
+    (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) ||
+    loan.disbursementDate
+  );
+  if (!isDisbursed) {
+    throw new Error('EMI collection is not allowed until the loan has been disbursed.');
+  }
+
   const emis = await db.listEmiByLoan(loanId);
   if (!emis || emis.length === 0) {
     throw new Error('No EMI schedule found for this loan');

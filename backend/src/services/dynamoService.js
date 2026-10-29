@@ -360,6 +360,18 @@ function isClosedLoan(l) {
   return status === 'completed' || status === 'foreclosed' || status === 'rejected' || status === 'owner_not_interested';
 }
 
+function extractLoanAadhaar(l) {
+  if (!l) return '';
+  return String(
+    l.aadhaar ||
+    l.borrowerAadhaar ||
+    l.aadhaarNumber ||
+    l.ownerAadhaar ||
+    (l.borrowerDetails && l.borrowerDetails.aadhaar) ||
+    ''
+  ).replace(/\D/g, '');
+}
+
 async function findLoanByAadhaar(aadhaar, excludeLoanId = null, options = {}) {
   if (!aadhaar) return null;
   const cleanAadhaar = String(aadhaar).replace(/\D/g, '');
@@ -369,10 +381,14 @@ async function findLoanByAadhaar(aadhaar, excludeLoanId = null, options = {}) {
 
   const loans = await scanAll(tableName('loans'));
   return loans.find(l => {
-    if (excludeLoanId && (String(l.loanId) === String(excludeLoanId) || String(l.applicationNumber) === String(excludeLoanId))) {
+    if (excludeLoanId && (
+      String(l.loanId) === String(excludeLoanId) ||
+      String(l.applicationNumber) === String(excludeLoanId) ||
+      String(l.displayLoanId) === String(excludeLoanId)
+    )) {
       return false;
     }
-    const loanAadhaar = String(l.aadhaar || l.borrowerAadhaar || l.aadhaarNumber || '').replace(/\D/g, '');
+    const loanAadhaar = extractLoanAadhaar(l);
     if (!loanAadhaar || loanAadhaar !== cleanAadhaar) return false;
     if (activeOnly && isClosedLoan(l)) return false;
     return true;
@@ -386,7 +402,7 @@ async function findAllLoansByAadhaar(aadhaar) {
 
   const loans = await scanAll(tableName('loans'));
   return loans.filter(l => {
-    const loanAadhaar = String(l.aadhaar || l.borrowerAadhaar || l.aadhaarNumber || '').replace(/\D/g, '');
+    const loanAadhaar = extractLoanAadhaar(l);
     return loanAadhaar && loanAadhaar === cleanAadhaar;
   });
 }
