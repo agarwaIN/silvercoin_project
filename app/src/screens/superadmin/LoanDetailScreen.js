@@ -165,7 +165,7 @@ export default function LoanDetailScreen({ route }) {
         </View>
 
         {/* Full Loan Details Component */}
-        <LoanDetailsView loan={loan} onEditDates={isFirstEmiCollected ? null : handleOpenEditDates} />
+        <LoanDetailsView loan={loan} onEditDates={handleOpenEditDates} />
 
         {/* Media & Documents Gallery Component */}
         <MediaViewer

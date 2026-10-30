@@ -885,16 +885,18 @@ export default function RecoveryScreen({ navigation }) {
                           {monthlyEmiDayStr}
                         </Text>
                       </View>
-                      <TouchableOpacity
-                        style={styles.editDatesPillBtn}
-                        onPress={(e) => {
-                          e?.stopPropagation?.();
-                          handleOpenEditDates(item);
-                        }}
-                      >
-                        <Ionicons name="pencil" size={11} color="#047857" />
-                        <Text style={styles.editDatesPillTxt}>Edit</Text>
-                      </TouchableOpacity>
+                      {!isEmployee && (
+                        <TouchableOpacity
+                          style={styles.editDatesPillBtn}
+                          onPress={(e) => {
+                            e?.stopPropagation?.();
+                            handleOpenEditDates(item);
+                          }}
+                        >
+                          <Ionicons name="pencil" size={11} color="#047857" />
+                          <Text style={styles.editDatesPillTxt}>Edit</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
 
                     {/* Overdue Warning Callout */}

@@ -322,14 +322,31 @@ async function updateEmiScheduleDates(loanId, newEmiStartDate) {
     const currentEmis = await db.listEmiByLoan(loanId);
     if (!currentEmis || currentEmis.length === 0) return;
 
-    const paidEmis = currentEmis.filter(e => e.status === 'paid');
-    const unpaidEmis = currentEmis.filter(e => e.status !== 'paid');
+    // Helper to get sequence index from paymentId (e.g. "...-EMI-01" -> 1)
+    const getSeq = (e) => {
+      if (!e) return 0;
+      if (typeof e.index === 'number') return e.index;
+      const m = String(e.paymentId || '').match(/-EMI-(\d+)/i);
+      return m ? parseInt(m[1], 10) : 0;
+    };
 
-    for (let i = 0; i < unpaidEmis.length; i++) {
-      const emi = unpaidEmis[i];
-      const monthOffset = paidEmis.length === 0 ? i : (paidEmis.length + i);
-      const newDueDate = monthOffset === 0 ? newEmiStartDate : addMonths(newEmiStartDate, monthOffset);
-      await db.updateEmiPayment(emi.paymentId, { dueDate: newDueDate });
+    // Sort all installments sequentially by sequence number or original due date
+    const sortedEmis = [...currentEmis].sort((a, b) => {
+      const seqA = getSeq(a);
+      const seqB = getSeq(b);
+      if (seqA && seqB && seqA !== seqB) return seqA - seqB;
+      return new Date(a.dueDate || 0) - new Date(b.dueDate || 0);
+    });
+
+    const parsedStart = parseDateInput(newEmiStartDate) || newEmiStartDate;
+
+    for (let i = 0; i < sortedEmis.length; i++) {
+      const emi = sortedEmis[i];
+      const newDueDate = (i === 0) ? parsedStart : addMonths(parsedStart, i);
+      if (emi.dueDate !== newDueDate) {
+        emi.dueDate = newDueDate;
+        await db.updateEmiPayment(emi.paymentId, { dueDate: newDueDate });
+      }
     }
   } catch (err) {
     console.error('Error updating EMI schedule dates:', err);

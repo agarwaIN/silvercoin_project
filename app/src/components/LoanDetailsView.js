@@ -177,7 +177,7 @@ export default function LoanDetailsView({ loan, onEditDates }) {
               <Text style={{ fontSize: 12, color: '#065F46', fontWeight: 'bold' }}>Monthly EMI</Text>
               <Text style={{ fontSize: 16, color: '#059669', fontWeight: 'bold' }}>₹{Number(loan.emiAmount || 0).toLocaleString('en-IN')}</Text>
             </View>
-            {onEditDates && (!isLockedForEmployee || !isEmployee) && (
+            {onEditDates && !isEmployee && (
               <TouchableOpacity 
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#059669', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, gap: 4 }} 
                 onPress={onEditDates}

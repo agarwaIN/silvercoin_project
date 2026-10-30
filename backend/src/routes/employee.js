@@ -999,6 +999,7 @@ function parseDateInput(str) {
 }
 
 router.post('/loans/:loanId/update-dates', async (req, res) => {
+  return res.status(403).json({ message: 'Only administrators are authorized to update loan dates.' });
   try {
     const loan = await db.getLoanById(req.params.loanId);
     if (!loan) return res.status(404).json({ message: 'Loan not found' });
