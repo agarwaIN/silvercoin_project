@@ -18,6 +18,7 @@ import { fonts, fontSize } from '../../theme/typography';
 import Header from '../../components/Header';
 import Card from '../../components/Card';
 import StatusBadge from '../../components/StatusBadge';
+import { isLoanActive, isLoanApproved, getEffectiveLoanStatus } from '../../utils/loanSearch';
 import { useAuth } from '../../context/AuthContext';
 import { usePopup } from '../../context/PopupContext';
 import {
@@ -144,7 +145,8 @@ export default function SADashboard({ navigation }) {
     if (!matchesSearch) return false;
     if (loanStatusFilter === 'all') return true;
     if (loanStatusFilter === 'pending') return ['submitted', 'processing', 'draft', 'agreement_submitted'].includes(loan.status);
-    if (loanStatusFilter === 'active') return ['active', 'approved'].includes(loan.status);
+    if (loanStatusFilter === 'approved') return isLoanApproved(loan);
+    if (loanStatusFilter === 'active') return isLoanActive(loan);
     if (loanStatusFilter === 'completed') return loan.status === 'completed';
     if (loanStatusFilter === 'rejected') return loan.status === 'rejected';
     return true;
@@ -194,7 +196,7 @@ export default function SADashboard({ navigation }) {
           <StatBox fourAcross={statsFourAcross} icon="shield-checkmark" label="Admins" value={users.admins?.length || 0} color={colors.primary} />
           <StatBox fourAcross={statsFourAcross} icon="people" label="Employees" value={users.employees?.length || 0} color={colors.dark} />
           <StatBox fourAcross={statsFourAcross} icon="document-text" label="Total Loans" value={loans.length} color={colors.accent} />
-          <StatBox fourAcross={statsFourAcross} icon="flash" label="Active Loans" value={loans.filter((l) => ['active', 'approved'].includes(l.status)).length} color={colors.success} />
+          <StatBox fourAcross={statsFourAcross} icon="flash" label="Active Loans" value={loans.filter(isLoanActive).length} color={colors.success} />
         </View>
 
         {/* Tab Switcher */}
@@ -259,7 +261,8 @@ export default function SADashboard({ navigation }) {
             {[
               { key: 'all', label: 'All Statuses' },
               { key: 'pending', label: 'Pending' },
-              { key: 'active', label: 'Active / Approved' },
+              { key: 'approved', label: 'Approved' },
+              { key: 'active', label: 'Active Loans' },
               { key: 'completed', label: 'Completed' },
               { key: 'rejected', label: 'Rejected' },
             ].map((chip) => (
@@ -292,7 +295,7 @@ export default function SADashboard({ navigation }) {
                       </Text>
                       <Text style={styles.borrowerName}>{loan.ownerName || 'Borrower Unnamed'}</Text>
                     </View>
-                    <StatusBadge status={loan.status} />
+                    <StatusBadge status={getEffectiveLoanStatus(loan)} />
                   </View>
 
                   <View style={styles.loanAmountRow}>

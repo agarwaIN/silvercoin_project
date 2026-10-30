@@ -1,4 +1,5 @@
 import api from './index';
+import { normalizeLoanStatus } from '../utils/loanSearch';
 
 export const getEmployees = () => api.get('/admin/employees').then((r) => r.data);
 export const createEmployee = (data) => api.post('/admin/create-employee', data).then((r) => r.data);
@@ -6,8 +7,8 @@ export const updateEmployeeAccessRights = (userId, accessRights) =>
   api.patch(`/admin/employees/${userId}/access-rights`, { accessRights }).then((r) => r.data);
 export const deactivateEmployee = (userId) => api.patch(`/admin/employees/${userId}/deactivate`).then((r) => r.data);
 export const deleteEmployee = (userId) => api.delete(`/admin/employees/${userId}`).then((r) => r.data);
-export const getLoans = () => api.get('/admin/loans').then((r) => r.data);
-export const getLoan = (loanId) => api.get(`/admin/loans/${loanId}`).then((r) => r.data);
+export const getLoans = () => api.get('/admin/loans').then((r) => (Array.isArray(r.data) ? r.data.map(normalizeLoanStatus) : r.data));
+export const getLoan = (loanId) => api.get(`/admin/loans/${loanId}`).then((r) => normalizeLoanStatus(r.data));
 export const getLoanMediaPreview = (loanId) =>
   api.get(`/admin/loans/${loanId}/media-preview`).then((r) => r.data);
 export const uploadRegistryDocument = (loanId, formData, meta = {}) => {

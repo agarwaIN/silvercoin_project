@@ -1,4 +1,5 @@
 import api from './index';
+import { normalizeLoanStatus } from '../utils/loanSearch';
 
 export const getAllUsers = () =>
   api.get('/superadmin/users').then((r) => {
@@ -10,9 +11,9 @@ export const getAllUsers = () =>
     };
   });
 
-export const getAllLoans = () => api.get('/superadmin/loans').then((r) => r.data);
+export const getAllLoans = () => api.get('/superadmin/loans').then((r) => (Array.isArray(r.data) ? r.data.map(normalizeLoanStatus) : r.data));
 
-export const getLoan = (loanId) => api.get(`/superadmin/loans/${loanId}`).then((r) => r.data);
+export const getLoan = (loanId) => api.get(`/superadmin/loans/${loanId}`).then((r) => normalizeLoanStatus(r.data));
 
 export const createAdmin = (data) => api.post('/superadmin/create-user', { ...data, role: 'admin' }).then((r) => r.data);
 

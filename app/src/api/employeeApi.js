@@ -1,9 +1,10 @@
 import api from './index';
+import { normalizeLoanStatus } from '../utils/loanSearch';
 
 export const getProfile = () => api.get('/employee/profile').then((r) => r.data);
 export const patchProfile = (body) => api.patch('/employee/profile', body).then((r) => r.data);
-export const getLoans = () => api.get('/employee/loans').then((r) => r.data);
-export const getLoan = (loanId) => api.get(`/employee/loans/${loanId}`).then((r) => r.data);
+export const getLoans = () => api.get('/employee/loans').then((r) => (Array.isArray(r.data) ? r.data.map(normalizeLoanStatus) : r.data));
+export const getLoan = (loanId) => api.get(`/employee/loans/${loanId}`).then((r) => normalizeLoanStatus(r.data));
 export const createLoan = () => api.post('/employee/loans').then((r) => r.data);
 export const updateLoan = (loanId, data) => api.patch(`/employee/loans/${loanId}`, data).then((r) => r.data);
 export const uploadRegistryDocument = (loanId, formData, meta = {}) => {

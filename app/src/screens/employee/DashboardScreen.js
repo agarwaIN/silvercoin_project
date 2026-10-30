@@ -11,6 +11,7 @@ import Header from '../../components/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getLoans, getEmiThisMonth } from '../../api/employeeApi';
 import { formatDateTime, getLoanSubmissionInfo, getLoanSubmissionTimestamp, getLoanNumericSeq } from '../../utils/date';
+import { isLoanActive, isLoanApproved, getEffectiveLoanStatus } from '../../utils/loanSearch';
 
 const sortLoansWithReturnedFirst = (items) => {
   if (!Array.isArray(items)) return [];
@@ -56,7 +57,8 @@ export default function EmployeeDashboard({ navigation }) {
     total: loans.length,
     draft: loans.filter((l) => l.status === 'draft').length,
     pending: loans.filter((l) => ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'].includes(l.status)).length,
-    approved: loans.filter((l) => l.status === 'approved').length,
+    approved: loans.filter(isLoanApproved).length,
+    active: loans.filter(isLoanActive).length,
     rejected: loans.filter((l) => ['rejected', 'returned'].includes(l.status)).length,
     returned: loans.filter((l) => l.status === 'returned').length,
   };
@@ -152,7 +154,7 @@ export default function EmployeeDashboard({ navigation }) {
                       <Text style={styles.amount}>₹{Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}</Text>
                     ) : null}
                   </View>
-                  <StatusBadge status={loan.status} />
+                  <StatusBadge status={getEffectiveLoanStatus(loan)} />
                 </View>
 
                 {isReturned && (

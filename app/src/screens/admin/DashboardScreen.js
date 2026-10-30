@@ -11,6 +11,7 @@ import Header from '../../components/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getLoans, getEmployees, getEmiThisMonth } from '../../api/adminApi';
 import { formatDateTime, getLoanSubmissionInfo, sortLoansByLatestSubmitted } from '../../utils/date';
+import { isLoanActive, isLoanApproved, getEffectiveLoanStatus } from '../../utils/loanSearch';
 
 const sortLoansWithReturnedFirst = (items) => sortLoansByLatestSubmitted(items);
 
@@ -48,8 +49,8 @@ export default function AdminDashboard({ navigation }) {
   const pending = loans.filter((l) =>
     ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'].includes(l.status),
   ).length;
-  const approved = loans.filter((l) => l.status === 'approved').length;
-  const activeLoans = loans.filter((l) => l.status === 'active').length;
+  const approved = loans.filter(isLoanApproved).length;
+  const activeLoans = loans.filter(isLoanActive).length;
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
@@ -161,7 +162,7 @@ export default function AdminDashboard({ navigation }) {
                       <Text style={styles.amount}>Principal: ₹{Number(loan.approvedAmount || loan.loanAmount).toLocaleString('en-IN')}</Text>
                     ) : null}
                   </View>
-                  <StatusBadge status={loan.status} />
+                  <StatusBadge status={getEffectiveLoanStatus(loan)} />
                 </View>
 
                 {isReturned && (

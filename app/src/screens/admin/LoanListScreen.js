@@ -20,7 +20,7 @@ import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
 import { getLoans } from '../../api/adminApi';
 import { formatDate, formatDateTime, getLoanSubmissionInfo, sortLoansByLatestSubmitted } from '../../utils/date';
-import { loanMatchesSearch } from '../../utils/loanSearch';
+import { loanMatchesSearch, isLoanActive, isLoanApproved, getEffectiveLoanStatus } from '../../utils/loanSearch';
 
 const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Active', 'Completed / Foreclosed', 'Rejected'];
 const filterMap = {
@@ -75,21 +75,9 @@ export default function AdminLoanListScreen({ navigation, route }) {
         Boolean(l.foreclosureDetails)
       );
     } else if (filter === 'Approved') {
-      byStatus = loans.filter((l) =>
-        l.status === 'approved' &&
-        !l.isForeclosed &&
-        !l.foreclosureDetails &&
-        l.status !== 'completed' &&
-        l.status !== 'foreclosed'
-      );
+      byStatus = loans.filter((l) => isLoanApproved(l));
     } else if (filter === 'Active') {
-      byStatus = loans.filter((l) =>
-        l.status === 'active' &&
-        !l.isForeclosed &&
-        !l.foreclosureDetails &&
-        l.status !== 'completed' &&
-        l.status !== 'foreclosed'
-      );
+      byStatus = loans.filter((l) => isLoanActive(l));
     } else if (filterMap[filter]) {
       byStatus = loans.filter((l) => filterMap[filter].includes(l.status));
     }
@@ -157,7 +145,7 @@ export default function AdminLoanListScreen({ navigation, route }) {
                     </Text>
                   </View>
                   <View style={styles.right}>
-                    <StatusBadge status={(item.isForeclosed || item.foreclosureDetails || item.status === 'foreclosed') ? 'foreclosed' : item.status} />
+                    <StatusBadge status={(item.isForeclosed || item.foreclosureDetails || item.status === 'foreclosed') ? 'foreclosed' : getEffectiveLoanStatus(item)} />
                     <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginTop: 8 }} />
                   </View>
                 </View>

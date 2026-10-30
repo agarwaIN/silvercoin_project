@@ -1,4 +1,37 @@
 
+export function getEffectiveLoanStatus(loan) {
+  if (!loan) return 'draft';
+  if (loan.isForeclosed || loan.foreclosureDetails || loan.status === 'foreclosed') return 'foreclosed';
+  if (loan.status === 'completed') return 'completed';
+  if (loan.status === 'rejected') return 'rejected';
+  if (loan.status === 'returned') return 'returned';
+  if (
+    loan.status === 'active' ||
+    (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) ||
+    Boolean(loan.disbursementDate)
+  ) {
+    return 'active';
+  }
+  return loan.status || 'draft';
+}
+
+export function isLoanActive(loan) {
+  return getEffectiveLoanStatus(loan) === 'active';
+}
+
+export function isLoanApproved(loan) {
+  return getEffectiveLoanStatus(loan) === 'approved';
+}
+
+export function normalizeLoanStatus(loan) {
+  if (!loan || typeof loan !== 'object') return loan;
+  const effectiveStatus = getEffectiveLoanStatus(loan);
+  if (loan.status !== effectiveStatus) {
+    return { ...loan, status: effectiveStatus };
+  }
+  return loan;
+}
+
 export function loanMatchesSearch(loan, rawQuery) {
   if (!loan) return false;
   const q = String(rawQuery || '').trim().toLowerCase();

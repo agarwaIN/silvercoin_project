@@ -85,11 +85,21 @@ function getNumericSeq(loan) {
 
 router.get('/loans', async (req, res) => {
   const loans = await db.listLoansByEmployee(req.user.userId);
-  const enriched = (loans || []).map(l => ({
-    ...l,
-    employeeName: l.employeeName || req.user.name,
-    submittedAt: l.submittedAt || (l.status !== 'draft' ? (l.createdAt || l.updatedAt) : null),
-  }));
+  const enriched = (loans || []).map(l => {
+    // Auto-heal loan status
+    let status = l.status;
+    const isDisbursed = (Array.isArray(l.disbursements) && l.disbursements.length > 0) || Boolean(l.disbursementDate);
+    if (status === 'approved' && isDisbursed) {
+      status = 'active';
+      db.updateLoan(l.loanId, { status: 'active' }).catch(() => {});
+    }
+    return {
+      ...l,
+      status,
+      employeeName: l.employeeName || req.user.name,
+      submittedAt: l.submittedAt || (l.status !== 'draft' ? (l.createdAt || l.updatedAt) : null),
+    };
+  });
   enriched.sort((a, b) => {
     const aRet = a.status === 'returned';
     const bRet = b.status === 'returned';
@@ -157,7 +167,13 @@ router.get('/loans/:loanId', async (req, res) => {
   const emis = await ensureEmiSchedule(loan);
   const firstEmiCollected = !!(loan.firstEmiCollected || (emis || []).some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0));
   const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
-  res.json({ ...loan, employeeName: loan.employeeName || req.user.name, emis, firstEmiCollected, submittedAt });
+  let status = loan.status;
+  const isDisbursed = (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || Boolean(loan.disbursementDate);
+  if (status === 'approved' && isDisbursed) {
+    status = 'active';
+    db.updateLoan(loan.loanId, { status: 'active' }).catch(() => {});
+  }
+  res.json({ ...loan, status, employeeName: loan.employeeName || req.user.name, emis, firstEmiCollected, submittedAt });
 });
 
 function sanitizeMediaList(incomingList, existingList) {
@@ -1011,6 +1027,9 @@ router.post('/loans/:loanId/update-dates', async (req, res) => {
         });
       }
       updates.disbursements = disbursements;
+      if (loan.status === 'approved') {
+        updates.status = 'active';
+      }
     }
 
     if (parsedEmiDate) {

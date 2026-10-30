@@ -57,8 +57,16 @@ router.get('/loans', async (req, res) => {
       const admin = userMap.get(loan.adminId);
       const emp = userMap.get(loan.employeeId);
       const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
+      // Auto-heal loan status
+      let status = loan.status;
+      const isDisbursed = (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || Boolean(loan.disbursementDate);
+      if (status === 'approved' && isDisbursed) {
+        status = 'active';
+        db.updateLoan(loan.loanId, { status: 'active' }).catch(() => {});
+      }
       return {
         ...loan,
+        status,
         submittedAt,
         adminName: admin ? admin.name : null,
         adminEmail: admin ? admin.email : null,
@@ -89,8 +97,15 @@ router.get('/loans/:loanId', async (req, res) => {
     const firstEmiCollected = !!(loan.firstEmiCollected || (emis || []).some(e => e.status === 'paid' || e.status === 'partial' || Number(e.paidAmount || 0) > 0));
     const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
 
+    let status = loan.status;
+    const isDisbursed = (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || Boolean(loan.disbursementDate);
+    if (status === 'approved' && isDisbursed) {
+      status = 'active';
+      db.updateLoan(loan.loanId, { status: 'active' }).catch(() => {});
+    }
     const enriched = {
       ...loan,
+      status,
       emis: emis || [],
       firstEmiCollected,
       submittedAt,
@@ -325,6 +340,9 @@ router.post('/loans/:loanId/update-dates', async (req, res) => {
         });
       }
       updates.disbursements = disbursements;
+      if (loan.status === 'approved') {
+        updates.status = 'active';
+      }
     }
 
     if (parsedEmiDate) {

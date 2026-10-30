@@ -34,7 +34,14 @@ async function enrichLoanWithEmployeeName(loan) {
     }
   }
   const submittedAt = loan.submittedAt || (loan.status !== 'draft' ? (loan.createdAt || loan.updatedAt) : null);
-  return { ...loan, employeeName: employeeName || null, submittedAt };
+  // Auto-heal loan status: If loan has disbursements or disbursementDate, but status is 'approved', it is active
+  let status = loan.status;
+  const isDisbursed = (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || Boolean(loan.disbursementDate);
+  if (status === 'approved' && isDisbursed) {
+    status = 'active';
+    db.updateLoan(loan.loanId, { status: 'active' }).catch(() => {});
+  }
+  return { ...loan, status, employeeName: employeeName || null, submittedAt };
 }
 
 
@@ -602,6 +609,9 @@ router.post('/loans/:loanId/update-dates', async (req, res) => {
         });
       }
       updates.disbursements = disbursements;
+      if (loan.status === 'approved') {
+        updates.status = 'active';
+      }
     }
 
     if (parsedEmiDate) {
@@ -718,8 +728,9 @@ router.post('/loans/:loanId/approve', async (req, res) => {
   
   const { loanStartDate, approvedAmount, interestRate, penaltyRate, tenureMonths, emiAmount, totalInterest, totalRepayable } = req.body;
   
+  const isAlreadyActive = loan.status === 'active' || (Array.isArray(loan.disbursements) && loan.disbursements.length > 0) || Boolean(loan.disbursementDate);
   await db.updateLoan(loan.loanId, { 
-    status: 'approved', 
+    status: isAlreadyActive ? 'active' : 'approved', 
     loanStartDate, 
     approvedAmount, 
     interestRate, 
