@@ -10,7 +10,9 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "build:apk": "npx --yes eas-cli@latest build -p android --profile preview --non-interactive",
+    "build:apk:universal": "npx --yes eas-cli@latest build -p android --profile preview-universal --non-interactive",
     "build:apk:prod": "npx --yes eas-cli@latest build -p android --profile production --non-interactive",
+    "build:aab": "npx --yes eas-cli@latest build -p android --profile production-aab --non-interactive",
     "build:list": "npx --yes eas-cli@latest build:list",
     "postinstall": "node -e \"try { const fs=require('fs'); if(fs.existsSync('node_modules/react-native/sdks/hermesc/linux64-bin/hermesc')) fs.chmodSync('node_modules/react-native/sdks/hermesc/linux64-bin/hermesc', 0o755); } catch (e) {}\""
   },

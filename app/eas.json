@@ -7,7 +7,18 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a -Pandroid.enableMinifyInReleaseBuilds=false -Pandroid.enableShrinkResourcesInReleaseBuilds=false"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://13.200.237.51:5000/api"
+      }
+    },
+    "preview-universal": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a -Pandroid.enableMinifyInReleaseBuilds=false -Pandroid.enableShrinkResourcesInReleaseBuilds=false"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "http://13.200.237.51:5000/api"
@@ -15,7 +26,16 @@
     },
     "production": {
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a -Pandroid.enableMinifyInReleaseBuilds=false -Pandroid.enableShrinkResourcesInReleaseBuilds=false"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://13.200.237.51:5000/api"
+      }
+    },
+    "production-aab": {
+      "android": {
+        "buildType": "app-bundle"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "http://13.200.237.51:5000/api"
