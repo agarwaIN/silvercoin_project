@@ -6,6 +6,14 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/cf43f3cc-a1d0-47b1-8608-06ac9817d179",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 3000
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.silvercoin.loanapp",
@@ -39,6 +47,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-updates",
       "expo-secure-store",
       [
         "expo-image-picker",

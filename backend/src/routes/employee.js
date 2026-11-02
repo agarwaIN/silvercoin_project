@@ -429,7 +429,7 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
       return res.status(400).json({ message: 'EMI collection is not allowed until the loan has been disbursed.' });
     }
 
-    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty, waivePenalty } = req.body;
+    const { paymentId, amount, paymentMode, transactionRef, txnRef, paymentDate, date, penaltyAmount, collectPenalty, customPenalty, waivePenalty, emiAmount } = req.body;
     const result = await recordLoanPayment(loan.loanId, paymentId, amount, req.user.userId, {
       paymentMode,
       transactionRef: transactionRef || txnRef,
@@ -439,6 +439,7 @@ router.post('/loans/:loanId/pay-emi', async (req, res) => {
       penaltyAmount: penaltyAmount !== undefined ? penaltyAmount : customPenalty,
       collectPenalty: collectPenalty !== undefined ? collectPenalty : true,
       waivePenalty: Boolean(waivePenalty),
+      emiAmount: emiAmount !== undefined ? emiAmount : undefined,
     });
     db.getLoanById(loan.loanId).then(l => {
       if (l) notificationService.notifyEmiPaymentCollected(l, req.user, amount, result?.emi || { emiNumber: req.body?.emiNumber }).catch(() => {});

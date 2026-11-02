@@ -5,6 +5,7 @@ import { colors } from './src/theme/colors';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Updates from 'expo-updates';
 import * as Font from 'expo-font';
 import {
   Poppins_400Regular,
@@ -34,6 +35,22 @@ function AppContent() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [showSplash, setShowSplash] = useState(!skipIntroSplash);
   const onSplashDone = useCallback(() => setShowSplash(false), []);
+
+  useEffect(() => {
+    async function checkOtaUpdates() {
+      if (__DEV__) return;
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch (err) {
+        console.log('[OTA Updates] Check:', err.message);
+      }
+    }
+    checkOtaUpdates();
+  }, []);
 
   useEffect(() => {
     Font.loadAsync({

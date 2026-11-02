@@ -47,10 +47,11 @@ export const sendQrToAgent = (loanId) => api.post(`/employee/loans/${loanId}/sen
 export const requestEmiChange = (loanId, data) => api.post(`/employee/loans/${loanId}/emi-change-request`, data).then((r) => r.data);
 export const requestForeclosure = (loanId, data) => api.post(`/employee/loans/${loanId}/request-foreclosure`, data).then((r) => r.data);
 export const getRecovery = () => api.get('/employee/recovery').then((r) => r.data);
-export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false) =>
+export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false, emiAmount = undefined) =>
   api.post(`/employee/loans/${loanId}/pay-emi`, {
     paymentId,
     amount,
+    emiAmount,
     paymentMode,
     transactionRef: txnRef,
     txnRef,

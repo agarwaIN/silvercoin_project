@@ -6,6 +6,7 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a -Pandroid.enableMinifyInReleaseBuilds=false -Pandroid.enableShrinkResourcesInReleaseBuilds=false"
@@ -16,6 +17,7 @@
     },
     "preview-universal": {
       "distribution": "internal",
+      "channel": "preview",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a -Pandroid.enableMinifyInReleaseBuilds=false -Pandroid.enableShrinkResourcesInReleaseBuilds=false"
@@ -25,6 +27,7 @@
       }
     },
     "production": {
+      "channel": "production",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a -Pandroid.enableMinifyInReleaseBuilds=false -Pandroid.enableShrinkResourcesInReleaseBuilds=false"
@@ -34,6 +37,7 @@
       }
     },
     "production-aab": {
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       },

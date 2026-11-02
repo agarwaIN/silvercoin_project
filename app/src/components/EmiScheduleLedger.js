@@ -185,7 +185,9 @@ export default function EmiScheduleLedger({
               {penalty > 0 ? (
                 <View style={styles.finCol}>
                   <Text style={styles.finLabel} numberOfLines={1}>Late Penalty</Text>
-                  <Text style={[styles.finVal, { color: colors.error }]} numberOfLines={1}>+₹{penalty.toLocaleString('en-IN')}</Text>
+                  <Text style={[styles.finVal, { color: (emi.penaltySettled || emi.penaltyLocked) ? '#B45309' : colors.error }]} numberOfLines={1}>
+                    +₹{penalty.toLocaleString('en-IN')}{(emi.penaltySettled || emi.penaltyLocked) ? ' (Settled)' : ''}
+                  </Text>
                 </View>
               ) : isPenaltyWaived ? (
                 <View style={styles.finCol}>
@@ -227,27 +229,39 @@ export default function EmiScheduleLedger({
                   const refLabel = isDigital ? 'UTR / Ref' : 'Receipt No';
 
                   return (
-                    <View key={p.paymentInstallmentId || pIdx} style={styles.ledgerEntryRow}>
-                      <View style={styles.ledgerEntryLeft}>
-                        <View style={styles.partPill}>
-                          <Text style={styles.partPillTxt}>Part {pIdx + 1}</Text>
+                    <View key={p.paymentInstallmentId || pIdx} style={{ gap: 4 }}>
+                      <View style={styles.ledgerEntryRow}>
+                        <View style={styles.ledgerEntryLeft}>
+                          <View style={styles.partPill}>
+                            <Text style={styles.partPillTxt}>Part {pIdx + 1}</Text>
+                          </View>
+                          <Text style={styles.partAmountTxt}>
+                            ₹{Math.round(Number(p.amount || 0)).toLocaleString('en-IN')}
+                          </Text>
+                          <View style={styles.modeBadge}>
+                            <Text style={styles.modeBadgeTxt}>{mode}</Text>
+                          </View>
+                          <Text style={styles.partDateTxt}>
+                            {formatDate(p.paidDate)}
+                          </Text>
                         </View>
-                        <Text style={styles.partAmountTxt}>
-                          ₹{Math.round(Number(p.amount || 0)).toLocaleString('en-IN')}
-                        </Text>
-                        <View style={styles.modeBadge}>
-                          <Text style={styles.modeBadgeTxt}>{mode}</Text>
-                        </View>
-                        <Text style={styles.partDateTxt}>
-                          {formatDate(p.paidDate)}
-                        </Text>
+
+                        {p.transactionRef ? (
+                          <View style={styles.refBadge}>
+                            <Ionicons name="pricetag-outline" size={11} color="#0369A1" />
+                            <Text style={styles.refBadgeTxt}>
+                              {refLabel}: <Text style={{ fontFamily: fonts.bold }}>{p.transactionRef}</Text>
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
 
-                      {p.transactionRef ? (
-                        <View style={styles.refBadge}>
-                          <Ionicons name="pricetag-outline" size={11} color="#0369A1" />
-                          <Text style={styles.refBadgeTxt}>
-                            {refLabel}: <Text style={{ fontFamily: fonts.bold }}>{p.transactionRef}</Text>
+                      {(Number(p.penaltyAmount || 0) > 0 || (p.emiAmount !== undefined && Number(p.emiAmount) !== Number(p.amount))) ? (
+                        <View style={styles.ledgerBreakdownRow}>
+                          <Ionicons name="return-down-forward-outline" size={12} color="#0284C7" />
+                          <Text style={styles.ledgerBreakdownTxt}>
+                            EMI: ₹{Math.round(Number(p.emiAmount !== undefined ? p.emiAmount : (Number(p.amount || 0) - Number(p.penaltyAmount || 0)))).toLocaleString('en-IN')}
+                            {Number(p.penaltyAmount || 0) > 0 ? ` • Penalty: ₹${Math.round(Number(p.penaltyAmount)).toLocaleString('en-IN')} (Settled)` : ''}
                           </Text>
                         </View>
                       ) : null}
@@ -526,6 +540,19 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
     gap: 4,
+  },
+  ledgerBreakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingLeft: 12,
+    marginTop: -2,
+    marginBottom: 2,
+  },
+  ledgerBreakdownTxt: {
+    fontSize: 10,
+    fontFamily: fonts.medium,
+    color: '#0369A1',
   },
   refBadgeTxt: {
     fontSize: 11,

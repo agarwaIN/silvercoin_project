@@ -12,6 +12,7 @@ import * as Sharing from 'expo-sharing';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
+import { fonts } from '../../theme/typography';
 import * as FileSystem from 'expo-file-system';
 import {
   createLoan, updateLoan, submitLoan,
@@ -495,7 +496,7 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
       {aadhaarChecking && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
           <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={{ fontSize: 11, color: colors.primary, fontFamily: fonts.medium }}>
+          <Text style={{ fontSize: 11, color: colors.primary, fontFamily: fonts?.medium, fontWeight: '500' }}>
             Verifying Aadhaar uniqueness...
           </Text>
         </View>
@@ -503,7 +504,7 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
       {data.aadhaarError ? (
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 6, backgroundColor: '#FEE2E2', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5' }}>
           <Ionicons name="alert-circle" size={16} color="#DC2626" style={{ marginTop: 2 }} />
-          <Text style={{ flex: 1, fontSize: 11, color: '#B91C1C', fontFamily: fonts.medium, lineHeight: 15 }}>
+          <Text style={{ flex: 1, fontSize: 11, color: '#B91C1C', fontFamily: fonts?.medium, fontWeight: '500', lineHeight: 15 }}>
             {data.aadhaarError}
           </Text>
         </View>

@@ -953,26 +953,42 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     const unpaidPrincipal = Math.max(0, Number(emi.amount || 0) - Number(emi.paidAmount || 0));
     const isTargetEmi = (i === startIndex);
 
-    let penaltyWaived = false;
-    let penaltyLocked = false;
+    let penaltyWaived = Boolean(emi.penaltyWaived);
+    let penaltyLocked = Boolean(emi.penaltyLocked);
+    let penaltySettled = Boolean(emi.penaltySettled);
 
-    if (isTargetEmi && (paymentDetails.waivePenalty === true || paymentDetails.collectPenalty === false)) {
+    // Check if penalty was already collected or settled on this installment
+    const priorPayments = Array.isArray(emi.payments) ? emi.payments : [];
+    const priorPenaltyPaid = priorPayments.reduce((sum, p) => sum + Number(p.penaltyAmount || 0), 0) || Number(emi.penaltyPaidAmount || 0);
+    const isAlreadySettled = penaltySettled || priorPenaltyPaid > 0 || (penaltyLocked && Number(emi.paidAmount || 0) > 0 && Number(emi.penaltyAmount || 0) > 0);
+
+    if (isAlreadySettled) {
+      // Penalty was ALREADY collected/settled in a previous payment.
+      // It CANNOT be changed, recalculated, or added to again!
+      applicablePenalty = Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : priorPenaltyPaid;
+      penaltyLocked = true;
+      penaltySettled = true;
+    } else if (isTargetEmi && (paymentDetails.waivePenalty === true || paymentDetails.collectPenalty === false)) {
       // User explicitly opted to WAIVE OFF penalty on this EMI
       applicablePenalty = 0;
       penaltyWaived = true;
       penaltyLocked = true;
+      penaltySettled = true;
     } else if (isTargetEmi && paymentDetails.penaltyAmount !== undefined && paymentDetails.penaltyAmount !== null && !isNaN(Number(paymentDetails.penaltyAmount))) {
-      // User explicitly set/edited penalty amount to replace existing penalty
+      // User explicitly set/edited penalty amount to replace existing penalty - this amount is FINAL and SETTLED
       applicablePenalty = Math.max(0, Number(paymentDetails.penaltyAmount));
       penaltyWaived = (applicablePenalty === 0 && paymentDetails.waivePenalty === true);
       penaltyLocked = true;
+      penaltySettled = true;
     } else if (emi.penaltyWaived) {
       applicablePenalty = 0;
       penaltyWaived = true;
       penaltyLocked = true;
-    } else if (emi.penaltyLocked) {
+      penaltySettled = true;
+    } else if (emi.penaltySettled || emi.penaltyLocked) {
       applicablePenalty = Number(emi.penaltyAmount || 0);
       penaltyLocked = true;
+      penaltySettled = true;
     } else if (daysLate > 3 && unpaidPrincipal > 0) {
       const penaltyRate = Number(loan?.penaltyRate || 0.1);
       applicablePenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysLate);
@@ -983,6 +999,10 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     const totalRequired = Number(emi.amount || 0) + applicablePenalty;
     const currentPaid = Number(emi.paidAmount || 0);
     const needed = Math.max(0, totalRequired - currentPaid);
+
+    if (isTargetEmi && remainingAmount > needed) {
+      throw new Error(`Payment amount (₹${remainingAmount.toLocaleString('en-IN')}) cannot exceed the actual amount due (₹${needed.toLocaleString('en-IN')}). You can submit an amount less than actual (partial) or equal to the complete amount.`);
+    }
 
     const payForThisEmi = Math.min(remainingAmount, needed);
     const newPaidAmount = currentPaid + payForThisEmi;
@@ -1009,9 +1029,33 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       });
     }
 
+    // Determine how payForThisEmi splits between base EMI and penalty
+    let receiptPenaltyPart = 0;
+    let receiptEmiPart = 0;
+    if (isTargetEmi) {
+      if (isAlreadySettled) {
+        // Penalty already paid in prior installment receipt!
+        // Current payment goes 100% towards remaining base EMI.
+        receiptPenaltyPart = 0;
+        receiptEmiPart = payForThisEmi;
+      } else if (paymentDetails.penaltyAmount !== undefined && Number(paymentDetails.penaltyAmount) > 0) {
+        receiptPenaltyPart = Math.min(payForThisEmi, Number(paymentDetails.penaltyAmount));
+        receiptEmiPart = Math.max(0, payForThisEmi - receiptPenaltyPart);
+      } else if (paymentDetails.emiAmount !== undefined) {
+        receiptEmiPart = Math.min(payForThisEmi, Number(paymentDetails.emiAmount));
+        receiptPenaltyPart = Math.max(0, payForThisEmi - receiptEmiPart);
+      } else {
+        receiptEmiPart = payForThisEmi;
+      }
+    } else {
+      receiptEmiPart = payForThisEmi;
+    }
+
     const newInstallment = {
       paymentInstallmentId: `${emi.paymentId}-P${existingPayments.length + 1}`,
       amount: payForThisEmi,
+      emiAmount: receiptEmiPart,
+      penaltyAmount: receiptPenaltyPart,
       paymentMode: mode,
       transactionRef: rawTxnRef,
       paidDate: effectivePaidDate,
@@ -1025,6 +1069,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       penaltyAmount: applicablePenalty,
       penaltyWaived: penaltyWaived,
       penaltyLocked: penaltyLocked,
+      penaltySettled: penaltySettled,
       status: newStatus,
       paidDate: effectivePaidDate,
       markedBy: userId,
@@ -1038,6 +1083,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       paymentId: emi.paymentId,
       paidAmount: newPaidAmount,
       penaltyAmount: applicablePenalty,
+      penaltySettled: penaltySettled,
       status: newStatus,
       paymentMode: mode,
       transactionRef: rawTxnRef,

@@ -28,10 +28,11 @@ export const sendQr = (loanId) => api.post(`/admin/loans/${loanId}/send-qr`).the
 export const getRecovery = () => api.get('/admin/recovery').then((r) => r.data);
 export const markEmiPaid = (loanId, paymentId) =>
   api.post(`/admin/loans/${loanId}/mark-emi-paid`, { paymentId }).then((r) => r.data);
-export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false) =>
+export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false, emiAmount = undefined) =>
   api.post(`/admin/loans/${loanId}/pay-emi`, {
     paymentId,
     amount,
+    emiAmount,
     paymentMode,
     transactionRef: txnRef,
     txnRef,
