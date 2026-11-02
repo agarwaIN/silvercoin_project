@@ -14,9 +14,9 @@
     "build:apk:prod": "npx --yes eas-cli@latest build -p android --profile production --non-interactive",
     "build:aab": "npx --yes eas-cli@latest build -p android --profile production-aab --non-interactive",
     "build:list": "npx --yes eas-cli@latest build:list",
-    "update": "npx --yes eas-cli@latest update --auto",
-    "update:preview": "npx --yes eas-cli@latest update --branch preview",
-    "update:prod": "npx --yes eas-cli@latest update --branch production",
+    "update": "npx --yes eas-cli@latest update --branch main --environment preview",
+    "update:preview": "npx --yes eas-cli@latest update --branch main --environment preview",
+    "update:prod": "npx --yes eas-cli@latest update --branch main --environment preview",
     "postinstall": "node -e \"try { const fs=require('fs'); if(fs.existsSync('node_modules/react-native/sdks/hermesc/linux64-bin/hermesc')) fs.chmodSync('node_modules/react-native/sdks/hermesc/linux64-bin/hermesc', 0o755); } catch (e) {}\""
   },
   "dependencies": {

@@ -19,6 +19,7 @@ import { PopupProvider } from './src/context/PopupContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import CustomSplash from './src/components/CustomSplash';
 import SessionGuard from './src/components/SessionGuard';
+import { checkForAppUpdates } from './src/utils/updateManager';
 SplashScreen.preventAutoHideAsync();
 const skipIntroSplash = __DEV__ && Platform.OS === 'web';
 
@@ -37,19 +38,7 @@ function AppContent() {
   const onSplashDone = useCallback(() => setShowSplash(false), []);
 
   useEffect(() => {
-    async function checkOtaUpdates() {
-      if (__DEV__) return;
-      try {
-        const update = await Updates.checkForUpdateAsync();
-        if (update.isAvailable) {
-          await Updates.fetchUpdateAsync();
-          await Updates.reloadAsync();
-        }
-      } catch (err) {
-        console.log('[OTA Updates] Check:', err.message);
-      }
-    }
-    checkOtaUpdates();
+    checkForAppUpdates({ manual: false });
   }, []);
 
   useEffect(() => {

@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { useNotifications } from '../context/NotificationContext';
+import { checkForAppUpdates } from '../utils/updateManager';
 
 const win = Dimensions.get('window');
 
@@ -135,6 +136,23 @@ export default function RightMenuModal({
           ) : null}
 
           <View style={styles.logoutRule} />
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => {
+              onClose();
+              checkForAppUpdates({ manual: true });
+            }}
+            activeOpacity={0.65}
+            accessibilityLabel="Check for Updates"
+          >
+            <View style={styles.rowIcon}>
+              <Ionicons name="cloud-download-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.label} numberOfLines={1}>
+              Check for Updates
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.border} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.logoutRow}
             onPress={onLogout}
