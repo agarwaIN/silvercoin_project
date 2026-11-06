@@ -96,7 +96,62 @@ export default function EmiScheduleLedger({
           : Number(emi.amount || 0);
         const baseAmount = Math.round(rawBase);
 
-        const penalty = Math.round(emi.penaltyWaived ? 0 : Number(emi.penaltyAmount || 0));
+        // Installment Payments Array
+        const paymentsList = Array.isArray(emi.payments) && emi.payments.length > 0
+          ? emi.payments
+          : (paidAmount > 0 ? [{
+            paymentInstallmentId: `${emi.paymentId}-P1`,
+            amount: paidAmount,
+            paymentMode: emi.paymentMode || 'Cash',
+            transactionRef: emi.transactionRef || emi.txnRef || '',
+            paidDate: emi.paidDate,
+          }] : []);
+
+        const getLastPaymentDate = () => {
+          if (paymentsList.length > 0) {
+            const valid = paymentsList
+              .map(p => p.paidDate ? String(p.paidDate).slice(0, 10) : null)
+              .filter(Boolean);
+            if (valid.length > 0) {
+              valid.sort();
+              return valid[valid.length - 1];
+            }
+          }
+          if (emi.paidDate) return String(emi.paidDate).slice(0, 10);
+          return null;
+        };
+
+        const lastPaidDateStr = getLastPaymentDate();
+        const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
+
+        // Calculate days late at actual time of payment submission
+        let daysLateAtPayment = 0;
+        if (lastPaidDateStr && dueDateStr && lastPaidDateStr > dueDateStr) {
+          const pD = new Date(lastPaidDateStr);
+          const dD = new Date(dueDateStr);
+          if (!isNaN(pD.getTime()) && !isNaN(dD.getTime())) {
+            daysLateAtPayment = Math.max(0, Math.floor((pD - dD) / (1000 * 60 * 60 * 24)));
+          }
+        }
+
+        // Determine late penalty:
+        // Calculated strictly till the date the EMI amount was submitted last!
+        let penalty = 0;
+        if (emi.penaltyWaived) {
+          penalty = 0;
+        } else if (emi.penaltySettled) {
+          penalty = Math.round(Number(emi.penaltyAmount || 0));
+        } else if (lastPaidDateStr && dueDateStr) {
+          if (daysLateAtPayment <= 3) {
+            penalty = 0;
+          } else {
+            const pRate = Number(loan?.penaltyRate || 0.1);
+            penalty = Math.round(baseAmount * (pRate / 100) * daysLateAtPayment);
+          }
+        } else {
+          penalty = Math.round(Number(emi.penaltyAmount || 0));
+        }
+
         const totalRequired = baseAmount + penalty;
         const remainingDue = Math.max(0, totalRequired - paidAmount);
 
@@ -112,18 +167,6 @@ export default function EmiScheduleLedger({
         const isOverdue = !isPaid && !isForeclosed && !isPenaltyOnHold && emi.dueDate && emi.dueDate < todayStr;
         const isDueToday = !isPaid && !isForeclosed && !isPenaltyOnHold && emi.dueDate && emi.dueDate === todayStr;
 
-        // Calculate days late at actual time of payment
-        const paidDateStr = emi.paidDate ? String(emi.paidDate).slice(0, 10) : '';
-        const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
-        let daysLateAtPayment = 0;
-        if (paidDateStr && dueDateStr && paidDateStr > dueDateStr) {
-          const pD = new Date(paidDateStr);
-          const dD = new Date(dueDateStr);
-          if (!isNaN(pD.getTime()) && !isNaN(dD.getTime())) {
-            daysLateAtPayment = Math.max(0, Math.floor((pD - dD) / (1000 * 60 * 60 * 24)));
-          }
-        }
-
         // Determine if late penalty was waived:
         // 1. Explicitly flagged as emi.penaltyWaived
         // 2. Cleared or fully paid after the 3-day grace period with zero penalty
@@ -136,17 +179,6 @@ export default function EmiScheduleLedger({
         const isBounced = !isPaid && !isForeclosed && sortedEmis.slice(idx + 1).some(
           (laterEmi) => laterEmi.status === 'paid' || (Number(laterEmi.paidAmount || 0) > 0)
         );
-
-        // Installment Payments Array
-        const paymentsList = Array.isArray(emi.payments) && emi.payments.length > 0
-          ? emi.payments
-          : (paidAmount > 0 ? [{
-            paymentInstallmentId: `${emi.paymentId}-P1`,
-            amount: paidAmount,
-            paymentMode: emi.paymentMode || 'Cash',
-            transactionRef: emi.transactionRef || emi.txnRef || '',
-            paidDate: emi.paidDate,
-          }] : []);
 
         // Status Badge details
         let badgeBg = '#F1F5F9';
@@ -210,9 +242,13 @@ export default function EmiScheduleLedger({
                       </View>
                     )}
                   </View>
-                  {isPaid && emi.paidDate ? (
+                  {isPaid && lastPaidDateStr ? (
                     <Text style={styles.paidDateTxt}>
-                      Completed on {formatDate(emi.paidDate)}{daysLateAtPayment > 3 ? ` (${daysLateAtPayment}d late)` : ''}
+                      Completed on {formatDate(lastPaidDateStr)}{daysLateAtPayment > 3 ? ` (${daysLateAtPayment}d late)` : ''}
+                    </Text>
+                  ) : (isPartial && lastPaidDateStr) ? (
+                    <Text style={styles.paidDateTxt}>
+                      Last payment on {formatDate(lastPaidDateStr)}{daysLateAtPayment > 3 ? ` (${daysLateAtPayment}d late)` : ''}
                     </Text>
                   ) : null}
                 </View>

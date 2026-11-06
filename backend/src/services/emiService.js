@@ -24,6 +24,27 @@ function addMonths(dateStr, monthsToAdd) {
 }
 
 /**
+ * Helper to determine the latest payment date recorded on an EMI installment.
+ * @param {Object} emi
+ * @returns {string|null} YYYY-MM-DD
+ */
+function getLastPaymentDate(emi) {
+  if (Array.isArray(emi?.payments) && emi.payments.length > 0) {
+    const dates = emi.payments
+      .map(p => p.paidDate ? String(p.paidDate).slice(0, 10) : null)
+      .filter(Boolean);
+    if (dates.length > 0) {
+      dates.sort();
+      return dates[dates.length - 1];
+    }
+  }
+  if (emi?.paidDate) {
+    return String(emi.paidDate).slice(0, 10);
+  }
+  return null;
+}
+
+/**
  * Ensures EMI repayment schedule exists for a loan.
  * If not present, generates monthly EMIs for the tenure.
  * @param {Object} loan 
@@ -118,12 +139,13 @@ async function ensureEmiSchedule(loan) {
       for (const emi of existing) {
         const paidAmount = Number(emi.paidAmount || 0);
         const baseAmount = Number(emi.amount || 0);
+        const lastPaidDateStr = getLastPaymentDate(emi);
+        const hasPayment = paidAmount > 0 || Boolean(lastPaidDateStr);
 
-        if (paidAmount > 0 && emi.paidDate) {
-          const paidDateStr = String(emi.paidDate).slice(0, 10);
+        if (hasPayment && lastPaidDateStr) {
           const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
           if (dueDateStr) {
-            const paidD = new Date(paidDateStr);
+            const paidD = new Date(lastPaidDateStr);
             const dueD = new Date(dueDateStr);
             const daysLate = Math.max(0, Math.floor((paidD - dueD) / (1000 * 60 * 60 * 24)));
             if (daysLate <= 3 && Number(emi.penaltyAmount || 0) > 0) {
@@ -141,10 +163,20 @@ async function ensureEmiSchedule(loan) {
                 await db.updateEmiPayment(emi.paymentId, { penaltyWaived: true, penaltyLocked: true }).catch(() => {});
                 modified = true;
               }
+            } else if (!emi.penaltyWaived && !emi.penaltySettled && daysLate > 3) {
+              // Late penalty is strictly calculated ONLY till the date the EMI amount was submitted last!
+              const penaltyRate = Number(loan.penaltyRate) || 0.1;
+              const calcPenalty = Math.round(baseAmount * (penaltyRate / 100) * daysLate);
+              if (Number(emi.penaltyAmount || 0) !== calcPenalty || !emi.penaltyLocked) {
+                emi.penaltyAmount = calcPenalty;
+                emi.penaltyLocked = true;
+                await db.updateEmiPayment(emi.paymentId, { penaltyAmount: calcPenalty, penaltyLocked: true }).catch(() => {});
+                modified = true;
+              }
             }
           }
-        } else if (emi.status !== 'paid' && emi.dueDate && emi.dueDate < todayStr && !emi.penaltyWaived && !emi.penaltyLocked) {
-          // Unpaid overdue installment: calculate standard penalty if overdue beyond 3-day grace period
+        } else if (emi.status !== 'paid' && emi.dueDate && emi.dueDate < todayStr && !emi.penaltyWaived && !emi.penaltyLocked && !hasPayment) {
+          // Strictly unpaid overdue installment: calculate standard penalty if overdue beyond 3-day grace period
           const diffMs = new Date(todayStr) - new Date(emi.dueDate);
           const daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
           if (daysOverdue > 3) {
@@ -154,7 +186,7 @@ async function ensureEmiSchedule(loan) {
               const calcPenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysOverdue);
               if (calcPenalty > Number(emi.penaltyAmount || 0)) {
                 emi.penaltyAmount = calcPenalty;
-                emi.status = paidAmount > 0 ? 'partial' : 'overdue';
+                emi.status = 'overdue';
                 await db.updateEmiPayment(emi.paymentId, { penaltyAmount: calcPenalty, status: emi.status }).catch(() => {});
                 modified = true;
               }
@@ -610,11 +642,13 @@ async function buildLoanRecoveryItems(loans) {
         const pen = emi.penaltyWaived ? 0 : Number(emi.penaltyAmount || 0);
         const totalReq = amt + pen;
 
-        if (paid > 0 && emi.paidDate) {
-          const paidDateStr = String(emi.paidDate).slice(0, 10);
+        const lastPaidDateStr = getLastPaymentDate(emi);
+        const hasPayment = paid > 0 || Boolean(lastPaidDateStr);
+
+        if (hasPayment && lastPaidDateStr) {
           const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
           if (dueDateStr) {
-            const daysLate = Math.max(0, Math.floor((new Date(paidDateStr) - new Date(dueDateStr)) / (1000 * 60 * 60 * 24)));
+            const daysLate = Math.max(0, Math.floor((new Date(lastPaidDateStr) - new Date(dueDateStr)) / (1000 * 60 * 60 * 24)));
             if (daysLate <= 3 && pen > 0) {
               emi.penaltyAmount = 0;
               if (paid >= amt) {
@@ -627,6 +661,15 @@ async function buildLoanRecoveryItems(loans) {
                 emi.penaltyWaived = true;
                 emi.penaltyLocked = true;
                 db.updateEmiPayment(emi.paymentId, { penaltyWaived: true, penaltyLocked: true }).catch(() => {});
+              }
+            } else if (!emi.penaltyWaived && !emi.penaltySettled && daysLate > 3) {
+              // Freeze/lock penalty to lastPaidDate
+              const pRate = Number(loan.penaltyRate) || 0.1;
+              const calcPenalty = Math.round(amt * (pRate / 100) * daysLate);
+              if (Number(emi.penaltyAmount || 0) !== calcPenalty || !emi.penaltyLocked) {
+                emi.penaltyAmount = calcPenalty;
+                emi.penaltyLocked = true;
+                db.updateEmiPayment(emi.paymentId, { penaltyAmount: calcPenalty, penaltyLocked: true }).catch(() => {});
               }
             }
           }
@@ -667,20 +710,35 @@ async function buildLoanRecoveryItems(loans) {
       // Apply penalty calculation if overdue beyond 3-day grace period on unpaid balance for all overdue installments
       for (const e of overdueEmis) {
         const uPrin = Math.max(0, Number(e.amount || 0) - Number(e.paidAmount || 0));
+        const lastPaid = getLastPaymentDate(e);
+        const hasPmt = Number(e.paidAmount || 0) > 0 || Boolean(lastPaid);
         if (e.penaltyWaived) {
           if (Number(e.penaltyAmount || 0) > 0) {
             e.penaltyAmount = 0;
             db.updateEmiPayment(e.paymentId, { penaltyAmount: 0 }).catch(() => {});
           }
-        } else if (!e.penaltyLocked && uPrin > 0 && e.dueDate < todayStr) {
+        } else if (hasPmt && lastPaid && e.dueDate) {
+          // Submitted payment: penalty is calculated ONLY till the date the EMI was submitted last!
+          const diffMs = new Date(lastPaid) - new Date(e.dueDate);
+          const dOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+          if (dOverdue <= 3) {
+            e.penaltyAmount = 0;
+          } else if (!e.penaltySettled) {
+            const pRate = Number(loan.penaltyRate) || 0.1;
+            e.penaltyAmount = Math.round(Number(e.amount || 0) * (pRate / 100) * dOverdue);
+          }
+          e.penaltyLocked = true;
+          db.updateEmiPayment(e.paymentId, { penaltyAmount: e.penaltyAmount, penaltyLocked: true }).catch(() => {});
+        } else if (!e.penaltyLocked && !hasPmt && e.dueDate < todayStr) {
+          // Strictly UNPAID installment (0 payments made): accumulates till todayStr
           const diffMs = new Date(todayStr) - new Date(e.dueDate);
           const dOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
           if (dOverdue > 3) {
             const pRate = Number(loan.penaltyRate) || 0.1;
-            const calcPenalty = Math.round(uPrin * (pRate / 100) * dOverdue);
+            const calcPenalty = Math.round(Number(e.amount || 0) * (pRate / 100) * dOverdue);
             if (calcPenalty > Number(e.penaltyAmount || 0)) {
               e.penaltyAmount = calcPenalty;
-              e.status = Number(e.paidAmount || 0) > 0 ? 'partial' : 'overdue';
+              e.status = 'overdue';
               db.updateEmiPayment(e.paymentId, { penaltyAmount: calcPenalty, status: e.status }).catch(() => {});
             }
           }
@@ -986,6 +1044,13 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       penaltyLocked = true;
       penaltySettled = true;
       penaltyOnHold = false;
+    } else if (isTargetEmi && paymentDetails.penaltyAmount !== undefined && Number(paymentDetails.penaltyAmount) === 0 && !paymentDetails.holdPenalty) {
+      // User explicitly settled penalty at 0 (waived off)
+      applicablePenalty = 0;
+      penaltyWaived = true;
+      penaltyLocked = true;
+      penaltySettled = true;
+      penaltyOnHold = false;
     } else if (isAlreadySettled) {
       // Penalty was ALREADY collected/settled in a previous payment.
       applicablePenalty = Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : priorPenaltyPaid;
@@ -1005,6 +1070,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     } else if (daysLate > 3 && unpaidPrincipal > 0) {
       const penaltyRate = Number(loan?.penaltyRate || 0.1);
       applicablePenalty = Math.round(unpaidPrincipal * (penaltyRate / 100) * daysLate);
+      penaltyLocked = true;
     } else {
       applicablePenalty = Number(emi.penaltyAmount || 0);
     }

@@ -187,14 +187,15 @@ export default function CollectEmiModal({
   // Downwards calculation
   const isBaseEmiPaid = remainingEmiDue === 0 && Number(emi?.paidAmount || 0) > 0;
   const emiVal = parseFloat(emiAmount) || 0;
-  const effectivePenaltyVal = (!waivePenalty && collectPenalty && !isPenaltyAlreadyPaid)
-    ? (parseFloat(penaltyAmount) || 0)
+  const penInputVal = parseFloat(penaltyAmount) || 0;
+  const effectivePenaltyVal = (!waivePenalty && !holdPenalty && !isPenaltyAlreadyPaid)
+    ? penInputVal
     : 0;
   const totalToCollect = emiVal + effectivePenaltyVal;
 
   // Real-time overpayment checks
   const isEmiOver = emiVal > remainingEmiDue;
-  const isPenaltyOver = !isPenaltyAlreadyPaid && collectPenalty && !waivePenalty && standardPenalty > 0 && (parseFloat(penaltyAmount) || 0) > standardPenalty;
+  const isPenaltyOver = !isPenaltyAlreadyPaid && !waivePenalty && !holdPenalty && standardPenalty > 0 && penInputVal > standardPenalty;
   const hasValidationError = isEmiOver || isPenaltyOver;
 
   const handleSelectPayPenalty = () => {
@@ -202,10 +203,7 @@ export default function CollectEmiModal({
     setWaivePenalty(false);
     setHoldPenalty(false);
     setCollectPenalty(true);
-    const pVal = parseFloat(penaltyAmount) || standardPenalty || 0;
-    if (pVal === 0 && standardPenalty > 0) {
-      setPenaltyAmount(String(standardPenalty));
-    }
+    setPenaltyAmount(String(standardPenalty || 0));
   };
 
   const handleSelectHoldPenalty = () => {
@@ -228,11 +226,22 @@ export default function CollectEmiModal({
     if (isPenaltyAlreadyPaid) return;
     const clean = val.replace(/[^0-9.]/g, '');
     setPenaltyAmount(clean);
+    setHoldPenalty(false);
+    const num = parseFloat(clean) || 0;
+    if (num > 0) {
+      setWaivePenalty(false);
+      setCollectPenalty(true);
+    } else {
+      setCollectPenalty(false);
+    }
   };
 
   const handleResetPenalty = () => {
     if (isPenaltyAlreadyPaid) return;
-    setPenaltyAmount(String(standardPenalty));
+    setWaivePenalty(false);
+    setHoldPenalty(false);
+    setCollectPenalty(standardPenalty > 0);
+    setPenaltyAmount(String(standardPenalty || 0));
   };
 
   const handleEmiAmountChange = (val) => {
@@ -624,98 +633,93 @@ export default function CollectEmiModal({
                   </Text>
                 </View>
               ) : (
-                /* When penalty has NOT yet been collected/settled */
-                <View style={styles.penaltySection}>
-                  <View style={styles.penaltyHeaderRow}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Ionicons name="time-outline" size={15} color="#D97706" />
-                        <Text style={styles.penaltyHeaderTitle}>Separate Late Penalty</Text>
-                        <View style={[styles.standardPenaltyBadge, (waivePenalty || isAlreadyWaived) && styles.waivedBadge]}>
-                          <Text style={[styles.standardPenaltyBadgeTxt, (waivePenalty || isAlreadyWaived) && styles.waivedBadgeTxt]}>
-                            {(waivePenalty || isAlreadyWaived) ? 'Penalty Waived Off (₹0)' : `Standard: ₹${standardPenalty.toLocaleString('en-IN')}`}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.penaltySubTxt}>
-                        {(waivePenalty || isAlreadyWaived)
-                          ? 'Late penalty is 100% waived off for this installment.'
-                          : (collectPenalty && !waivePenalty)
-                            ? 'Penalty paid at once is final and settled. No further penalty will be added.'
-                            : 'Choose to waive off or replace penalty for this installment.'}
-                      </Text>
-                    </View>
+                /* When penalty has NOT yet been collected/settled: ALWAYS show the settle input box! */
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Ionicons name="time-outline" size={16} color="#D97706" />
+                    <Text style={styles.sectionHeaderTitle}>
+                      Penalty Amount to Pay / Settle (₹)
+                    </Text>
+                    {standardPenalty > 0 && parseFloat(penaltyAmount) !== standardPenalty && (
+                      <TouchableOpacity onPress={handleResetPenalty}>
+                        <Text style={styles.resetStandardLink}>
+                          Use Standard (₹{standardPenalty.toLocaleString('en-IN')})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
-                  {/* Penalty Action Buttons Row: Pay Today, Hold for Later, Waive Off */}
-                  <View style={styles.penaltyActionsRow}>
-                    {/* Pay Penalty Today Button */}
-                    <TouchableOpacity
-                      style={[styles.penaltyActionBtn, styles.replacePenaltyBtn, (collectPenalty && !waivePenalty && !holdPenalty) && styles.replacePenaltyBtnActive]}
-                      onPress={handleSelectPayPenalty}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={(collectPenalty && !waivePenalty && !holdPenalty) ? 'checkmark-circle' : 'cash-outline'}
-                        size={15}
-                        color={(collectPenalty && !waivePenalty && !holdPenalty) ? colors.white : '#B45309'}
-                      />
-                      <Text style={[styles.penaltyActionBtnTxt, styles.replacePenaltyBtnTxt, (collectPenalty && !waivePenalty && !holdPenalty) && styles.replacePenaltyBtnTxtActive]}>
-                        {(collectPenalty && !waivePenalty && !holdPenalty) ? 'Pay Penalty' : 'Pay Penalty'}
+                  {/* Calculated late penalty banner */}
+                  <View style={styles.penaltyInfoBanner}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={styles.penaltyCalcLabel}>
+                        Calculated Late Penalty ({formatDate(paymentDate)}):
                       </Text>
-                    </TouchableOpacity>
+                      <Text style={styles.penaltyCalcVal}>
+                        ₹{standardPenalty.toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+                    <Text style={styles.penaltyCalcSub}>
+                      {standardPenalty > 0
+                        ? `Standard penalty accrued up to payment date (${formatDate(paymentDate)}). Enter your agreed settlement amount below, or ₹0 to waive/defer.`
+                        : 'No late penalty accrued as of the selected payment date.'}
+                    </Text>
+                  </View>
 
-                    {/* Hold for Later Button */}
-                    {!isBaseEmiPaid && (
+                  {/* Quick Action Chips: Full Standard, Waive Off, Hold for Later */}
+                  <View style={styles.penaltyQuickChipsRow}>
+                    {standardPenalty > 0 && (
                       <TouchableOpacity
                         style={[
-                          styles.penaltyActionBtn,
-                          {
-                            backgroundColor: holdPenalty ? '#D97706' : '#FFFBEB',
-                            borderColor: holdPenalty ? '#D97706' : '#FDE68A',
-                            borderWidth: 1,
-                          },
+                          styles.penaltyChip,
+                          parseFloat(penaltyAmount) === standardPenalty && !waivePenalty && !holdPenalty && styles.penaltyChipActive,
                         ]}
-                        onPress={handleSelectHoldPenalty}
+                        onPress={handleResetPenalty}
                         activeOpacity={0.7}
                       >
-                        <Ionicons
-                          name={holdPenalty ? 'checkmark-circle' : 'pause-circle-outline'}
-                          size={15}
-                          color={holdPenalty ? colors.white : '#B45309'}
-                        />
-                        <Text style={[styles.penaltyActionBtnTxt, { color: holdPenalty ? colors.white : '#92400E' }]}>
-                          {holdPenalty ? 'On Hold' : 'Hold for Later'}
+                        <Text
+                          style={[
+                            styles.penaltyChipTxt,
+                            parseFloat(penaltyAmount) === standardPenalty && !waivePenalty && !holdPenalty && styles.penaltyChipActiveTxt,
+                          ]}
+                        >
+                          Full Standard (₹{standardPenalty.toLocaleString('en-IN')})
                         </Text>
                       </TouchableOpacity>
                     )}
 
-                    {/* Waive Off Button */}
                     <TouchableOpacity
-                      style={[styles.penaltyActionBtn, styles.waiveOffBtn, waivePenalty && styles.waiveOffBtnActive]}
+                      style={[
+                        styles.penaltyChip,
+                        (waivePenalty || (parseFloat(penaltyAmount) === 0 && !holdPenalty)) && styles.penaltyChipActiveWaive,
+                      ]}
                       onPress={handleSelectWaiveOff}
                       activeOpacity={0.7}
                     >
-                      <Ionicons
-                        name={waivePenalty ? 'checkmark-circle' : 'close-circle-outline'}
-                        size={15}
-                        color={waivePenalty ? colors.white : '#DC2626'}
-                      />
-                      <Text style={[styles.penaltyActionBtnTxt, styles.waiveOffBtnTxt, waivePenalty && styles.waiveOffBtnTxtActive]}>
-                        {waivePenalty ? 'Waived (₹0)' : 'Waive Off'}
+                      <Text
+                        style={[
+                          styles.penaltyChipTxt,
+                          (waivePenalty || (parseFloat(penaltyAmount) === 0 && !holdPenalty)) && styles.penaltyChipActiveWaiveTxt,
+                        ]}
+                      >
+                        Waive Off (₹0)
                       </Text>
                     </TouchableOpacity>
+
+                    {!isBaseEmiPaid && (
+                      <TouchableOpacity
+                        style={[styles.penaltyChip, holdPenalty && styles.penaltyChipActiveHold]}
+                        onPress={handleSelectHoldPenalty}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.penaltyChipTxt, holdPenalty && styles.penaltyChipActiveHoldTxt]}>
+                          Hold for Later
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
-                  {holdPenalty && (
-                    <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 8, padding: 10, marginTop: 10 }}>
-                      <Text style={{ fontSize: 11, fontFamily: fonts.medium, color: '#92400E', lineHeight: 16 }}>
-                        Base EMI will be collected today. The late penalty (₹{standardPenalty.toLocaleString('en-IN')}) will be frozen and placed on hold. No additional penalty will accumulate, and this installment will remain open to collect or waive later.
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Direct Instant Waive Off Button */}
+                  {/* Direct Instant Waive Off Link */}
                   {standardPenalty > 0 && !isAlreadyWaived && (
                     <TouchableOpacity
                       style={styles.instantWaiveLinkBtn}
@@ -730,47 +734,37 @@ export default function CollectEmiModal({
                     </TouchableOpacity>
                   )}
 
-                  {/* Editable Penalty Box */}
-                  {collectPenalty && !waivePenalty && (
-                    <View style={styles.editablePenaltyContainer}>
-                      <View style={styles.editablePenaltyLabelRow}>
-                        <Text style={styles.editablePenaltyLabel}>
-                          Penalty Amount to Pay (₹) [Final & Settled]:
-                        </Text>
-                        {standardPenalty > 0 && parseFloat(penaltyAmount) !== standardPenalty && (
-                          <TouchableOpacity onPress={handleResetPenalty}>
-                            <Text style={styles.resetStandardLink}>
-                              Reset (₹{standardPenalty.toLocaleString('en-IN')})
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                  {/* Explicit Settle Amount Input Box */}
+                  <Text style={styles.inputFieldSubLabel}>
+                    Penalty Settlement Amount to Collect (₹):
+                  </Text>
+                  <View style={[styles.currencyInputWrap, isPenaltyOver && styles.currencyInputWrapError]}>
+                    <Text style={[styles.currencyPrefix, isPenaltyOver && { color: '#DC2626' }]}>₹</Text>
+                    <TextInput
+                      style={[styles.currencyInput, isPenaltyOver && { color: '#DC2626' }]}
+                      value={penaltyAmount}
+                      onChangeText={handleCustomPenaltyChange}
+                      placeholder="0"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                    />
+                  </View>
 
-                      <View style={[styles.currencyInputWrap, isPenaltyOver && styles.currencyInputWrapError]}>
-                        <Text style={[styles.currencyPrefix, isPenaltyOver && { color: '#DC2626' }]}>₹</Text>
-                        <TextInput
-                          style={[styles.currencyInput, isPenaltyOver && { color: '#DC2626' }]}
-                          value={penaltyAmount}
-                          onChangeText={handleCustomPenaltyChange}
-                          placeholder="0"
-                          placeholderTextColor="#94A3B8"
-                          keyboardType="numeric"
-                        />
-                      </View>
-
-                      {isPenaltyOver ? (
-                        <View style={styles.errorPromptBox}>
-                          <Ionicons name="alert-circle" size={15} color="#DC2626" style={{ marginTop: 1 }} />
-                          <Text style={styles.errorPromptTxt}>
-                            Penalty amount cannot exceed calculated late penalty (₹{standardPenalty.toLocaleString('en-IN')}). You can submit an amount less than actual or equal to the complete amount.
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.replacementHelpTxt}>
-                          Whatever penalty is paid today (₹{effectivePenaltyVal.toLocaleString('en-IN')}) will be final and settled. No additional penalty will be added.
-                        </Text>
-                      )}
+                  {isPenaltyOver ? (
+                    <View style={styles.errorPromptBox}>
+                      <Ionicons name="alert-circle" size={15} color="#DC2626" style={{ marginTop: 1 }} />
+                      <Text style={styles.errorPromptTxt}>
+                        Penalty amount (₹{effectivePenaltyVal.toLocaleString('en-IN')}) cannot exceed calculated late penalty (₹{standardPenalty.toLocaleString('en-IN')}). You can submit an amount less than actual (settlement) or equal to complete amount.
+                      </Text>
                     </View>
+                  ) : (
+                    <Text style={styles.fieldHelpTxt}>
+                      {holdPenalty
+                        ? `Base EMI will be collected today. The late penalty (₹${standardPenalty.toLocaleString('en-IN')}) will be placed on hold without accumulating further penalty.`
+                        : (effectivePenaltyVal > 0
+                          ? `Whatever penalty is paid today (₹${effectivePenaltyVal.toLocaleString('en-IN')}) will be final and settled. No additional penalty will be added.`
+                          : 'Late penalty will be ₹0 (waived off for this installment).')}
+                    </Text>
                   )}
                 </View>
               )}
@@ -790,7 +784,7 @@ export default function CollectEmiModal({
                   <Text style={[styles.downwardVal, isPenaltyAlreadyPaid ? { color: '#059669' } : (isPenaltyOver ? { color: '#DC2626' } : (effectivePenaltyVal > 0 ? { color: '#DC2626' } : {}))]}>
                     {isPenaltyAlreadyPaid
                       ? (isAlreadyWaived && previousPenaltyPaid === 0 ? 'Waived (₹0)' : `Already Paid (₹${previousPenaltyPaid.toLocaleString('en-IN')})`)
-                      : (waivePenalty ? 'Waived (₹0)' : `+ ₹${effectivePenaltyVal.toLocaleString('en-IN')}`)}
+                      : (holdPenalty ? 'On Hold (₹0 today)' : (waivePenalty || effectivePenaltyVal === 0 ? 'Waived (₹0)' : `+ ₹${effectivePenaltyVal.toLocaleString('en-IN')}`))}
                   </Text>
                 </View>
                 <View style={styles.downwardDivider} />
@@ -1201,11 +1195,87 @@ const styles = StyleSheet.create({
   replacePenaltyBtnTxtActive: {
     color: colors.white,
   },
+  penaltyInfoBanner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  penaltyCalcLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: '#92400E',
+  },
+  penaltyCalcVal: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: '#B45309',
+  },
+  penaltyCalcSub: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: '#78350F',
+    marginTop: 3,
+    lineHeight: 15,
+  },
+  penaltyQuickChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  penaltyChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  penaltyChipActive: {
+    backgroundColor: '#D97706',
+    borderColor: '#B45309',
+  },
+  penaltyChipActiveWaive: {
+    backgroundColor: '#DC2626',
+    borderColor: '#B91C1C',
+  },
+  penaltyChipActiveHold: {
+    backgroundColor: '#D97706',
+    borderColor: '#B45309',
+  },
+  penaltyChipTxt: {
+    fontSize: 11,
+    fontFamily: fonts.semiBold,
+    color: '#475569',
+  },
+  penaltyChipActiveTxt: {
+    color: colors.white,
+    fontFamily: fonts.bold,
+  },
+  penaltyChipActiveWaiveTxt: {
+    color: colors.white,
+    fontFamily: fonts.bold,
+  },
+  penaltyChipActiveHoldTxt: {
+    color: colors.white,
+    fontFamily: fonts.bold,
+  },
+  inputFieldSubLabel: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: '#78350F',
+    marginBottom: 6,
+  },
   instantWaiveLinkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     marginTop: 8,
+    marginBottom: 10,
     paddingVertical: 4,
   },
   instantWaiveLinkTxt: {
