@@ -107,6 +107,23 @@ export default function CollectEmiModal({
   // If base EMI is cleared and penalty is due/on hold, penalty is UNPAID and MUST be settlable!
   const isPenaltyAlreadyPaid = (previousPenaltyPaid > 0 && remainingEmiDue > 0);
 
+  const getLastPaymentDate = () => {
+    if (paymentsList.length > 0) {
+      const valid = paymentsList
+        .map(p => p.paidDate ? String(p.paidDate).slice(0, 10) : null)
+        .filter(Boolean);
+      if (valid.length > 0) {
+        valid.sort();
+        return valid[valid.length - 1];
+      }
+    }
+    if (emi?.paidDate) return String(emi.paidDate).slice(0, 10);
+    return null;
+  };
+
+  const lastPaidDateStr = getLastPaymentDate();
+  const hasPriorEmiPayment = Boolean(lastPaidDateStr) || Number(emi?.paidAmount || 0) > 0;
+
   const parseDateToUtcMs = (dateStr) => {
     if (!dateStr) return NaN;
     if (dateStr instanceof Date) return dateStr.getTime();
@@ -132,10 +149,16 @@ export default function CollectEmiModal({
 
   const computePenaltyForDate = (dateStr) => {
     if (isAlreadyWaived || isPenaltyAlreadyPaid || !emi?.dueDate) return 0;
-    const baseTarget = remainingEmiDue > 0 ? remainingEmiDue : Number(emi?.amount || 0);
+    const baseTarget = remainingEmiDue > 0 ? remainingEmiDue : rawEmiAmount;
     if (baseTarget <= 0) return 0;
 
-    const effMs = parseDateToUtcMs(dateStr || paymentDate || getTodayFormatted());
+    // If an EMI payment has already been submitted on this installment,
+    // the late penalty is strictly calculated till that last EMI submission date!
+    const targetDate = (hasPriorEmiPayment && lastPaidDateStr)
+      ? lastPaidDateStr
+      : (dateStr || paymentDate || getTodayFormatted());
+
+    const effMs = parseDateToUtcMs(targetDate);
     const dueMs = parseDateToUtcMs(emi.dueDate);
     if (isNaN(effMs) || isNaN(dueMs)) return 0;
 
@@ -150,7 +173,9 @@ export default function CollectEmiModal({
   const [paymentDate, setPaymentDate] = useState(getTodayFormatted());
   const standardPenalty = (isAlreadyWaived || isPenaltyAlreadyPaid)
     ? 0
-    : Math.max(Number(emi?.penaltyAmount || 0), computePenaltyForDate(paymentDate));
+    : ((hasPriorEmiPayment && lastPaidDateStr)
+      ? computePenaltyForDate(lastPaidDateStr)
+      : computePenaltyForDate(paymentDate));
 
   const [waivePenalty, setWaivePenalty] = useState(isAlreadyWaived);
   const [collectPenalty, setCollectPenalty] = useState(false);
@@ -171,7 +196,9 @@ export default function CollectEmiModal({
       const initDate = getTodayFormatted();
       const stdPen = (isWaived || isSettled)
         ? 0
-        : Math.max(Number(emi?.penaltyAmount || 0), computePenaltyForDate(initDate));
+        : ((hasPriorEmiPayment && lastPaidDateStr)
+          ? computePenaltyForDate(lastPaidDateStr)
+          : computePenaltyForDate(initDate));
 
       const isBasePaid = remainingEmiDue === 0 && (previousEmiPaid > 0 || Number(emi.paidAmount || 0) >= rawEmiAmount);
       const initCollectPen = !isWaived && !isSettled && stdPen > 0;
@@ -509,10 +536,12 @@ export default function CollectEmiModal({
               value={paymentDate}
               onSelect={(d) => {
                 setPaymentDate(d);
-                const newPen = computePenaltyForDate(d);
-                if (!waivePenalty && !holdPenalty) {
-                  setCollectPenalty(newPen > 0);
-                  setPenaltyAmount(String(newPen));
+                if (!hasPriorEmiPayment) {
+                  const newPen = computePenaltyForDate(d);
+                  if (!waivePenalty && !holdPenalty) {
+                    setCollectPenalty(newPen > 0);
+                    setPenaltyAmount(String(newPen));
+                  }
                 }
                 setActiveDatePicker(false);
               }}
@@ -667,7 +696,9 @@ export default function CollectEmiModal({
                   <View style={styles.penaltyInfoBanner}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Text style={styles.penaltyCalcLabel}>
-                        Calculated Late Penalty ({formatDate(paymentDate)}):
+                        {lastPaidDateStr
+                          ? `Calculated Late Penalty (as of ${formatDate(lastPaidDateStr)}):`
+                          : `Calculated Late Penalty (${formatDate(paymentDate)}):`}
                       </Text>
                       <Text style={styles.penaltyCalcVal}>
                         ₹{standardPenalty.toLocaleString('en-IN')}
@@ -675,7 +706,9 @@ export default function CollectEmiModal({
                     </View>
                     <Text style={styles.penaltyCalcSub}>
                       {standardPenalty > 0
-                        ? `Standard penalty accrued up to payment date (${formatDate(paymentDate)}). Enter your agreed settlement amount below, or ₹0 to waive/defer.`
+                        ? (lastPaidDateStr
+                          ? `Penalty accrued strictly up to EMI submission date (${formatDate(lastPaidDateStr)}). Enter settlement amount below, or ₹0 to waive.`
+                          : `Standard penalty accrued up to payment date (${formatDate(paymentDate)}). Enter your agreed settlement amount below, or ₹0 to waive/defer.`)
                         : 'No late penalty accrued as of the selected payment date.'}
                     </Text>
                   </View>
