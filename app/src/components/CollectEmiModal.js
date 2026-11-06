@@ -196,7 +196,6 @@ export default function CollectEmiModal({
   const emiNumber = emi?.paymentId ? emi.paymentId.split('-').pop() : '';
 
   // Downwards calculation
-  const isBaseEmiPaid = remainingEmiDue === 0 && Number(emi?.paidAmount || 0) > 0;
   const emiVal = parseFloat(emiAmount) || 0;
   const penInputVal = parseFloat(penaltyAmount) || 0;
   const effectivePenaltyVal = (!waivePenalty && !holdPenalty && !isPenaltyAlreadyPaid)
