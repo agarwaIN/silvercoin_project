@@ -1019,7 +1019,7 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     // Check if penalty was already collected or settled on this installment
     const priorPayments = Array.isArray(emi.payments) ? emi.payments : [];
     const priorPenaltyPaid = priorPayments.reduce((sum, p) => sum + Number(p.penaltyAmount || 0), 0) || Number(emi.penaltyPaidAmount || 0);
-    const isAlreadySettled = (penaltySettled && !penaltyOnHold) || priorPenaltyPaid > 0 || (penaltyLocked && Number(emi.paidAmount || 0) > 0 && Number(emi.penaltyAmount || 0) > 0 && !penaltyOnHold);
+    const isAlreadySettled = (penaltySettled && !penaltyOnHold && priorPenaltyPaid > 0);
 
     if (isTargetEmi && paymentDetails.waivePenalty === true) {
       // User explicitly opted to WAIVE OFF penalty on this EMI

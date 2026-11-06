@@ -73,28 +73,39 @@ export default function CollectEmiModal({
   const rawEmiAmount = Number(emi?.amount || loan?.emiAmount || loan?.monthlyEmi || 0);
   const paymentsList = Array.isArray(emi?.payments) ? emi.payments : [];
 
-  // Determine penalty collected so far
+  // Determine actual penalty collected so far from recorded payments
   let previousPenaltyPaid = paymentsList.reduce((sum, p) => sum + Number(p.penaltyAmount || 0), 0);
   if (previousPenaltyPaid === 0 && Number(emi?.penaltyPaidAmount || 0) > 0) {
     previousPenaltyPaid = Number(emi.penaltyPaidAmount);
   }
-  if (previousPenaltyPaid === 0 && (emi?.penaltySettled || emi?.penaltyLocked) && Number(emi?.penaltyAmount || 0) > 0 && Number(emi?.paidAmount || 0) > 0) {
-    previousPenaltyPaid = Number(emi.penaltyAmount);
-  }
 
-  // Determine base EMI paid so far
+  // Determine actual base EMI paid so far
   let previousEmiPaid = paymentsList.reduce(
     (sum, p) => sum + Number(p.emiAmount !== undefined ? p.emiAmount : (Number(p.amount || 0) - Number(p.penaltyAmount || 0))),
     0
   );
   if (previousEmiPaid === 0 && Number(emi?.paidAmount || 0) > 0) {
-    previousEmiPaid = Math.max(0, Number(emi.paidAmount) - previousPenaltyPaid);
+    const totalPaid = Number(emi.paidAmount);
+    if (previousPenaltyPaid > 0) {
+      previousEmiPaid = Math.max(0, totalPaid - previousPenaltyPaid);
+    } else if (totalPaid > rawEmiAmount) {
+      previousEmiPaid = rawEmiAmount;
+      previousPenaltyPaid = totalPaid - rawEmiAmount;
+    } else {
+      previousEmiPaid = totalPaid;
+      previousPenaltyPaid = 0;
+    }
   }
 
   const remainingEmiDue = Math.max(0, rawEmiAmount - previousEmiPaid);
+  const isBaseEmiPaid = remainingEmiDue === 0 && (previousEmiPaid > 0 || Number(emi?.paidAmount || 0) >= rawEmiAmount);
 
   const isAlreadyWaived = Boolean(emi?.penaltyWaived);
-  const isPenaltyAlreadyPaid = previousPenaltyPaid > 0 || (Boolean(emi?.penaltySettled) && !emi?.penaltyOnHold) || (Boolean(emi?.penaltyLocked) && Number(emi?.paidAmount || 0) > 0 && Number(emi?.penaltyAmount || 0) > 0 && !emi?.penaltyOnHold);
+
+  // Penalty is ONLY already paid if:
+  // It was actually collected in a prior partial payment (previousPenaltyPaid > 0) while base EMI is still remaining.
+  // If base EMI is cleared and penalty is due/on hold, penalty is UNPAID and MUST be settlable!
+  const isPenaltyAlreadyPaid = (previousPenaltyPaid > 0 && remainingEmiDue > 0);
 
   const parseDateToUtcMs = (dateStr) => {
     if (!dateStr) return NaN;
@@ -139,7 +150,7 @@ export default function CollectEmiModal({
   const [paymentDate, setPaymentDate] = useState(getTodayFormatted());
   const standardPenalty = (isAlreadyWaived || isPenaltyAlreadyPaid)
     ? 0
-    : computePenaltyForDate(paymentDate);
+    : Math.max(Number(emi?.penaltyAmount || 0), computePenaltyForDate(paymentDate));
 
   const [waivePenalty, setWaivePenalty] = useState(isAlreadyWaived);
   const [collectPenalty, setCollectPenalty] = useState(false);
@@ -160,14 +171,14 @@ export default function CollectEmiModal({
       const initDate = getTodayFormatted();
       const stdPen = (isWaived || isSettled)
         ? 0
-        : computePenaltyForDate(initDate);
+        : Math.max(Number(emi?.penaltyAmount || 0), computePenaltyForDate(initDate));
 
-      const isBasePaid = remainingEmiDue === 0 && Number(emi.paidAmount || 0) > 0;
+      const isBasePaid = remainingEmiDue === 0 && (previousEmiPaid > 0 || Number(emi.paidAmount || 0) >= rawEmiAmount);
       const initCollectPen = !isWaived && !isSettled && stdPen > 0;
       setWaivePenalty(isWaived);
       setHoldPenalty(false);
       setCollectPenalty(initCollectPen);
-      setPenaltyAmount(String(stdPen || 0));
+      setPenaltyAmount(isWaived || isSettled ? '0' : String(stdPen || 0));
       setEmiAmount(String(remainingEmiDue || 0));
       setPaymentMode('Cash');
       setTxnRef('');
@@ -341,6 +352,10 @@ export default function CollectEmiModal({
     }
 
     if (totalToCollect <= 0) {
+      if (isBaseEmiPaid && (waivePenalty || effectivePenaltyVal === 0)) {
+        handleDirectWaiveOff();
+        return;
+      }
       showAlert('Invalid Total', 'Total payment amount must be greater than ₹0.');
       return;
     }
@@ -866,7 +881,9 @@ export default function CollectEmiModal({
                   ) : (
                     <>
                       <Ionicons name="checkmark-circle-outline" size={17} color={colors.white} />
-                      <Text style={styles.submitBtnTxt}>Confirm Payment</Text>
+                      <Text style={styles.submitBtnTxt}>
+                        {isBaseEmiPaid ? 'Confirm Penalty Settlement' : 'Confirm Payment'}
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>
