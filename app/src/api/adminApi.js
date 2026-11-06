@@ -28,7 +28,7 @@ export const sendQr = (loanId) => api.post(`/admin/loans/${loanId}/send-qr`).the
 export const getRecovery = () => api.get('/admin/recovery').then((r) => r.data);
 export const markEmiPaid = (loanId, paymentId) =>
   api.post(`/admin/loans/${loanId}/mark-emi-paid`, { paymentId }).then((r) => r.data);
-export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false, emiAmount = undefined) =>
+export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false, emiAmount = undefined, holdPenalty = false) =>
   api.post(`/admin/loans/${loanId}/pay-emi`, {
     paymentId,
     amount,
@@ -41,6 +41,7 @@ export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef =
     penaltyAmount,
     collectPenalty,
     waivePenalty,
+    holdPenalty,
   }).then((r) => r.data);
 export const waiveEmiPenalty = (loanId, paymentId, reason = '') =>
   api.post(`/admin/loans/${loanId}/emis/${paymentId}/waive-penalty`, { reason }).then((r) => r.data);

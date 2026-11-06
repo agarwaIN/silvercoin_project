@@ -4,6 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { formatDate } from '../utils/date';
+import { useAuth } from '../context/AuthContext';
+import { usePopup } from '../context/PopupContext';
+import * as adminApi from '../api/adminApi';
+import * as employeeApi from '../api/employeeApi';
 
 /**
  * EmiScheduleLedger Component
@@ -15,7 +19,44 @@ export default function EmiScheduleLedger({
   loan = {},
   onPayEmi = null,
   canCollect = false,
+  onRefresh = null,
 }) {
+  const { user } = useAuth();
+  const userRole = user?.role || 'employee';
+  const { showAlert } = usePopup();
+  const [waivingId, setWaivingId] = React.useState(null);
+
+  const handleDirectWaivePenalty = (targetEmi, installmentNum, penAmount) => {
+    showAlert(
+      'Waive Off Penalty',
+      `Are you sure you want to permanently waive off the remaining late penalty (₹${penAmount.toLocaleString('en-IN')}) for installment #${installmentNum}? This will settle the installment as Fully Cleared.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Waive Off',
+          style: 'destructive',
+          onPress: async () => {
+            setWaivingId(targetEmi.paymentId);
+            try {
+              const loanId = targetEmi.loanId || loan?.loanId;
+              const paymentId = targetEmi.paymentId;
+              if (userRole === 'employee') {
+                await employeeApi.waiveEmiPenalty(loanId, paymentId, 'Waived off from schedule');
+              } else {
+                await adminApi.waiveEmiPenalty(loanId, paymentId, 'Waived off from schedule');
+              }
+              showAlert('Success', `Late penalty of ₹${penAmount.toLocaleString('en-IN')} has been waived off successfully.`);
+              if (onRefresh) await onRefresh();
+            } catch (err) {
+              showAlert('Error', err.response?.data?.message || err.message || 'Failed to waive penalty.');
+            } finally {
+              setWaivingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
   if (!emis || emis.length === 0) {
     return (
       <View style={styles.emptyWrap}>
@@ -59,12 +100,17 @@ export default function EmiScheduleLedger({
         const totalRequired = baseAmount + penalty;
         const remainingDue = Math.max(0, totalRequired - paidAmount);
 
+        // Check if base EMI is paid in full but late penalty is on hold / pending settlement:
+        const isBaseEmiFullyPaid = (paidAmount >= baseAmount && baseAmount > 0);
+        const isPenaltyOnHold = !emi.penaltyWaived && !emi.penaltySettled && penalty > 0 && isBaseEmiFullyPaid;
+
         // Accurate paid status: status is 'paid' OR fully paid (remainingDue is 0 with paidAmount >= baseAmount or > 0)
-        const isPaid = emi.status === 'paid' || (remainingDue === 0 && paidAmount > 0 && paidAmount >= baseAmount);
+        // If penalty is on hold, installment is NOT yet fully cleared!
+        const isPaid = (emi.status === 'paid' && !isPenaltyOnHold) || (remainingDue === 0 && paidAmount > 0 && paidAmount >= baseAmount && !isPenaltyOnHold);
         const isForeclosed = emi.status === 'foreclosed';
-        const isPartial = !isPaid && !isForeclosed && (emi.status === 'partial' || (paidAmount > 0 && remainingDue > 0));
-        const isOverdue = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate < todayStr;
-        const isDueToday = !isPaid && !isForeclosed && emi.dueDate && emi.dueDate === todayStr;
+        const isPartial = !isPaid && !isForeclosed && !isPenaltyOnHold && (emi.status === 'partial' || (paidAmount > 0 && remainingDue > 0));
+        const isOverdue = !isPaid && !isForeclosed && !isPenaltyOnHold && emi.dueDate && emi.dueDate < todayStr;
+        const isDueToday = !isPaid && !isForeclosed && !isPenaltyOnHold && emi.dueDate && emi.dueDate === todayStr;
 
         // Calculate days late at actual time of payment
         const paidDateStr = emi.paidDate ? String(emi.paidDate).slice(0, 10) : '';
@@ -108,7 +154,12 @@ export default function EmiScheduleLedger({
         let badgeText = 'PENDING';
         let badgeIcon = 'calendar-outline';
 
-        if (isPaid) {
+        if (isPenaltyOnHold) {
+          badgeBg = '#FEF3C7';
+          badgeColor = '#B45309';
+          badgeText = `ON HOLD • PENALTY DUE: ₹${remainingDue.toLocaleString('en-IN')}`;
+          badgeIcon = 'pause-circle-outline';
+        } else if (isPaid) {
           badgeBg = '#DCFCE7';
           badgeColor = '#15803D';
           badgeText = 'PAID';
@@ -271,21 +322,48 @@ export default function EmiScheduleLedger({
               </View>
             ) : null}
 
-            {/* Action Row: Collect Payment or Pay Remaining */}
+            {/* Action Row: Collect Payment, Settle Penalty, or Waive Off */}
             {!isPaid && !isForeclosed && effectiveCanCollect && (
               <View style={styles.actionRow}>
-                <TouchableOpacity
-                  style={[styles.payBtn, isPartial && styles.payBtnPartial]}
-                  onPress={() => onPayEmi && onPayEmi(emi)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name={isPartial ? 'cash-outline' : 'card-outline'} size={15} color={colors.white} />
-                  <Text style={styles.payBtnTxt}>
-                    {isPartial
-                      ? `Pay Remaining Balance: ₹${remainingDue.toLocaleString('en-IN')}`
-                      : `Collect EMI: ₹${remainingDue.toLocaleString('en-IN')}`}
-                  </Text>
-                </TouchableOpacity>
+                {isPenaltyOnHold ? (
+                  <View style={{ flexDirection: 'row', gap: 8, flex: 1 }}>
+                    <TouchableOpacity
+                      style={[styles.payBtn, { flex: 1.2, backgroundColor: '#0D9488' }]}
+                      onPress={() => onPayEmi && onPayEmi(emi)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="cash-outline" size={15} color={colors.white} />
+                      <Text style={styles.payBtnTxt}>
+                        Pay Penalty: ₹{remainingDue.toLocaleString('en-IN')}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.waiveBtn, { flex: 1 }]}
+                      onPress={() => handleDirectWaivePenalty(emi, idx + 1, penalty)}
+                      disabled={waivingId === emi.paymentId}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close-circle-outline" size={15} color="#DC2626" />
+                      <Text style={styles.waiveBtnTxt}>
+                        {waivingId === emi.paymentId ? 'Waiving...' : 'Waive Penalty'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.payBtn, isPartial && styles.payBtnPartial]}
+                    onPress={() => onPayEmi && onPayEmi(emi)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={isPartial ? 'cash-outline' : 'card-outline'} size={15} color={colors.white} />
+                    <Text style={styles.payBtnTxt}>
+                      {isPartial
+                        ? `Pay Remaining Balance: ₹${remainingDue.toLocaleString('en-IN')}`
+                        : `Collect EMI: ₹${remainingDue.toLocaleString('en-IN')}`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>
@@ -578,6 +656,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.bold,
     color: colors.white,
+  },
+  waiveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  waiveBtnTxt: {
+    fontSize: 12,
+    fontFamily: fonts.bold,
+    color: '#DC2626',
   },
   notDisbursedBanner: {
     flexDirection: 'row',

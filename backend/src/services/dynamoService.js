@@ -269,6 +269,19 @@ async function createEmiPayment(payment) {
   }
 }
 
+async function getEmiPaymentById(paymentId) {
+  try {
+    const res = await docClient.send(new GetCommand({
+      TableName: tableName('emis'),
+      Key: { paymentId },
+    }));
+    return res.Item || null;
+  } catch (err) {
+    console.warn(`getEmiPaymentById failed for ${paymentId}:`, err.message);
+    return null;
+  }
+}
+
 async function deleteEmiPayment(paymentId) {
   await docClient.send(new DeleteCommand({
     TableName: tableName('emis'),
@@ -527,6 +540,7 @@ module.exports = {
   createEmiPayment,
   listEmiByLoan,
   updateEmiPayment,
+  getEmiPaymentById,
   deleteEmiPayment,
   findEmiByTxnRef,
   findTransactionRefExists,

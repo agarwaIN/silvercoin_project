@@ -613,6 +613,7 @@ export default function RecoveryScreen({ navigation }) {
           loan={selectedScheduleLoan}
           canCollect={Boolean((selectedScheduleLoan?.status === 'active' || (Array.isArray(selectedScheduleLoan?.disbursements) && selectedScheduleLoan?.disbursements.length > 0) || selectedScheduleLoan?.disbursementDate) && selectedScheduleLoan?.status !== 'completed' && selectedScheduleLoan?.status !== 'foreclosed')}
           onPayEmi={(targetEmi) => openPayModal(selectedScheduleLoan, targetEmi)}
+          onRefresh={() => loadFreshLoanSchedule(selectedScheduleLoan?.loanId)}
         />
 
         {/* View Full Loan Profile Link */}

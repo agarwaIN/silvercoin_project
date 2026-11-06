@@ -47,7 +47,7 @@ export const sendQrToAgent = (loanId) => api.post(`/employee/loans/${loanId}/sen
 export const requestEmiChange = (loanId, data) => api.post(`/employee/loans/${loanId}/emi-change-request`, data).then((r) => r.data);
 export const requestForeclosure = (loanId, data) => api.post(`/employee/loans/${loanId}/request-foreclosure`, data).then((r) => r.data);
 export const getRecovery = () => api.get('/employee/recovery').then((r) => r.data);
-export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false, emiAmount = undefined) =>
+export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef = '', paymentDate = null, penaltyAmount = undefined, collectPenalty = true, waivePenalty = false, emiAmount = undefined, holdPenalty = false) =>
   api.post(`/employee/loans/${loanId}/pay-emi`, {
     paymentId,
     amount,
@@ -60,6 +60,7 @@ export const payEmi = (loanId, paymentId, amount, paymentMode = 'Cash', txnRef =
     penaltyAmount,
     collectPenalty,
     waivePenalty,
+    holdPenalty,
   }).then((r) => r.data);
 export const waiveEmiPenalty = (loanId, paymentId, reason = '') =>
   api.post(`/employee/loans/${loanId}/emis/${paymentId}/waive-penalty`, { reason }).then((r) => r.data);

@@ -526,6 +526,7 @@ export default function LoanDetailScreen({ route, navigation }) {
                 setSelectedPayEmi(targetEmi);
                 setPayEmiModalVisible(true);
               }}
+              onRefresh={load}
             />
           </View>
         )}

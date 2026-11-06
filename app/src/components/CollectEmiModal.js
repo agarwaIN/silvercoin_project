@@ -94,25 +94,56 @@ export default function CollectEmiModal({
   const remainingEmiDue = Math.max(0, rawEmiAmount - previousEmiPaid);
 
   const isAlreadyWaived = Boolean(emi?.penaltyWaived);
-  const isPenaltyAlreadyPaid = previousPenaltyPaid > 0 || Boolean(emi?.penaltySettled) || (Boolean(emi?.penaltyLocked) && Number(emi?.paidAmount || 0) > 0 && Number(emi?.penaltyAmount || 0) > 0);
+  const isPenaltyAlreadyPaid = previousPenaltyPaid > 0 || (Boolean(emi?.penaltySettled) && !emi?.penaltyOnHold) || (Boolean(emi?.penaltyLocked) && Number(emi?.paidAmount || 0) > 0 && Number(emi?.penaltyAmount || 0) > 0 && !emi?.penaltyOnHold);
+
+  const parseDateToUtcMs = (dateStr) => {
+    if (!dateStr) return NaN;
+    if (dateStr instanceof Date) return dateStr.getTime();
+    let s = String(dateStr).trim();
+    if (s.includes('T')) s = s.split('T')[0];
+    const ddmmyyyy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    if (ddmmyyyy) {
+      const day = parseInt(ddmmyyyy[1], 10);
+      const month = parseInt(ddmmyyyy[2], 10) - 1;
+      const year = parseInt(ddmmyyyy[3], 10);
+      return new Date(Date.UTC(year, month, day)).getTime();
+    }
+    const yyyymmdd = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (yyyymmdd) {
+      const year = parseInt(yyyymmdd[1], 10);
+      const month = parseInt(yyyymmdd[2], 10) - 1;
+      const day = parseInt(yyyymmdd[3], 10);
+      return new Date(Date.UTC(year, month, day)).getTime();
+    }
+    const dt = new Date(s);
+    return isNaN(dt.getTime()) ? NaN : dt.getTime();
+  };
 
   const computePenaltyForDate = (dateStr) => {
-    if (isAlreadyWaived || isPenaltyAlreadyPaid || !emi?.dueDate || remainingEmiDue <= 0) return 0;
-    const effDate = dateStr || getTodayFormatted();
-    if (effDate <= emi.dueDate) return 0;
-    const diffDays = Math.max(0, Math.floor((new Date(effDate) - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
+    if (isAlreadyWaived || isPenaltyAlreadyPaid || !emi?.dueDate) return 0;
+    const baseTarget = remainingEmiDue > 0 ? remainingEmiDue : Number(emi?.amount || 0);
+    if (baseTarget <= 0) return 0;
+
+    const effMs = parseDateToUtcMs(dateStr || paymentDate || getTodayFormatted());
+    const dueMs = parseDateToUtcMs(emi.dueDate);
+    if (isNaN(effMs) || isNaN(dueMs)) return 0;
+
+    if (effMs <= dueMs) return 0;
+    const diffDays = Math.max(0, Math.floor((effMs - dueMs) / (1000 * 60 * 60 * 24)));
     if (diffDays <= 3) return 0;
+
     const rate = Number(loan?.penaltyRate || 0.1);
-    return Math.round(remainingEmiDue * (rate / 100) * diffDays);
+    return Math.round(baseTarget * (rate / 100) * diffDays);
   };
 
   const [paymentDate, setPaymentDate] = useState(getTodayFormatted());
   const standardPenalty = (isAlreadyWaived || isPenaltyAlreadyPaid)
     ? 0
-    : (Number(emi?.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : computePenaltyForDate(paymentDate));
+    : computePenaltyForDate(paymentDate);
 
   const [waivePenalty, setWaivePenalty] = useState(isAlreadyWaived);
   const [collectPenalty, setCollectPenalty] = useState(false);
+  const [holdPenalty, setHoldPenalty] = useState(false);
   const [penaltyAmount, setPenaltyAmount] = useState('0');
   const [emiAmount, setEmiAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash'); // 'Cash', 'UPI', 'Bank', 'Cheque'
@@ -129,10 +160,12 @@ export default function CollectEmiModal({
       const initDate = getTodayFormatted();
       const stdPen = (isWaived || isSettled)
         ? 0
-        : (Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : computePenaltyForDate(initDate));
+        : computePenaltyForDate(initDate);
 
+      const isBasePaid = remainingEmiDue === 0 && Number(emi.paidAmount || 0) > 0;
       const initCollectPen = !isWaived && !isSettled && stdPen > 0;
       setWaivePenalty(isWaived);
+      setHoldPenalty(false);
       setCollectPenalty(initCollectPen);
       setPenaltyAmount(String(stdPen || 0));
       setEmiAmount(String(remainingEmiDue || 0));
@@ -152,6 +185,7 @@ export default function CollectEmiModal({
   const emiNumber = emi?.paymentId ? emi.paymentId.split('-').pop() : '';
 
   // Downwards calculation
+  const isBaseEmiPaid = remainingEmiDue === 0 && Number(emi?.paidAmount || 0) > 0;
   const emiVal = parseFloat(emiAmount) || 0;
   const effectivePenaltyVal = (!waivePenalty && collectPenalty && !isPenaltyAlreadyPaid)
     ? (parseFloat(penaltyAmount) || 0)
@@ -163,32 +197,31 @@ export default function CollectEmiModal({
   const isPenaltyOver = !isPenaltyAlreadyPaid && collectPenalty && !waivePenalty && standardPenalty > 0 && (parseFloat(penaltyAmount) || 0) > standardPenalty;
   const hasValidationError = isEmiOver || isPenaltyOver;
 
-  const handleSelectWaiveOff = () => {
+  const handleSelectPayPenalty = () => {
     if (isPenaltyAlreadyPaid) return;
-    if (waivePenalty) {
-      setWaivePenalty(false);
-      setCollectPenalty(standardPenalty > 0);
-      setPenaltyAmount(String(standardPenalty || 0));
-    } else {
-      setWaivePenalty(true);
-      setCollectPenalty(false);
-      setPenaltyAmount('0');
+    setWaivePenalty(false);
+    setHoldPenalty(false);
+    setCollectPenalty(true);
+    const pVal = parseFloat(penaltyAmount) || standardPenalty || 0;
+    if (pVal === 0 && standardPenalty > 0) {
+      setPenaltyAmount(String(standardPenalty));
     }
   };
 
-  const handleSelectReplacePenalty = () => {
+  const handleSelectHoldPenalty = () => {
     if (isPenaltyAlreadyPaid) return;
-    if (collectPenalty && !waivePenalty) {
-      setCollectPenalty(false);
-      setPenaltyAmount('0');
-    } else {
-      setWaivePenalty(false);
-      setCollectPenalty(true);
-      const pVal = parseFloat(penaltyAmount) || standardPenalty || 0;
-      if (pVal === 0 && standardPenalty > 0) {
-        setPenaltyAmount(String(standardPenalty));
-      }
-    }
+    setWaivePenalty(false);
+    setCollectPenalty(false);
+    setHoldPenalty(true);
+    setPenaltyAmount('0');
+  };
+
+  const handleSelectWaiveOff = () => {
+    if (isPenaltyAlreadyPaid) return;
+    setWaivePenalty(true);
+    setCollectPenalty(false);
+    setHoldPenalty(false);
+    setPenaltyAmount('0');
   };
 
   const handleCustomPenaltyChange = (val) => {
@@ -330,7 +363,8 @@ export default function CollectEmiModal({
           effectivePenaltyVal,
           collectPenalty && !waivePenalty && !isPenaltyAlreadyPaid,
           waivePenalty,
-          emiVal
+          emiVal,
+          holdPenalty
         );
       } else {
         result = await adminApi.payEmi(
@@ -343,7 +377,8 @@ export default function CollectEmiModal({
           effectivePenaltyVal,
           collectPenalty && !waivePenalty && !isPenaltyAlreadyPaid,
           waivePenalty,
-          emiVal
+          emiVal,
+          holdPenalty
         );
       }
 
@@ -451,6 +486,11 @@ export default function CollectEmiModal({
               value={paymentDate}
               onSelect={(d) => {
                 setPaymentDate(d);
+                const newPen = computePenaltyForDate(d);
+                if (!waivePenalty && !holdPenalty) {
+                  setCollectPenalty(newPen > 0);
+                  setPenaltyAmount(String(newPen));
+                }
                 setActiveDatePicker(false);
               }}
               onClose={() => setActiveDatePicker(false)}
@@ -470,7 +510,7 @@ export default function CollectEmiModal({
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalTitle}>
-                    {previousEmiPaid > 0 ? 'Collect Remaining Base EMI' : 'Collect EMI Payment'}
+                    {isBaseEmiPaid ? 'Settle Pending Late Penalty' : (previousEmiPaid > 0 ? 'Collect Remaining Base EMI' : 'Collect EMI Payment')}
                   </Text>
                   <Text style={styles.modalSub}>
                     {borrowerName} • {displayId} {emiNumber ? `(Installment ${emiNumber})` : ''}
@@ -510,7 +550,20 @@ export default function CollectEmiModal({
               {renderPresetChips()}
 
               {/* Box 1: Separate EMI Amount to Pay */}
-              <View style={styles.sectionCard}>
+              {isBaseEmiPaid ? (
+                <View style={{ backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#BBF7D0', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Ionicons name="checkmark-circle" size={20} color="#15803D" />
+                    <Text style={{ fontFamily: fonts.bold, fontSize: 14, color: '#15803D' }}>
+                      Base EMI Fully Paid (₹{rawEmiAmount.toLocaleString('en-IN')})
+                    </Text>
+                  </View>
+                  <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: '#166534', lineHeight: 16 }}>
+                    The base installment amount is completely cleared. You can collect or permanently waive off the remaining late penalty below.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.sectionCard}>
                 <View style={styles.sectionHeaderRow}>
                   <Ionicons name="cash-outline" size={16} color={colors.primary} />
                   <Text style={styles.sectionHeaderTitle}>
@@ -550,6 +603,7 @@ export default function CollectEmiModal({
                   </Text>
                 )}
               </View>
+              )}
 
               {/* Box 2: Penalty Section */}
               {isPenaltyAlreadyPaid ? (
@@ -593,8 +647,49 @@ export default function CollectEmiModal({
                     </View>
                   </View>
 
-                  {/* Penalty Action Buttons Row: Waive Off & Replace/Edit Penalty */}
+                  {/* Penalty Action Buttons Row: Pay Today, Hold for Later, Waive Off */}
                   <View style={styles.penaltyActionsRow}>
+                    {/* Pay Penalty Today Button */}
+                    <TouchableOpacity
+                      style={[styles.penaltyActionBtn, styles.replacePenaltyBtn, (collectPenalty && !waivePenalty && !holdPenalty) && styles.replacePenaltyBtnActive]}
+                      onPress={handleSelectPayPenalty}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={(collectPenalty && !waivePenalty && !holdPenalty) ? 'checkmark-circle' : 'cash-outline'}
+                        size={15}
+                        color={(collectPenalty && !waivePenalty && !holdPenalty) ? colors.white : '#B45309'}
+                      />
+                      <Text style={[styles.penaltyActionBtnTxt, styles.replacePenaltyBtnTxt, (collectPenalty && !waivePenalty && !holdPenalty) && styles.replacePenaltyBtnTxtActive]}>
+                        {(collectPenalty && !waivePenalty && !holdPenalty) ? 'Pay Penalty' : 'Pay Penalty'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Hold for Later Button */}
+                    {!isBaseEmiPaid && (
+                      <TouchableOpacity
+                        style={[
+                          styles.penaltyActionBtn,
+                          {
+                            backgroundColor: holdPenalty ? '#D97706' : '#FFFBEB',
+                            borderColor: holdPenalty ? '#D97706' : '#FDE68A',
+                            borderWidth: 1,
+                          },
+                        ]}
+                        onPress={handleSelectHoldPenalty}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name={holdPenalty ? 'checkmark-circle' : 'pause-circle-outline'}
+                          size={15}
+                          color={holdPenalty ? colors.white : '#B45309'}
+                        />
+                        <Text style={[styles.penaltyActionBtnTxt, { color: holdPenalty ? colors.white : '#92400E' }]}>
+                          {holdPenalty ? 'On Hold' : 'Hold for Later'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
                     {/* Waive Off Button */}
                     <TouchableOpacity
                       style={[styles.penaltyActionBtn, styles.waiveOffBtn, waivePenalty && styles.waiveOffBtnActive]}
@@ -607,26 +702,18 @@ export default function CollectEmiModal({
                         color={waivePenalty ? colors.white : '#DC2626'}
                       />
                       <Text style={[styles.penaltyActionBtnTxt, styles.waiveOffBtnTxt, waivePenalty && styles.waiveOffBtnTxtActive]}>
-                        {waivePenalty ? 'Penalty Waived (₹0)' : 'Waive Off'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    {/* Replace / Edit Penalty Button */}
-                    <TouchableOpacity
-                      style={[styles.penaltyActionBtn, styles.replacePenaltyBtn, (collectPenalty && !waivePenalty) && styles.replacePenaltyBtnActive]}
-                      onPress={handleSelectReplacePenalty}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={(collectPenalty && !waivePenalty) ? 'checkmark-circle' : 'create-outline'}
-                        size={15}
-                        color={(collectPenalty && !waivePenalty) ? colors.white : '#B45309'}
-                      />
-                      <Text style={[styles.penaltyActionBtnTxt, styles.replacePenaltyBtnTxt, (collectPenalty && !waivePenalty) && styles.replacePenaltyBtnTxtActive]}>
-                        {(collectPenalty && !waivePenalty) ? 'Penalty Active' : 'Add / Edit Penalty'}
+                        {waivePenalty ? 'Waived (₹0)' : 'Waive Off'}
                       </Text>
                     </TouchableOpacity>
                   </View>
+
+                  {holdPenalty && (
+                    <View style={{ backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 8, padding: 10, marginTop: 10 }}>
+                      <Text style={{ fontSize: 11, fontFamily: fonts.medium, color: '#92400E', lineHeight: 16 }}>
+                        Base EMI will be collected today. The late penalty (₹{standardPenalty.toLocaleString('en-IN')}) will be frozen and placed on hold. No additional penalty will accumulate, and this installment will remain open to collect or waive later.
+                      </Text>
+                    </View>
+                  )}
 
                   {/* Direct Instant Waive Off Button */}
                   {standardPenalty > 0 && !isAlreadyWaived && (
