@@ -80,4 +80,5 @@ export const getForeclosureQuote = (loanId, date) =>
   api.get(`/admin/loans/${loanId}/foreclosure-quote${date ? `?date=${encodeURIComponent(date)}` : ''}`).then((r) => r.data);
 export const forecloseLoan = (loanId, data) => api.post(`/admin/loans/${loanId}/foreclose`, data).then((r) => r.data);
 export const changeLoanEmi = (loanId, data) => api.post(`/admin/loans/${loanId}/change-emi`, data).then((r) => r.data);
+export const reconsiderLoan = (loanId, remark = '') => api.post(`/admin/loans/${loanId}/reconsider`, { remark }).then((r) => r.data);
 

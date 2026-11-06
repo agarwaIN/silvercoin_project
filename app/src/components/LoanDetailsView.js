@@ -76,6 +76,28 @@ export default function LoanDetailsView({ loan, onEditDates }) {
         </View>
       )}
 
+      {Boolean(loan.reconsideredAt) && (
+        <View style={[rv.card, { borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }]}>
+          <View style={[rv.headerRow, { borderBottomColor: '#BAE6FD' }]}>
+            <Ionicons name="refresh-circle" size={18} color="#0284C7" />
+            <Text style={[rv.section, { color: '#0369A1' }]}>Application Reconsidered</Text>
+          </View>
+          <Text style={{ fontSize: 13, color: '#0369A1', marginTop: 4 }}>
+            Reopened for review on {formatDateTime(loan.reconsideredAt)}{loan.reconsideredBy ? ` by ${loan.reconsideredBy}` : ''}.
+          </Text>
+          {Boolean(loan.reconsiderRemark) && (
+            <Text style={{ fontSize: 13, color: '#0C4A6E', marginTop: 2, fontStyle: 'italic' }}>
+              Remark: {loan.reconsiderRemark}
+            </Text>
+          )}
+          {Boolean(loan.previousRejectReason) && (
+            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>
+              (Previous rejection reason: {loan.previousRejectReason})
+            </Text>
+          )}
+        </View>
+      )}
+
       <View style={rv.card}>
         <View style={rv.headerRow}>
           <Ionicons name="information-circle" size={18} color={colors.dark} />

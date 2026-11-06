@@ -359,6 +359,35 @@ async function notifyLoanReturned(arg1, arg2, arg3) {
   });
 }
 
+async function notifyLoanReconsidered(arg1, arg2, arg3) {
+  const { loan, actor: admin, extra1: remark } = unpackLoanAndActor(arg1, arg2, arg3);
+  const employeeId = loan?.employeeId || loan?.assignedEmployeeId;
+  if (!employeeId) return null;
+  const adminId = loan?.adminId || admin?.userId;
+
+  const displayId = normalizeLoanDisplay(loan);
+  const adminName = admin?.name || 'Admin';
+  const owner = loan?.ownerName || 'Customer';
+  const remarkStr = remark ? `: "${remark}"` : '';
+
+  return createNotification({
+    recipientId: employeeId,
+    recipientRole: 'employee',
+    adminId: adminId,
+    employeeId: employeeId,
+    title: 'Loan Reconsidered for Approval',
+    body: `Admin ${adminName} has reconsidered loan ${displayId} (${owner})${remarkStr}. It is now under review for approval.`,
+    type: 'loan_reconsidered',
+    loanId: loan.loanId,
+    displayLoanId: displayId,
+    ownerName: owner,
+    actorId: admin?.userId,
+    actorName: adminName,
+    actorRole: 'admin',
+    metadata: { remark },
+  });
+}
+
 async function notifyLoanDisbursed(arg1, arg2, arg3, arg4) {
   const { loan, actor: admin, extra1: amount, extra2: transactionNumber } = unpackLoanAndActor(arg1, arg2, arg3, arg4);
   const employeeId = loan?.employeeId || loan?.assignedEmployeeId;
@@ -815,6 +844,7 @@ module.exports = {
   notifyLoanInitiallyApproved,
   notifyLoanRejected,
   notifyLoanReturned,
+  notifyLoanReconsidered,
   notifyLoanDisbursed,
   notifyEmiChangeApproved,
   notifyEmiChangeRejected,

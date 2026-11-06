@@ -6,6 +6,8 @@ import { fonts, fontSize } from '../theme/typography';
 const STATUS_MAP = {
   draft: { label: 'In Progress', bg: '#EFF6FF', text: '#3B82F6' },
   submitted: { label: 'Submitted', bg: '#FEF3C7', text: '#D97706' },
+  processing: { label: 'Under Review', bg: '#EFF6FF', text: '#2563EB' },
+  reconsidered: { label: 'Reconsidered', bg: '#EFF6FF', text: '#0284C7' },
   initially_approved: { label: 'Initially Approved', bg: '#D1FAE5', text: '#059669' },
   owner_not_interested: { label: 'Owner Not Interested', bg: '#FEF3C7', text: '#B45309' },
   agreement_submitted: { label: 'Awaiting Final Approval', bg: '#DBEAFE', text: '#2563EB' },

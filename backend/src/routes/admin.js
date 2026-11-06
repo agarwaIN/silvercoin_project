@@ -779,6 +779,49 @@ router.post('/loans/:loanId/reject', async (req, res) => {
   res.json({ message: 'Loan rejected' });
 });
 
+router.post('/loans/:loanId/reconsider', async (req, res) => {
+  try {
+    const loan = await db.getLoanById(req.params.loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    if (loan.status !== 'rejected' && loan.status !== 'returned') {
+      return res.status(400).json({ message: 'Only rejected or returned loans can be reconsidered' });
+    }
+
+    const reason = (req.body.remark || req.body.reason || '').trim();
+    const adminUser = req.user?.username || req.user?.name || 'Admin';
+    const previousReason = loan.rejectReason || loan.rejectionReason || loan.returnReason || loan.remark || '';
+
+    const updates = {
+      status: 'processing',
+      reconsideredAt: new Date().toISOString(),
+      reconsideredBy: adminUser,
+      reconsiderRemark: reason || 'Reopened for reconsideration and approval by admin',
+      previousRejectReason: previousReason,
+      rejectReason: '',
+      rejectionReason: '',
+      returnReason: '',
+      remark: reason || 'Application reconsidered and reopened for approval',
+      changedFields: null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db.updateLoan(loan.loanId, updates);
+    const updatedLoan = await db.getLoanById(loan.loanId);
+    const enriched = await enrichLoanWithEmployeeName(updatedLoan);
+
+    db.getLoanById(loan.loanId).then((l) => {
+      if (l && notificationService && notificationService.notifyLoanReconsidered) {
+        notificationService.notifyLoanReconsidered(l, req.user, reason).catch(() => {});
+      }
+    }).catch(() => {});
+
+    res.json({ message: 'Loan application reconsidered and moved to Under Review for approval', loan: enriched });
+  } catch (err) {
+    console.error('Error in /admin/loans/:loanId/reconsider:', err);
+    res.status(500).json({ message: err.message || 'Failed to reconsider loan' });
+  }
+});
+
 router.post('/loans/:loanId/send-qr', (req, res) => res.json({ message: 'QR sent' }));
 router.post('/loans/:loanId/reject-proof', (req, res) => res.json({ message: 'Proof rejected' }));
 router.post('/loans/:loanId/assign-recovery-agent', (req, res) => res.json({ message: 'Agent assigned' }));

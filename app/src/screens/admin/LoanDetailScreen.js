@@ -6,7 +6,7 @@ import Header from '../../components/Header';
 import StatusBadge from '../../components/StatusBadge';
 import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
-import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange, processLoan, returnLoan, disburseLoan, approveForeclosure, updateLoanDates, forecloseLoan, changeLoanEmi } from '../../api/adminApi';
+import { getLoan, getLoanMediaPreview, approveLoan, rejectLoan, approveEmiChange, rejectEmiChange, processLoan, returnLoan, disburseLoan, approveForeclosure, updateLoanDates, forecloseLoan, changeLoanEmi, reconsiderLoan } from '../../api/adminApi';
 import LoanDetailsView from '../../components/LoanDetailsView';
 import MediaViewer from '../../components/MediaViewer';
 import { usePopup } from '../../context/PopupContext';
@@ -58,6 +58,8 @@ export default function LoanDetailScreen({ route, navigation }) {
   const [processing, setProcessing] = useState(false);
   const [returnModalVisible, setReturnModalVisible] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [reconsiderModalVisible, setReconsiderModalVisible] = useState(false);
+  const [reconsiderRemark, setReconsiderRemark] = useState('');
   const [processModalVisible, setProcessModalVisible] = useState(false);
   const [internalRemarks, setInternalRemarks] = useState('');
   const [riskAssessment, setRiskAssessment] = useState('');
@@ -114,6 +116,24 @@ export default function LoanDetailScreen({ route, navigation }) {
 
   const handleApprove = () => {
     navigation.navigate('InitialApprove', { loan });
+  };
+
+  const handleReconsider = async (openApprove = false) => {
+    setProcessing(true);
+    try {
+      const res = await reconsiderLoan(loanId, reconsiderRemark.trim());
+      setReconsiderModalVisible(false);
+      const updatedLoan = res?.loan || (await getLoan(loanId));
+      setLoan(updatedLoan);
+      showAlert('Success', 'Loan application reconsidered and reopened for approval.');
+      if (openApprove) {
+        navigation.navigate('InitialApprove', { loan: updatedLoan });
+      }
+    } catch (error) {
+      showAlert('Error', error.response?.data?.message || 'Failed to reconsider loan.');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleReturn = async () => {
@@ -417,6 +437,22 @@ export default function LoanDetailScreen({ route, navigation }) {
           </View>
         )}
 
+        {(loan.status === 'rejected' || loan.status === 'returned') && (
+          <View style={styles.actionContainer}>
+            <TouchableOpacity
+              style={[styles.approveBtn, { backgroundColor: '#0284C7' }]}
+              onPress={() => {
+                setReconsiderRemark('');
+                setReconsiderModalVisible(true);
+              }}
+              disabled={processing}
+            >
+              <Ionicons name="refresh-circle-outline" size={20} color={colors.white} />
+              <Text style={styles.approveBtnText}>Reconsider for Approval</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {loan.foreclosureRequest?.status === 'pending' && (
           <View style={styles.emiChangeCard}>
             <View style={styles.emiChangeHeader}>
@@ -532,6 +568,71 @@ export default function LoanDetailScreen({ route, navigation }) {
         )}
 
       </ScrollView>
+
+      <Modal visible={reconsiderModalVisible} transparent animationType="fade" onRequestClose={() => setReconsiderModalVisible(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalOverlay, isKeyboardVisible && styles.modalOverlayKeyboard]}
+        >
+          <View style={[styles.modalContent, { maxHeight: modalMaxHeight }]}>
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Ionicons name="refresh-circle" size={24} color="#0284C7" />
+                <Text style={styles.modalTitle}>Reconsider Loan</Text>
+              </View>
+              <Text style={styles.modalSubtitle}>
+                Reopening this previously {loan?.status === 'returned' ? 'returned' : 'rejected'} loan will move it back to Under Review so you can re-examine and approve loan terms.
+              </Text>
+
+              {Boolean(loan?.returnReason || loan?.rejectionReason || loan?.rejectReason) && (
+                <View style={{ backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5', marginBottom: 12 }}>
+                  <Text style={{ fontFamily: fonts.semiBold, fontSize: 12, color: '#991B1B' }}>Previous Reason:</Text>
+                  <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: '#7F1D1D', marginTop: 2 }}>
+                    {loan?.returnReason || loan?.rejectionReason || loan?.rejectReason}
+                  </Text>
+                </View>
+              )}
+
+              <Text style={{ fontFamily: fonts.semiBold, fontSize: 13, color: colors.dark, marginBottom: 4 }}>
+                Reconsideration Remark (Optional)
+              </Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Reviewed updated documents, reconsidering for approval..."
+                placeholderTextColor={colors.placeholder || '#4B5563'}
+                value={reconsiderRemark}
+                onChangeText={setReconsiderRemark}
+                multiline
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setReconsiderModalVisible(false)} disabled={processing}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalSubmit, { backgroundColor: '#0284C7' }]}
+                  onPress={() => handleReconsider(false)}
+                  disabled={processing}
+                >
+                  {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Reopen for Review</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalSubmit, { backgroundColor: colors.success }]}
+                  onPress={() => handleReconsider(true)}
+                  disabled={processing}
+                >
+                  {processing ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.modalSubmitText}>Reopen & Approve</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <Modal visible={rejectModalVisible} transparent animationType="fade">
         <KeyboardAvoidingView

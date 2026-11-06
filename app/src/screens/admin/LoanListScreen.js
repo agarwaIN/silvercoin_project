@@ -10,6 +10,10 @@ import {
   RefreshControl,
   TextInput,
   StatusBar,
+  Modal,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +22,8 @@ import { fonts, fontSize } from '../../theme/typography';
 import Card from '../../components/Card';
 import StatusBadge from '../../components/StatusBadge';
 import Header from '../../components/Header';
-import { getLoans } from '../../api/adminApi';
+import { getLoans, reconsiderLoan } from '../../api/adminApi';
+import { usePopup } from '../../context/PopupContext';
 import { formatDate, formatDateTime, getLoanSubmissionInfo, sortLoansByLatestSubmitted } from '../../utils/date';
 import { loanMatchesSearch, isLoanActive, isLoanApproved, getEffectiveLoanStatus } from '../../utils/loanSearch';
 
@@ -26,7 +31,7 @@ const FILTERS = ['All', 'Draft', 'Pending', 'Approved', 'Active', 'Completed / F
 const filterMap = {
   All: null,
   Draft: ['draft'],
-  Pending: ['submitted', 'initially_approved', 'owner_not_interested', 'agreement_submitted'],
+  Pending: ['submitted', 'processing', 'initially_approved', 'owner_not_interested', 'agreement_submitted'],
   Approved: ['approved'],
   Active: ['active'],
   'Completed / Foreclosed': ['completed', 'foreclosed'],
@@ -43,6 +48,36 @@ export default function AdminLoanListScreen({ navigation, route }) {
   const [filter, setFilter] = useState(initialFilter);
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const { showAlert } = usePopup();
+  const [reconsiderModalVisible, setReconsiderModalVisible] = useState(false);
+  const [selectedLoanForReconsider, setSelectedLoanForReconsider] = useState(null);
+  const [reconsiderRemark, setReconsiderRemark] = useState('');
+  const [processingReconsider, setProcessingReconsider] = useState(false);
+
+  const handleOpenReconsider = (item) => {
+    setSelectedLoanForReconsider(item);
+    setReconsiderRemark('');
+    setReconsiderModalVisible(true);
+  };
+
+  const handleExecuteReconsider = async (openApprove = false) => {
+    if (!selectedLoanForReconsider) return;
+    setProcessingReconsider(true);
+    try {
+      const res = await reconsiderLoan(selectedLoanForReconsider.loanId, reconsiderRemark.trim());
+      setReconsiderModalVisible(false);
+      showAlert('Success', 'Loan application reconsidered and reopened for approval.');
+      await load();
+      if (openApprove) {
+        const updated = res?.loan || { ...selectedLoanForReconsider, status: 'processing' };
+        navigation.navigate('InitialApprove', { loan: updated });
+      }
+    } catch (err) {
+      showAlert('Error', err.response?.data?.message || 'Failed to reconsider loan.');
+    } finally {
+      setProcessingReconsider(false);
+    }
+  };
 
   useEffect(() => {
     const targetFilter = route?.params?.initialFilter || route?.params?.params?.initialFilter;
@@ -164,6 +199,22 @@ export default function AdminLoanListScreen({ navigation, route }) {
                   </View>
                 )}
 
+                {isReturned && (
+                  <View style={styles.reconsiderCardWrap}>
+                    <TouchableOpacity
+                      style={styles.reconsiderCardBtn}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleOpenReconsider(item);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="refresh-circle-outline" size={18} color={colors.white} />
+                      <Text style={styles.reconsiderCardBtnText}>Reconsider for Approval</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {(() => {
                   const { time: submissionTime, label: timeLabel } = getLoanSubmissionInfo(item);
                   if (!item.employeeName && !submissionTime) return null;
@@ -235,6 +286,74 @@ export default function AdminLoanListScreen({ navigation, route }) {
           </View>
         }
       />
+
+      <Modal visible={reconsiderModalVisible} transparent animationType="fade" onRequestClose={() => setReconsiderModalVisible(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Ionicons name="refresh-circle" size={24} color="#0284C7" />
+              <Text style={styles.modalTitle}>Reconsider Loan</Text>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Reopen {selectedLoanForReconsider?.displayLoanId || selectedLoanForReconsider?.applicationNumber || 'this loan'} ({selectedLoanForReconsider?.ownerName || 'Customer'}) for approval.
+            </Text>
+
+            {Boolean(selectedLoanForReconsider?.returnReason || selectedLoanForReconsider?.rejectionReason || selectedLoanForReconsider?.rejectReason) && (
+              <View style={styles.modalPreviousReason}>
+                <Text style={styles.modalPreviousReasonLabel}>Previous Reason:</Text>
+                <Text style={styles.modalPreviousReasonText}>
+                  {selectedLoanForReconsider?.returnReason || selectedLoanForReconsider?.rejectionReason || selectedLoanForReconsider?.rejectReason}
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.modalFieldLabel}>Reconsideration Remark (Optional)</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Reviewed updated documents, reconsidering for approval..."
+              placeholderTextColor={colors.placeholder || '#6B7280'}
+              value={reconsiderRemark}
+              onChangeText={setReconsiderRemark}
+              multiline
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setReconsiderModalVisible(false)}
+                disabled={processingReconsider}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: '#0284C7' }]}
+                onPress={() => handleExecuteReconsider(false)}
+                disabled={processingReconsider}
+              >
+                {processingReconsider ? (
+                  <ActivityIndicator color={colors.white} size="small" />
+                ) : (
+                  <Text style={styles.modalSubmitBtnText}>Reopen for Review</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: colors.success }]}
+                onPress={() => handleExecuteReconsider(true)}
+                disabled={processingReconsider}
+              >
+                {processingReconsider ? (
+                  <ActivityIndicator color={colors.white} size="small" />
+                ) : (
+                  <Text style={styles.modalSubmitBtnText}>Reopen & Approve</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -333,5 +452,116 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#991B1B',
     lineHeight: 19,
+  },
+  reconsiderCardWrap: {
+    marginTop: 10,
+    alignItems: 'flex-end',
+  },
+  reconsiderCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#0284C7',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  reconsiderCardBtnText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.white,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 18,
+    color: colors.dark,
+  },
+  modalSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.muted,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  modalPreviousReason: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  modalPreviousReasonLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 11,
+    color: '#991B1B',
+  },
+  modalPreviousReasonText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: '#7F1D1D',
+    marginTop: 2,
+  },
+  modalFieldLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.dark,
+    marginBottom: 6,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 10,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.text,
+    minHeight: 64,
+    textAlignVertical: 'top',
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+  },
+  modalCancelBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCancelBtnText: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    color: colors.muted,
+  },
+  modalSubmitBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalSubmitBtnText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    color: colors.white,
   },
 });
