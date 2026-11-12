@@ -175,8 +175,10 @@ export default function EmiScheduleLedger({
           (daysLateAtPayment > 3 && penalty === 0 && (isPaid || paidAmount >= baseAmount))
         );
 
-        // Bounced installment detection: strictly unpaid installment where a later installment has already been paid
-        const isBounced = !isPaid && !isForeclosed && sortedEmis.slice(idx + 1).some(
+        // Bounced installment detection: strictly unpaid installment (0 payment made) where a later installment has already been paid.
+        // If any part of the EMI has been paid, it cannot be shown as bounced!
+        const hasAnyPayment = Number(paidAmount || 0) > 0 || Number(emi.paidAmount || 0) > 0;
+        const isBounced = !hasAnyPayment && !isPaid && !isForeclosed && !isPenaltyOnHold && sortedEmis.slice(idx + 1).some(
           (laterEmi) => laterEmi.status === 'paid' || (Number(laterEmi.paidAmount || 0) > 0)
         );
 
