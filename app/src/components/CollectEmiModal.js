@@ -173,9 +173,12 @@ export default function CollectEmiModal({
   const [paymentDate, setPaymentDate] = useState(getTodayFormatted());
   const standardPenalty = (isAlreadyWaived || isPenaltyAlreadyPaid)
     ? 0
-    : ((hasPriorEmiPayment && lastPaidDateStr)
-      ? computePenaltyForDate(lastPaidDateStr)
-      : computePenaltyForDate(paymentDate));
+    : Math.max(
+        Number(emi?.penaltyAmount || 0),
+        ((hasPriorEmiPayment && lastPaidDateStr)
+          ? computePenaltyForDate(lastPaidDateStr)
+          : computePenaltyForDate(paymentDate))
+      );
 
   const [waivePenalty, setWaivePenalty] = useState(isAlreadyWaived);
   const [collectPenalty, setCollectPenalty] = useState(false);
@@ -196,16 +199,23 @@ export default function CollectEmiModal({
       const initDate = getTodayFormatted();
       const stdPen = (isWaived || isSettled)
         ? 0
-        : ((hasPriorEmiPayment && lastPaidDateStr)
-          ? computePenaltyForDate(lastPaidDateStr)
-          : computePenaltyForDate(initDate));
+        : Math.max(
+            Number(emi.penaltyAmount || 0),
+            ((hasPriorEmiPayment && lastPaidDateStr)
+              ? computePenaltyForDate(lastPaidDateStr)
+              : computePenaltyForDate(initDate))
+          );
 
       const isBasePaid = remainingEmiDue === 0 && (previousEmiPaid > 0 || Number(emi.paidAmount || 0) >= rawEmiAmount);
-      const initCollectPen = !isWaived && !isSettled && stdPen > 0;
+      // By default, when collecting an EMI with late penalty, put the penalty ON HOLD so base EMI can be collected cleanly.
+      // If base EMI is already fully cleared (user tapped Pay Penalty), default to collecting the penalty.
+      const shouldHoldByDefault = !isWaived && !isSettled && stdPen > 0 && !isBasePaid;
+      const shouldCollectByDefault = !isWaived && !isSettled && stdPen > 0 && isBasePaid;
+
       setWaivePenalty(isWaived);
-      setHoldPenalty(false);
-      setCollectPenalty(initCollectPen);
-      setPenaltyAmount(isWaived || isSettled ? '0' : String(stdPen || 0));
+      setHoldPenalty(shouldHoldByDefault);
+      setCollectPenalty(shouldCollectByDefault);
+      setPenaltyAmount(shouldCollectByDefault ? String(stdPen || 0) : '0');
       setEmiAmount(String(remainingEmiDue || 0));
       setPaymentMode('Cash');
       setTxnRef('');
@@ -230,10 +240,10 @@ export default function CollectEmiModal({
     : 0;
   const totalToCollect = emiVal + effectivePenaltyVal;
 
-  // Real-time overpayment checks
+  // Real-time overpayment checks:
+  // Base EMI cannot exceed remaining due, but penalty amount can be entered more or less than calculated penalty.
   const isEmiOver = emiVal > remainingEmiDue;
-  const isPenaltyOver = !isPenaltyAlreadyPaid && !waivePenalty && !holdPenalty && standardPenalty > 0 && penInputVal > standardPenalty;
-  const hasValidationError = isEmiOver || isPenaltyOver;
+  const hasValidationError = isEmiOver || effectivePenaltyVal < 0;
 
   const handleSelectPayPenalty = () => {
     if (isPenaltyAlreadyPaid) return;
@@ -369,11 +379,8 @@ export default function CollectEmiModal({
       return;
     }
 
-    if (isPenaltyOver) {
-      showAlert(
-        'Penalty Exceeds Calculated',
-        `Penalty amount (₹${effectivePenaltyVal.toLocaleString('en-IN')}) cannot exceed the calculated late penalty of ₹${standardPenalty.toLocaleString('en-IN')}. You can submit an amount less than actual or equal to the complete amount.`
-      );
+    if (isNaN(effectivePenaltyVal) || effectivePenaltyVal < 0) {
+      showAlert('Invalid Penalty Amount', 'Please enter a valid penalty amount.');
       return;
     }
 
@@ -707,8 +714,8 @@ export default function CollectEmiModal({
                     <Text style={styles.penaltyCalcSub}>
                       {standardPenalty > 0
                         ? (lastPaidDateStr
-                          ? `Penalty accrued strictly up to EMI submission date (${formatDate(lastPaidDateStr)}). Enter settlement amount below, or ₹0 to waive.`
-                          : `Standard penalty accrued up to payment date (${formatDate(paymentDate)}). Enter your agreed settlement amount below, or ₹0 to waive/defer.`)
+                          ? `Penalty accrued strictly up to EMI submission date (${formatDate(lastPaidDateStr)}). Enter settlement amount below (less, equal, or more), or ₹0 to waive.`
+                          : `Standard penalty accrued up to payment date (${formatDate(paymentDate)}). Enter your settlement amount below (less, equal, or more), or ₹0 to waive/defer.`)
                         : 'No late penalty accrued as of the selected payment date.'}
                     </Text>
                   </View>
@@ -785,10 +792,10 @@ export default function CollectEmiModal({
                   <Text style={styles.inputFieldSubLabel}>
                     Penalty Settlement Amount to Collect (₹):
                   </Text>
-                  <View style={[styles.currencyInputWrap, isPenaltyOver && styles.currencyInputWrapError]}>
-                    <Text style={[styles.currencyPrefix, isPenaltyOver && { color: '#DC2626' }]}>₹</Text>
+                  <View style={styles.currencyInputWrap}>
+                    <Text style={styles.currencyPrefix}>₹</Text>
                     <TextInput
-                      style={[styles.currencyInput, isPenaltyOver && { color: '#DC2626' }]}
+                      style={styles.currencyInput}
                       value={penaltyAmount}
                       onChangeText={handleCustomPenaltyChange}
                       placeholder="0"
@@ -797,22 +804,17 @@ export default function CollectEmiModal({
                     />
                   </View>
 
-                  {isPenaltyOver ? (
-                    <View style={styles.errorPromptBox}>
-                      <Ionicons name="alert-circle" size={15} color="#DC2626" style={{ marginTop: 1 }} />
-                      <Text style={styles.errorPromptTxt}>
-                        Penalty amount (₹{effectivePenaltyVal.toLocaleString('en-IN')}) cannot exceed calculated late penalty (₹{standardPenalty.toLocaleString('en-IN')}). You can submit an amount less than actual (settlement) or equal to complete amount.
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.fieldHelpTxt}>
-                      {holdPenalty
-                        ? `Base EMI will be collected today. The late penalty (₹${standardPenalty.toLocaleString('en-IN')}) will be placed on hold without accumulating further penalty.`
-                        : (effectivePenaltyVal > 0
-                          ? `Whatever penalty is paid today (₹${effectivePenaltyVal.toLocaleString('en-IN')}) will be final and settled. No additional penalty will be added.`
-                          : 'Late penalty will be ₹0 (waived off for this installment).')}
-                    </Text>
-                  )}
+                  <Text style={styles.fieldHelpTxt}>
+                    {holdPenalty
+                      ? `Base EMI will be collected today. The late penalty (₹${standardPenalty.toLocaleString('en-IN')}) will be placed on hold without accumulating further penalty.`
+                      : (effectivePenaltyVal > 0
+                        ? (standardPenalty > 0 && effectivePenaltyVal > standardPenalty
+                          ? `Custom settlement penalty: ₹${effectivePenaltyVal.toLocaleString('en-IN')} (higher than calculated ₹${standardPenalty.toLocaleString('en-IN')}). Whatever penalty is paid today will be final and settled.`
+                          : (standardPenalty > 0 && effectivePenaltyVal < standardPenalty
+                            ? `Settlement penalty: ₹${effectivePenaltyVal.toLocaleString('en-IN')} (discounted from calculated ₹${standardPenalty.toLocaleString('en-IN')}). Whatever penalty is paid today will be final and settled.`
+                            : `Whatever penalty is paid today (₹${effectivePenaltyVal.toLocaleString('en-IN')}) will be final and settled. No additional penalty will be added.`))
+                        : 'Late penalty will be ₹0 (waived off for this installment).')}
+                  </Text>
                 </View>
               )}
 
@@ -828,7 +830,7 @@ export default function CollectEmiModal({
                 </View>
                 <View style={styles.downwardRow}>
                   <Text style={styles.downwardLabel}>Late Penalty</Text>
-                  <Text style={[styles.downwardVal, isPenaltyAlreadyPaid ? { color: '#059669' } : (isPenaltyOver ? { color: '#DC2626' } : (effectivePenaltyVal > 0 ? { color: '#DC2626' } : {}))]}>
+                  <Text style={[styles.downwardVal, isPenaltyAlreadyPaid ? { color: '#059669' } : (effectivePenaltyVal > 0 ? { color: '#B45309' } : {})]}>
                     {isPenaltyAlreadyPaid
                       ? (isAlreadyWaived && previousPenaltyPaid === 0 ? 'Waived (₹0)' : `Already Paid (₹${previousPenaltyPaid.toLocaleString('en-IN')})`)
                       : (holdPenalty ? 'On Hold (₹0 today)' : (waivePenalty || effectivePenaltyVal === 0 ? 'Waived (₹0)' : `+ ₹${effectivePenaltyVal.toLocaleString('en-IN')}`))}
