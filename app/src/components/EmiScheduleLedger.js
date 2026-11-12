@@ -141,6 +141,10 @@ export default function EmiScheduleLedger({
           penalty = 0;
         } else if (emi.penaltySettled) {
           penalty = Math.round(Number(emi.penaltyAmount || 0));
+        } else if (emi.penaltyOnHold) {
+          // Penalty is placed ON HOLD for later: preserve recorded penaltyAmount or penalty paid
+          const priorPenPaid = paymentsList.reduce((sum, p) => sum + Number(p.penaltyAmount || 0), 0) || Number(emi.penaltyPaidAmount || 0);
+          penalty = Math.max(Math.round(Number(emi.penaltyAmount || 0)), priorPenPaid);
         } else if (lastPaidDateStr && dueDateStr) {
           if (daysLateAtPayment <= 3) {
             penalty = 0;
@@ -157,11 +161,11 @@ export default function EmiScheduleLedger({
 
         // Check if base EMI is paid in full but late penalty is on hold / pending settlement:
         const isBaseEmiFullyPaid = (paidAmount >= baseAmount && baseAmount > 0);
-        const isPenaltyOnHold = !emi.penaltyWaived && !emi.penaltySettled && penalty > 0 && isBaseEmiFullyPaid;
+        const isPenaltyOnHold = Boolean(emi.penaltyOnHold) || (!emi.penaltyWaived && !emi.penaltySettled && penalty > 0 && isBaseEmiFullyPaid);
 
         // Accurate paid status: status is 'paid' OR fully paid (remainingDue is 0 with paidAmount >= baseAmount or > 0)
         // If penalty is on hold, installment is NOT yet fully cleared!
-        const isPaid = (emi.status === 'paid' && !isPenaltyOnHold) || (remainingDue === 0 && paidAmount > 0 && paidAmount >= baseAmount && !isPenaltyOnHold);
+        const isPaid = !isPenaltyOnHold && ((emi.status === 'paid' && !emi.penaltyOnHold) || (remainingDue === 0 && paidAmount > 0 && paidAmount >= baseAmount));
         const isForeclosed = emi.status === 'foreclosed';
         const isPartial = !isPaid && !isForeclosed && !isPenaltyOnHold && (emi.status === 'partial' || (paidAmount > 0 && remainingDue > 0));
         const isOverdue = !isPaid && !isForeclosed && !isPenaltyOnHold && emi.dueDate && emi.dueDate < todayStr;
@@ -191,7 +195,9 @@ export default function EmiScheduleLedger({
         if (isPenaltyOnHold) {
           badgeBg = '#FEF3C7';
           badgeColor = '#B45309';
-          badgeText = `ON HOLD • PENALTY DUE: ₹${remainingDue.toLocaleString('en-IN')}`;
+          badgeText = remainingDue > 0
+            ? `ON HOLD • PENALTY DUE: ₹${remainingDue.toLocaleString('en-IN')}`
+            : 'ON HOLD • PENALTY DEFERRED';
           badgeIcon = 'pause-circle-outline';
         } else if (isPaid) {
           badgeBg = '#DCFCE7';
@@ -275,7 +281,7 @@ export default function EmiScheduleLedger({
                 <View style={styles.finCol}>
                   <Text style={styles.finLabel} numberOfLines={1}>Late Penalty</Text>
                   <Text style={[styles.finVal, { color: (emi.penaltySettled || emi.penaltyLocked) ? '#B45309' : colors.error }]} numberOfLines={1}>
-                    +₹{penalty.toLocaleString('en-IN')}{(emi.penaltySettled || emi.penaltyLocked) ? ' (Settled)' : ''}
+                    +₹{penalty.toLocaleString('en-IN')}{isPenaltyOnHold ? ' (On Hold)' : ((emi.penaltySettled || emi.penaltyLocked) ? ' (Settled)' : '')}
                   </Text>
                 </View>
               ) : isPenaltyWaived ? (
@@ -350,7 +356,7 @@ export default function EmiScheduleLedger({
                           <Ionicons name="return-down-forward-outline" size={12} color="#0284C7" />
                           <Text style={styles.ledgerBreakdownTxt}>
                             EMI: ₹{Math.round(Number(p.emiAmount !== undefined ? p.emiAmount : (Number(p.amount || 0) - Number(p.penaltyAmount || 0)))).toLocaleString('en-IN')}
-                            {Number(p.penaltyAmount || 0) > 0 ? ` • Penalty: ₹${Math.round(Number(p.penaltyAmount)).toLocaleString('en-IN')} (Settled)` : ''}
+                            {Number(p.penaltyAmount || 0) > 0 ? ` • Penalty: ₹${Math.round(Number(p.penaltyAmount)).toLocaleString('en-IN')}${isPenaltyOnHold ? ' (Part Paid • On Hold)' : ' (Settled)'}` : ''}
                           </Text>
                         </View>
                       ) : null}
@@ -372,7 +378,7 @@ export default function EmiScheduleLedger({
                     >
                       <Ionicons name="cash-outline" size={15} color={colors.white} />
                       <Text style={styles.payBtnTxt}>
-                        Pay Penalty: ₹{remainingDue.toLocaleString('en-IN')}
+                        {remainingDue > 0 ? `Pay Penalty: ₹${remainingDue.toLocaleString('en-IN')}` : 'Pay More Penalty'}
                       </Text>
                     </TouchableOpacity>
 

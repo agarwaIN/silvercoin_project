@@ -148,14 +148,24 @@ async function ensureEmiSchedule(loan) {
             const paidD = new Date(lastPaidDateStr);
             const dueD = new Date(dueDateStr);
             const daysLate = Math.max(0, Math.floor((paidD - dueD) / (1000 * 60 * 60 * 24)));
-            if (daysLate <= 3 && Number(emi.penaltyAmount || 0) > 0) {
+            const priorPayments = Array.isArray(emi.payments) ? emi.payments : [];
+            const totalPenaltyPaid = priorPayments.reduce((sum, p) => sum + Number(p.penaltyAmount || 0), 0) || Number(emi.penaltyPaidAmount || 0);
+
+            if (emi.penaltyOnHold) {
+              // Penalty is placed ON HOLD for later collection. Preserve penaltyOnHold and do NOT force status to 'paid'!
+              if (emi.status === 'paid') {
+                emi.status = 'partial';
+                await db.updateEmiPayment(emi.paymentId, { status: 'partial', penaltySettled: false }).catch(() => {});
+                modified = true;
+              }
+            } else if (daysLate <= 3 && Number(emi.penaltyAmount || 0) > 0 && totalPenaltyPaid === 0 && !emi.penaltyLocked) {
               emi.penaltyAmount = 0;
               if (paidAmount >= baseAmount) {
                 emi.status = 'paid';
               }
               await db.updateEmiPayment(emi.paymentId, { penaltyAmount: 0, status: emi.status }).catch(() => {});
               modified = true;
-            } else if (daysLate > 3 && Number(emi.penaltyAmount || 0) === 0 && (paidAmount >= baseAmount || emi.status === 'paid')) {
+            } else if (daysLate > 3 && Number(emi.penaltyAmount || 0) === 0 && (paidAmount >= baseAmount || emi.status === 'paid') && !emi.penaltyOnHold) {
               // Paid late with zero penalty -> mark penalty as waived
               if (!emi.penaltyWaived) {
                 emi.penaltyWaived = true;
@@ -163,7 +173,7 @@ async function ensureEmiSchedule(loan) {
                 await db.updateEmiPayment(emi.paymentId, { penaltyWaived: true, penaltyLocked: true }).catch(() => {});
                 modified = true;
               }
-            } else if (!emi.penaltyWaived && !emi.penaltySettled && daysLate > 3) {
+            } else if (!emi.penaltyWaived && !emi.penaltySettled && !emi.penaltyOnHold && daysLate > 3) {
               // Late penalty is strictly calculated ONLY till the date the EMI amount was submitted last!
               const penaltyRate = Number(loan.penaltyRate) || 0.1;
               const calcPenalty = Math.round(baseAmount * (penaltyRate / 100) * daysLate);
@@ -1032,7 +1042,16 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       // Calculate accrued standard late penalty
       const penaltyRate = Number(loan?.penaltyRate || 0.1);
       const computedStandard = daysLate > 3 ? Math.round(unpaidPrincipal * (penaltyRate / 100) * daysLate) : 0;
-      const accruedPenalty = Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : computedStandard;
+      
+      const priorBaseEmiPaid = priorPayments.reduce(
+        (sum, p) => sum + Number(p.emiAmount !== undefined ? p.emiAmount : (Number(p.amount || 0) - Number(p.penaltyAmount || 0))),
+        0
+      );
+      const isBaseAlreadyPaid = priorBaseEmiPaid >= Number(emi.amount || 0) && Number(emi.amount || 0) > 0;
+
+      const accruedPenalty = (isBaseAlreadyPaid && Number(emi.penaltyAmount || 0) > 0)
+        ? Number(emi.penaltyAmount)
+        : computedStandard;
 
       let payPenaltyToday = 0;
       if (paymentDetails.penaltyAmount !== undefined && paymentDetails.penaltyAmount !== null && !isNaN(Number(paymentDetails.penaltyAmount))) {
@@ -1045,14 +1064,15 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
 
       const remainingUnpaidPenalty = Math.max(0, applicablePenalty - totalPenaltyPaidAfterThis);
 
-      if (remainingUnpaidPenalty > 0) {
+      if (paymentDetails.holdPenalty === true || remainingUnpaidPenalty > 0) {
         // Any unpaid penalty portion STAYS ON HOLD to be paid later!
+        // Also if user explicitly requested HOLD FOR LATER, penalty remains on hold!
         penaltyWaived = false;
         penaltyLocked = true;
         penaltySettled = false;
         penaltyOnHold = true;
       } else {
-        // Penalty is fully paid today (or was 0)
+        // Penalty is fully paid today (or was 0 and no hold requested)
         penaltyWaived = false;
         penaltyLocked = true;
         penaltySettled = (applicablePenalty > 0 || totalPenaltyPaidAfterThis > 0);
@@ -1094,13 +1114,19 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     const newPaidAmount = currentPaid + payForThisEmi;
     remainingAmount -= payForThisEmi;
 
-    if (daysLate > 3 && applicablePenalty === 0 && (newPaidAmount >= Number(emi.amount || 0))) {
+    if (daysLate > 3 && applicablePenalty === 0 && (newPaidAmount >= Number(emi.amount || 0)) && !penaltyOnHold) {
       penaltyWaived = true;
       penaltyLocked = true;
     }
 
     const isBaseEmiCleared = (currentPaid + payForThisEmi) >= Number(emi.amount || 0);
-    const newStatus = (newPaidAmount >= totalRequired || (penaltyWaived && isBaseEmiCleared)) ? 'paid' : (newPaidAmount > 0 ? 'partial' : 'pending');
+    let newStatus = 'pending';
+    if (penaltyOnHold) {
+      // If penalty is on hold, installment MUST REMAIN OPEN for further penalty collection!
+      newStatus = (newPaidAmount > 0) ? 'partial' : 'pending';
+    } else {
+      newStatus = (newPaidAmount >= totalRequired || (penaltyWaived && isBaseEmiCleared)) ? 'paid' : (newPaidAmount > 0 ? 'partial' : 'pending');
+    }
 
     // Build installment list maintaining complete itemized ledger history of partial payments
     const existingPayments = Array.isArray(emi.payments) ? [...emi.payments] : [];
