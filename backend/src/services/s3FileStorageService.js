@@ -13,6 +13,8 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const BUCKET = process.env.AWS_S3_BUCKET || 'silvercoin-media-897021975250';
 const REGION = process.env.AWS_REGION || 'ap-south-1';
+const OLD_BUCKET = process.env.AWS_S3_OLD_BUCKET || 'silvercoin-uploads-897021975250';
+const OLD_REGION = 'us-east-1';
 
 // Local disk fallback directory (where older files reside on the EC2 server)
 const LOCAL_ROOT = path.join(__dirname, '../../uploads');
@@ -71,6 +73,99 @@ function getS3Client() {
   return cachedS3Client;
 }
 
+let cachedOldS3Client = null;
+function getOldS3Client() {
+  if (!cachedOldS3Client) {
+    const options = {
+      region: OLD_REGION,
+    };
+    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+      options.credentials = {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID.trim(),
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY.trim(),
+      };
+      if (process.env.AWS_SESSION_TOKEN) {
+        options.credentials.sessionToken = process.env.AWS_SESSION_TOKEN.trim();
+      }
+    }
+    cachedOldS3Client = new S3Client(options);
+  }
+  return cachedOldS3Client;
+}
+
+/**
+ * Checks whether an object exists in the primary S3 bucket.
+ * If not present in primary S3, checks:
+ * 1. Local EC2 disk (`backend/uploads/`) -> if found, auto-uploads to primary S3!
+ * 2. Old S3 bucket (`silvercoin-uploads-897021975250`) -> if found, auto-copies to primary S3!
+ * This completely guarantees older media is NEVER broken with NoSuchKey!
+ */
+async function ensureInPrimaryS3(cleanKey) {
+  const client = getS3Client();
+
+  // 1. Check primary S3 bucket
+  try {
+    await client.send(new HeadObjectCommand({ Bucket: BUCKET, Key: cleanKey }));
+    return { found: true, bucket: BUCKET, client };
+  } catch (err) {
+    // Not in primary S3 yet
+  }
+
+  // 2. Check local disk fallback
+  try {
+    const localPath = absLocalPath(cleanKey);
+    if (fs.existsSync(localPath)) {
+      const buffer = await fsp.readFile(localPath);
+      await client.send(
+        new PutObjectCommand({
+          Bucket: BUCKET,
+          Key: cleanKey,
+          Body: buffer,
+          ContentType: getContentType(cleanKey),
+        })
+      );
+      console.log(`[Auto-Sync] Migrated local file ${cleanKey} to primary S3.`);
+      return { found: true, bucket: BUCKET, client };
+    }
+  } catch (localErr) {
+    // Ignore error
+  }
+
+  // 3. Check old S3 bucket (silvercoin-uploads-897021975250)
+  try {
+    const oldClient = getOldS3Client();
+    const oldHead = await oldClient.send(new HeadObjectCommand({ Bucket: OLD_BUCKET, Key: cleanKey }));
+    if (oldHead) {
+      // Auto-copy to primary S3 bucket in Mumbai
+      try {
+        const oldObj = await oldClient.send(new GetObjectCommand({ Bucket: OLD_BUCKET, Key: cleanKey }));
+        const chunks = [];
+        for await (const chunk of oldObj.Body) {
+          chunks.push(chunk);
+        }
+        const buffer = Buffer.concat(chunks);
+        await client.send(
+          new PutObjectCommand({
+            Bucket: BUCKET,
+            Key: cleanKey,
+            Body: buffer,
+            ContentType: oldObj.ContentType || getContentType(cleanKey),
+          })
+        );
+        console.log(`[Auto-Sync] Migrated ${cleanKey} from old S3 to primary S3.`);
+        return { found: true, bucket: BUCKET, client };
+      } catch (copyErr) {
+        // Return old S3 bucket directly if copy failed
+        return { found: true, bucket: OLD_BUCKET, client: oldClient };
+      }
+    }
+  } catch (oldErr) {
+    // Not in old S3 either
+  }
+
+  return { found: false, bucket: BUCKET, client };
+}
+
 /**
  * Uploads a file buffer directly to S3.
  * Zero bytes are stored on the EC2 server hard disk, preventing ENOSPC errors.
@@ -94,7 +189,7 @@ async function uploadBuffer(key, buffer) {
     return cleanKey;
   } catch (err) {
     console.error(`S3 upload failed for ${cleanKey}:`, err.message);
-    // If S3 credentials fail, attempt local emergency fallback
+    // If S3 fails, attempt local emergency fallback
     try {
       const filePath = absLocalPath(cleanKey);
       await fsp.mkdir(path.dirname(filePath), { recursive: true });
@@ -132,14 +227,16 @@ async function getPresignedUrl(key, expiresIn = 86400) {
   const cleanKey = normalizeKey(key);
   if (!cleanKey) return null;
 
+  // Auto-heal: verify / copy from local disk or old S3 if not yet in primary S3
+  const target = await ensureInPrimaryS3(cleanKey);
+
   // Generate direct S3 Presigned URL
   try {
-    const client = getS3Client();
     const command = new GetObjectCommand({
-      Bucket: BUCKET,
+      Bucket: target.bucket,
       Key: cleanKey,
     });
-    const url = await getSignedUrl(client, command, { expiresIn });
+    const url = await getSignedUrl(target.client, command, { expiresIn });
     return url;
   } catch (err) {
     console.warn(`S3 signed URL error for ${cleanKey}, using fallback:`, err.message);
@@ -170,36 +267,37 @@ function getLocalDownloadUrl(key, expiresIn = 3600) {
  */
 async function getFileInfo(key) {
   const cleanKey = normalizeKey(key);
-  const client = getS3Client();
+  const target = await ensureInPrimaryS3(cleanKey);
 
-  // Try S3 first
-  try {
-    const head = await client.send(
-      new HeadObjectCommand({
-        Bucket: BUCKET,
-        Key: cleanKey,
-      })
-    );
-    return {
-      size: head.ContentLength,
-      contentType: head.ContentType || getContentType(cleanKey),
-      source: 's3',
-    };
-  } catch (s3Err) {
-    // If not in S3, check local disk fallback
+  if (target.found) {
     try {
-      const localPath = absLocalPath(cleanKey);
-      await fsp.access(localPath);
-      const stat = await fsp.stat(localPath);
+      const head = await target.client.send(
+        new HeadObjectCommand({
+          Bucket: target.bucket,
+          Key: cleanKey,
+        })
+      );
       return {
-        filePath: localPath,
-        size: stat.size,
-        contentType: getContentType(localPath),
-        source: 'local',
+        size: head.ContentLength,
+        contentType: head.ContentType || getContentType(cleanKey),
+        source: 's3',
       };
-    } catch {
-      throw new Error('File not found');
-    }
+    } catch (e) {}
+  }
+
+  // Fall back to local disk
+  try {
+    const localPath = absLocalPath(cleanKey);
+    await fsp.access(localPath);
+    const stat = await fsp.stat(localPath);
+    return {
+      filePath: localPath,
+      size: stat.size,
+      contentType: getContentType(localPath),
+      source: 'local',
+    };
+  } catch {
+    throw new Error('File not found');
   }
 }
 
@@ -208,40 +306,41 @@ async function getFileInfo(key) {
  */
 async function openDownloadStream(key, rangeOptions = null) {
   const cleanKey = normalizeKey(key);
-  const client = getS3Client();
+  const target = await ensureInPrimaryS3(cleanKey);
 
-  // Try S3 first
-  try {
-    const params = {
-      Bucket: BUCKET,
-      Key: cleanKey,
-    };
-    if (rangeOptions) {
-      params.Range = `bytes=${rangeOptions.start}-${rangeOptions.end}`;
-    }
-    const res = await client.send(new GetObjectCommand(params));
-    return {
-      stream: res.Body,
-      contentType: res.ContentType || getContentType(cleanKey),
-      size: res.ContentLength,
-    };
-  } catch (s3Err) {
-    // Local disk fallback
+  if (target.found) {
     try {
-      const localPath = absLocalPath(cleanKey);
-      const stat = await fsp.stat(localPath);
-      const streamOptions = rangeOptions
-        ? { start: rangeOptions.start, end: rangeOptions.end }
-        : undefined;
-      return {
-        stream: fs.createReadStream(localPath, streamOptions),
-        contentType: getContentType(localPath),
-        size: stat.size,
-        filePath: localPath,
+      const params = {
+        Bucket: target.bucket,
+        Key: cleanKey,
       };
-    } catch {
-      throw new Error('File not found');
-    }
+      if (rangeOptions) {
+        params.Range = `bytes=${rangeOptions.start}-${rangeOptions.end}`;
+      }
+      const res = await target.client.send(new GetObjectCommand(params));
+      return {
+        stream: res.Body,
+        contentType: res.ContentType || getContentType(cleanKey),
+        size: res.ContentLength,
+      };
+    } catch (e) {}
+  }
+
+  // Local disk fallback
+  try {
+    const localPath = absLocalPath(cleanKey);
+    const stat = await fsp.stat(localPath);
+    const streamOptions = rangeOptions
+      ? { start: rangeOptions.start, end: rangeOptions.end }
+      : undefined;
+    return {
+      stream: fs.createReadStream(localPath, streamOptions),
+      contentType: getContentType(localPath),
+      size: stat.size,
+      filePath: localPath,
+    };
+  } catch {
+    throw new Error('File not found');
   }
 }
 
@@ -260,9 +359,18 @@ async function deleteFile(key) {
         Key: cleanKey,
       })
     );
-  } catch (err) {
-    // Silently continue
-  }
+  } catch (err) {}
+
+  // Also remove from old S3 if present
+  try {
+    const oldClient = getOldS3Client();
+    await oldClient.send(
+      new DeleteObjectCommand({
+        Bucket: OLD_BUCKET,
+        Key: cleanKey,
+      })
+    );
+  } catch (err) {}
 
   // Also remove from local disk if it was stored there
   try {
@@ -280,4 +388,3 @@ module.exports = {
   BUCKET,
   REGION,
 };
-
