@@ -368,16 +368,41 @@ export default function RecoveryScreen({ navigation }) {
         : (Number(selectedScheduleLoan.totalRepayable || 0) || (monthlyEmiVal * totalTenure))
     );
 
-    // Metric 3: Total Amount Collected through EMIs up to the current date
-    const computedCollected = emisSorted.reduce((sum, e) => {
-      const p = Number(e.paidAmount || 0);
-      if (p > 0) return sum + p;
-      if (e.status === 'paid') return sum + Number(e.amount || 0);
+    // Metric 3: Total Amount Collected through EMIs up to the current date (Base EMI + Penalties)
+    let computedBaseEmiCollected = 0;
+    let computedPenaltyCollected = 0;
+
+    emisSorted.forEach((e) => {
+      const paid = Number(e.paidAmount || 0);
       if (Array.isArray(e.payments) && e.payments.length > 0) {
-        return sum + e.payments.reduce((pSum, pm) => pSum + Number(pm.amount || 0), 0);
+        e.payments.forEach((p) => {
+          const pen = Number(p.penaltyAmount || 0);
+          const emi = Number(p.emiAmount !== undefined ? p.emiAmount : Math.max(0, Number(p.amount || 0) - pen));
+          computedPenaltyCollected += pen;
+          computedBaseEmiCollected += emi;
+        });
+      } else if (paid > 0) {
+        const rawBase = Number(e.amount || 0);
+        if (e.penaltySettled && Number(e.penaltyAmount || 0) > 0) {
+          const penPart = Number(e.penaltyAmount || 0);
+          const emiPart = Math.max(0, paid - penPart);
+          computedPenaltyCollected += penPart;
+          computedBaseEmiCollected += emiPart;
+        } else if (paid > rawBase) {
+          computedBaseEmiCollected += rawBase;
+          computedPenaltyCollected += (paid - rawBase);
+        } else {
+          computedBaseEmiCollected += paid;
+        }
+      } else if (e.status === 'paid') {
+        computedBaseEmiCollected += Number(e.amount || 0);
+        if (e.penaltySettled && !e.penaltyWaived) {
+          computedPenaltyCollected += Number(e.penaltyAmount || 0);
+        }
       }
-      return sum;
-    }, 0);
+    });
+
+    const computedCollected = computedBaseEmiCollected + computedPenaltyCollected;
     const totalEmiCollected = Math.max(
       0,
       Math.round(
@@ -392,6 +417,14 @@ export default function RecoveryScreen({ navigation }) {
             )
       )
     );
+
+    let totalPenaltyCollected = Math.round(computedPenaltyCollected);
+    let totalBaseEmiCollected = Math.round(computedBaseEmiCollected);
+    if (totalBaseEmiCollected === 0 && totalPenaltyCollected === 0 && totalEmiCollected > 0) {
+      totalBaseEmiCollected = totalEmiCollected;
+    } else if (totalBaseEmiCollected + totalPenaltyCollected !== totalEmiCollected && totalEmiCollected > 0) {
+      totalBaseEmiCollected = Math.max(0, totalEmiCollected - totalPenaltyCollected);
+    }
 
     // Metric 4: Total Overdue (EMI Due Total + All Implied Penalties with + sign)
     let finalOverdueEmiDue = overdueEmis.reduce(
@@ -486,12 +519,42 @@ export default function RecoveryScreen({ navigation }) {
 
             {/* Row 2: Total Collected to Date & Total Remaining Balance */}
             <View style={styles.scheduleMetricsRow}>
-              {/* Metric 3: Total Amount Collected through EMIs to date */}
+              {/* Metric 3: Total Amount Collected through EMIs to date (Base EMI + Penalties) */}
               <View style={styles.scheduleMetricItem}>
                 <Text style={styles.scheduleMetricLabel}>Total Collected</Text>
-                <Text style={[styles.scheduleMetricVal, { color: '#059669', fontFamily: fonts.bold }]}>
-                  {formatCurrencyClean(totalEmiCollected)}
-                </Text>
+                {totalPenaltyCollected > 0 ? (
+                  <View>
+                    <Text
+                      style={[
+                        styles.scheduleMetricVal,
+                        {
+                          color: '#059669',
+                          fontFamily: fonts.bold,
+                          fontSize: 13.5,
+                        },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      {formatCurrencyClean(totalBaseEmiCollected)}
+                      <Text style={{ color: '#059669', fontFamily: fonts.bold, fontSize: 12.5 }}>
+                        {' '}+ {formatCurrencyClean(totalPenaltyCollected)}
+                      </Text>
+                    </Text>
+                    <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }} numberOfLines={1}>
+                      EMI + Penalty (Total: {formatCurrencyClean(totalEmiCollected)})
+                    </Text>
+                  </View>
+                ) : (
+                  <View>
+                    <Text style={[styles.scheduleMetricVal, { color: '#059669', fontFamily: fonts.bold }]}>
+                      {formatCurrencyClean(totalEmiCollected)}
+                    </Text>
+                    <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }} numberOfLines={1}>
+                      100% Base EMI (Penalty: ₹0)
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Metric 4: Total Remaining Balance */}
