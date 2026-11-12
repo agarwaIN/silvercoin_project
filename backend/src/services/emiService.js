@@ -1023,34 +1023,41 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
 
     if (isTargetEmi && paymentDetails.waivePenalty === true) {
       // User explicitly opted to WAIVE OFF penalty on this EMI
-      applicablePenalty = 0;
+      applicablePenalty = priorPenaltyPaid;
       penaltyWaived = true;
       penaltyLocked = true;
       penaltySettled = true;
       penaltyOnHold = false;
-    } else if (isTargetEmi && (paymentDetails.holdPenalty === true || (paymentDetails.collectPenalty === false && !paymentDetails.waivePenalty))) {
-      // User is paying base EMI today, but putting late penalty ON HOLD to settle later!
+    } else if (isTargetEmi) {
+      // Calculate accrued standard late penalty
       const penaltyRate = Number(loan?.penaltyRate || 0.1);
       const computedStandard = daysLate > 3 ? Math.round(unpaidPrincipal * (penaltyRate / 100) * daysLate) : 0;
-      applicablePenalty = Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : computedStandard;
-      penaltyWaived = false;
-      penaltyLocked = true; // Locked so no further daily penalty accumulates
-      penaltySettled = false; // NOT settled yet, stays open!
-      penaltyOnHold = applicablePenalty > 0;
-    } else if (isTargetEmi && paymentDetails.penaltyAmount !== undefined && paymentDetails.penaltyAmount !== null && !isNaN(Number(paymentDetails.penaltyAmount)) && Number(paymentDetails.penaltyAmount) > 0) {
-      // User explicitly set/edited penalty amount to replace and collect today - settled!
-      applicablePenalty = Math.max(0, Number(paymentDetails.penaltyAmount));
-      penaltyWaived = false;
-      penaltyLocked = true;
-      penaltySettled = true;
-      penaltyOnHold = false;
-    } else if (isTargetEmi && paymentDetails.penaltyAmount !== undefined && Number(paymentDetails.penaltyAmount) === 0 && !paymentDetails.holdPenalty) {
-      // User explicitly settled penalty at 0 (waived off)
-      applicablePenalty = 0;
-      penaltyWaived = true;
-      penaltyLocked = true;
-      penaltySettled = true;
-      penaltyOnHold = false;
+      const accruedPenalty = Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : computedStandard;
+
+      let payPenaltyToday = 0;
+      if (paymentDetails.penaltyAmount !== undefined && paymentDetails.penaltyAmount !== null && !isNaN(Number(paymentDetails.penaltyAmount))) {
+        payPenaltyToday = Math.max(0, Number(paymentDetails.penaltyAmount));
+      }
+
+      const totalPenaltyPaidAfterThis = priorPenaltyPaid + payPenaltyToday;
+      // Target penalty is either accrued standard penalty, or higher if user entered a custom higher amount
+      applicablePenalty = Math.max(accruedPenalty, totalPenaltyPaidAfterThis);
+
+      const remainingUnpaidPenalty = Math.max(0, applicablePenalty - totalPenaltyPaidAfterThis);
+
+      if (remainingUnpaidPenalty > 0) {
+        // Any unpaid penalty portion STAYS ON HOLD to be paid later!
+        penaltyWaived = false;
+        penaltyLocked = true;
+        penaltySettled = false;
+        penaltyOnHold = true;
+      } else {
+        // Penalty is fully paid today (or was 0)
+        penaltyWaived = false;
+        penaltyLocked = true;
+        penaltySettled = (applicablePenalty > 0 || totalPenaltyPaidAfterThis > 0);
+        penaltyOnHold = false;
+      }
     } else if (isAlreadySettled) {
       // Penalty was ALREADY collected/settled in a previous payment.
       applicablePenalty = Number(emi.penaltyAmount || 0) > 0 ? Number(emi.penaltyAmount) : priorPenaltyPaid;
@@ -1092,7 +1099,8 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
       penaltyLocked = true;
     }
 
-    const newStatus = newPaidAmount >= totalRequired ? 'paid' : (newPaidAmount > 0 ? 'partial' : 'pending');
+    const isBaseEmiCleared = (currentPaid + payForThisEmi) >= Number(emi.amount || 0);
+    const newStatus = (newPaidAmount >= totalRequired || (penaltyWaived && isBaseEmiCleared)) ? 'paid' : (newPaidAmount > 0 ? 'partial' : 'pending');
 
     // Build installment list maintaining complete itemized ledger history of partial payments
     const existingPayments = Array.isArray(emi.payments) ? [...emi.payments] : [];
@@ -1112,23 +1120,16 @@ async function recordLoanPayment(loanId, initialPaymentId, amount, userId, payme
     let receiptPenaltyPart = 0;
     let receiptEmiPart = 0;
     if (isTargetEmi) {
-      if (penaltyOnHold) {
-        // Penalty is on hold for later settlement, current payment goes 100% to base EMI
+      if (penaltyWaived) {
         receiptPenaltyPart = 0;
         receiptEmiPart = payForThisEmi;
-      } else if (isAlreadySettled) {
-        // Penalty already paid in prior installment receipt!
-        // Current payment goes 100% towards remaining base EMI.
-        receiptPenaltyPart = 0;
-        receiptEmiPart = payForThisEmi;
-      } else if (paymentDetails.penaltyAmount !== undefined && Number(paymentDetails.penaltyAmount) > 0) {
-        receiptPenaltyPart = Math.min(payForThisEmi, Number(paymentDetails.penaltyAmount));
-        receiptEmiPart = Math.max(0, payForThisEmi - receiptPenaltyPart);
-      } else if (paymentDetails.emiAmount !== undefined) {
-        receiptEmiPart = Math.min(payForThisEmi, Number(paymentDetails.emiAmount));
-        receiptPenaltyPart = Math.max(0, payForThisEmi - receiptEmiPart);
       } else {
-        receiptEmiPart = payForThisEmi;
+        let payPenaltyToday = 0;
+        if (paymentDetails.penaltyAmount !== undefined && paymentDetails.penaltyAmount !== null && !isNaN(Number(paymentDetails.penaltyAmount))) {
+          payPenaltyToday = Math.max(0, Number(paymentDetails.penaltyAmount));
+        }
+        receiptPenaltyPart = Math.min(payForThisEmi, payPenaltyToday);
+        receiptEmiPart = Math.max(0, payForThisEmi - receiptPenaltyPart);
       }
     } else {
       receiptEmiPart = payForThisEmi;
