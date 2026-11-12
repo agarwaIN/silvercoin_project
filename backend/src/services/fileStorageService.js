@@ -1,1 +1,1 @@
-module.exports = require('./localFileStorageService');
+module.exports = require('./s3FileStorageService');
