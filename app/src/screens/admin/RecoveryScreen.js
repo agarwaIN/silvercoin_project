@@ -523,35 +523,50 @@ export default function RecoveryScreen({ navigation }) {
               <View style={styles.scheduleMetricItem}>
                 <Text style={styles.scheduleMetricLabel}>Total Collected</Text>
                 {totalPenaltyCollected > 0 ? (
-                  <View>
+                  <View style={{ marginTop: 2 }}>
                     <Text
                       style={[
                         styles.scheduleMetricVal,
                         {
                           color: '#059669',
                           fontFamily: fonts.bold,
-                          fontSize: 13.5,
+                          fontSize: 15,
                         },
                       ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                     >
-                      {formatCurrencyClean(totalBaseEmiCollected)}
-                      <Text style={{ color: '#059669', fontFamily: fonts.bold, fontSize: 12.5 }}>
-                        {' '}+ {formatCurrencyClean(totalPenaltyCollected)}
-                      </Text>
+                      {formatCurrencyClean(totalEmiCollected)}
                     </Text>
-                    <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }} numberOfLines={1}>
-                      EMI + Penalty (Total: {formatCurrencyClean(totalEmiCollected)})
+                    <Text
+                      style={{
+                        fontSize: 10.5,
+                        color: '#047857',
+                        fontFamily: fonts.semiBold,
+                        marginTop: 2,
+                        lineHeight: 14,
+                      }}
+                    >
+                      {formatCurrencyClean(totalBaseEmiCollected)} + {formatCurrencyClean(totalPenaltyCollected)}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 9.5,
+                        color: colors.muted,
+                        fontFamily: fonts.medium,
+                        marginTop: 1,
+                      }}
+                    >
+                      (EMI + Penalty)
                     </Text>
                   </View>
                 ) : (
-                  <View>
-                    <Text style={[styles.scheduleMetricVal, { color: '#059669', fontFamily: fonts.bold }]}>
+                  <View style={{ marginTop: 2 }}>
+                    <Text style={[styles.scheduleMetricVal, { color: '#059669', fontFamily: fonts.bold, fontSize: 15 }]}>
                       {formatCurrencyClean(totalEmiCollected)}
                     </Text>
-                    <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 1 }} numberOfLines={1}>
-                      100% Base EMI (Penalty: ₹0)
+                    <Text style={{ fontSize: 9.5, color: colors.muted, fontFamily: fonts.medium, marginTop: 2 }}>
+                      100% Base EMI (₹0 Penalty)
                     </Text>
                   </View>
                 )}
