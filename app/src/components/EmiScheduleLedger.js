@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
-import { formatDate } from '../utils/date';
+import { formatDate, parseDateSafe, isDateBefore, isDateSame } from '../utils/date';
 import { useAuth } from '../context/AuthContext';
 import { usePopup } from '../context/PopupContext';
 import * as adminApi from '../api/adminApi';
@@ -124,14 +124,19 @@ export default function EmiScheduleLedger({
         const lastPaidDateStr = getLastPaymentDate();
         const dueDateStr = emi.dueDate ? String(emi.dueDate).slice(0, 10) : '';
 
+        // Safe timestamp comparisons handling both DD-MM-YYYY and YYYY-MM-DD
+        const dueDt = dueDateStr ? parseDateSafe(dueDateStr) : null;
+        const todayDt = parseDateSafe(todayStr);
+        const lastPaidDt = lastPaidDateStr ? parseDateSafe(lastPaidDateStr) : null;
+
+        const dueMs = dueDt ? new Date(dueDt.getFullYear(), dueDt.getMonth(), dueDt.getDate()).getTime() : NaN;
+        const todayMs = todayDt ? new Date(todayDt.getFullYear(), todayDt.getMonth(), todayDt.getDate()).getTime() : NaN;
+        const lastPaidMs = lastPaidDt ? new Date(lastPaidDt.getFullYear(), lastPaidDt.getMonth(), lastPaidDt.getDate()).getTime() : NaN;
+
         // Calculate days late at actual time of payment submission
         let daysLateAtPayment = 0;
-        if (lastPaidDateStr && dueDateStr && lastPaidDateStr > dueDateStr) {
-          const pD = new Date(lastPaidDateStr);
-          const dD = new Date(dueDateStr);
-          if (!isNaN(pD.getTime()) && !isNaN(dD.getTime())) {
-            daysLateAtPayment = Math.max(0, Math.floor((pD - dD) / (1000 * 60 * 60 * 24)));
-          }
+        if (!isNaN(lastPaidMs) && !isNaN(dueMs) && lastPaidMs > dueMs) {
+          daysLateAtPayment = Math.max(0, Math.floor((lastPaidMs - dueMs) / (1000 * 60 * 60 * 24)));
         }
 
         // Determine late penalty:
@@ -145,15 +150,25 @@ export default function EmiScheduleLedger({
           // Penalty is placed ON HOLD for later: preserve recorded penaltyAmount or penalty paid
           const priorPenPaid = paymentsList.reduce((sum, p) => sum + Number(p.penaltyAmount || 0), 0) || Number(emi.penaltyPaidAmount || 0);
           penalty = Math.max(Math.round(Number(emi.penaltyAmount || 0)), priorPenPaid);
-        } else if (lastPaidDateStr && dueDateStr) {
+        } else if (lastPaidDateStr) {
           if (daysLateAtPayment <= 3) {
             penalty = 0;
           } else {
             const pRate = Number(loan?.penaltyRate || 0.1);
             penalty = Math.round(baseAmount * (pRate / 100) * daysLateAtPayment);
           }
+        } else if (isNaN(dueMs) || dueMs >= todayMs) {
+          // Not overdue yet! Due date is today or in the future -> Late penalty is strictly 0!
+          penalty = 0;
         } else {
-          penalty = Math.round(Number(emi.penaltyAmount || 0));
+          // Overdue installment with no payment yet: calculate overdue days up to today
+          const daysOverdue = Math.max(0, Math.floor((todayMs - dueMs) / (1000 * 60 * 60 * 24)));
+          if (daysOverdue <= 3) {
+            penalty = 0;
+          } else {
+            const pRate = Number(loan?.penaltyRate || 0.1);
+            penalty = Math.round(baseAmount * (pRate / 100) * daysOverdue);
+          }
         }
 
         const totalRequired = baseAmount + penalty;
@@ -168,8 +183,8 @@ export default function EmiScheduleLedger({
         const isPaid = !isPenaltyOnHold && ((emi.status === 'paid' && !emi.penaltyOnHold) || (remainingDue === 0 && paidAmount > 0 && paidAmount >= baseAmount));
         const isForeclosed = emi.status === 'foreclosed';
         const isPartial = !isPaid && !isForeclosed && !isPenaltyOnHold && (emi.status === 'partial' || (paidAmount > 0 && remainingDue > 0));
-        const isOverdue = !isPaid && !isForeclosed && !isPenaltyOnHold && emi.dueDate && emi.dueDate < todayStr;
-        const isDueToday = !isPaid && !isForeclosed && !isPenaltyOnHold && emi.dueDate && emi.dueDate === todayStr;
+        const isOverdue = !isPaid && !isForeclosed && !isPenaltyOnHold && !isNaN(dueMs) && dueMs < todayMs;
+        const isDueToday = !isPaid && !isForeclosed && !isPenaltyOnHold && !isNaN(dueMs) && dueMs === todayMs;
 
         // Determine if late penalty was waived:
         // 1. Explicitly flagged as emi.penaltyWaived

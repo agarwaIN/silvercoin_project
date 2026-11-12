@@ -211,3 +211,29 @@ export function sortLoansByLatestSubmitted(items) {
   });
 }
 
+/**
+ * Returns true if date d1 is strictly calendar-wise before date d2.
+ * Safely handles both DD-MM-YYYY and YYYY-MM-DD formats.
+ */
+export function isDateBefore(d1, d2) {
+  if (!d1 || !d2) return false;
+  const dt1 = parseDateSafe(d1);
+  const dt2 = parseDateSafe(d2);
+  const t1 = new Date(dt1.getFullYear(), dt1.getMonth(), dt1.getDate()).getTime();
+  const t2 = new Date(dt2.getFullYear(), dt2.getMonth(), dt2.getDate()).getTime();
+  return !isNaN(t1) && !isNaN(t2) && t1 < t2;
+}
+
+/**
+ * Returns true if date d1 and date d2 are the same calendar day.
+ */
+export function isDateSame(d1, d2) {
+  if (!d1 || !d2) return false;
+  const dt1 = parseDateSafe(d1);
+  const dt2 = parseDateSafe(d2);
+  const t1 = new Date(dt1.getFullYear(), dt1.getMonth(), dt1.getDate()).getTime();
+  const t2 = new Date(dt2.getFullYear(), dt2.getMonth(), dt2.getDate()).getTime();
+  return !isNaN(t1) && !isNaN(t2) && t1 === t2;
+}
+
+

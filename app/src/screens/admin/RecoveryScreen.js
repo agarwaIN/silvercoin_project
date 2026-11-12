@@ -23,7 +23,7 @@ import * as adminApi from '../../api/adminApi';
 import * as employeeApi from '../../api/employeeApi';
 import { usePopup } from '../../context/PopupContext';
 import { useAuth } from '../../context/AuthContext';
-import { formatDate, getTodayFormatted } from '../../utils/date';
+import { formatDate, getTodayFormatted, isDateBefore, parseDateSafe } from '../../utils/date';
 import CalendarPicker from '../../components/CalendarPicker';
 import CollectEmiModal from '../../components/CollectEmiModal';
 import EmiScheduleLedger from '../../components/EmiScheduleLedger';
@@ -214,13 +214,13 @@ export default function RecoveryScreen({ navigation }) {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const overdueItems = items.filter(
-    (i) => i.recoveryStatus === 'overdue' || (i.dueDate && i.dueDate < todayStr),
+    (i) => i.recoveryStatus === 'overdue' || (i.dueDate && isDateBefore(i.dueDate, todayStr)),
   );
   const advanceItems = items.filter(
     (i) => i.isAdvancePaid || (i.totalAdvanceAmount && i.totalAdvanceAmount > 0),
   );
   const upcomingItems = items.filter(
-    (i) => i.recoveryStatus !== 'overdue' && (!i.dueDate || i.dueDate >= todayStr),
+    (i) => i.recoveryStatus !== 'overdue' && (!i.dueDate || !isDateBefore(i.dueDate, todayStr)),
   );
 
   const totalOverdueAmount = overdueItems.reduce(
@@ -260,10 +260,10 @@ export default function RecoveryScreen({ navigation }) {
     }
 
     if (activeTab === 'overdue') {
-      return item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
+      return item.recoveryStatus === 'overdue' || (item.dueDate && isDateBefore(item.dueDate, todayStr));
     }
     if (activeTab === 'upcoming') {
-      return item.recoveryStatus !== 'overdue' && (!item.dueDate || item.dueDate >= todayStr);
+      return item.recoveryStatus !== 'overdue' && (!item.dueDate || !isDateBefore(item.dueDate, todayStr));
     }
     return true;
   });
@@ -327,7 +327,7 @@ export default function RecoveryScreen({ navigation }) {
 
     const paidEmis = emisSorted.filter((e) => e.status === 'paid');
     const unpaidEmis = emisSorted.filter((e) => e.status !== 'paid');
-    const overdueEmis = unpaidEmis.filter((e) => e.dueDate && e.dueDate < todayStr);
+    const overdueEmis = unpaidEmis.filter((e) => e.dueDate && isDateBefore(e.dueDate, todayStr));
 
     let displayEmis = emisSorted;
     if (scheduleTab === 'pending') {
@@ -341,7 +341,10 @@ export default function RecoveryScreen({ navigation }) {
     const progressPct = totalCount > 0 ? Math.min(100, Math.round((paidCount / totalCount) * 100)) : 0;
     const totalRemainingDue = Math.round(
       unpaidEmis.reduce((s, e) => {
-        const penalty = e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0);
+        const isFutureOrToday = !isDateBefore(e.dueDate, todayStr);
+        const penalty = (e.penaltyWaived || (isFutureOrToday && !e.penaltyOnHold && Number(e.paidAmount || 0) === 0))
+          ? 0
+          : Number(e.penaltyAmount || 0);
         return s + Math.max(0, (Number(e.amount || 0) + penalty) - Number(e.paidAmount || 0));
       }, 0)
     );
@@ -438,10 +441,16 @@ export default function RecoveryScreen({ navigation }) {
     }
     finalOverdueEmiDue = Math.round(finalOverdueEmiDue);
 
-    // All penalties ever implied/added to client across all EMIs (collected or not, excluding waived)
+    // All penalties ever implied/added to client across all EMIs (collected or not, excluding waived or future on-time EMIs)
     const allPenaltiesImplied = Math.round(Math.max(
-      emisSorted.reduce((sum, e) => sum + (e.penaltyWaived ? 0 : Number(e.penaltyAmount || 0)), 0),
-      Number(selectedScheduleLoan.totalPenaltyImplied || selectedScheduleLoan.totalPenalty || selectedScheduleLoan.penaltyAmount || 0)
+      emisSorted.reduce((sum, e) => {
+        const isFutureOrToday = !isDateBefore(e.dueDate, todayStr);
+        if (e.penaltyWaived || (isFutureOrToday && !e.penaltyOnHold && Number(e.paidAmount || 0) === 0)) {
+          return sum;
+        }
+        return sum + Number(e.penaltyAmount || 0);
+      }, 0),
+      Number(selectedScheduleLoan.totalPenaltyImplied || selectedScheduleLoan.totalPenalty || 0)
     ));
 
     return (
@@ -829,7 +838,7 @@ export default function RecoveryScreen({ navigation }) {
             }
             renderItem={({ item }) => {
               const isOverdue =
-                item.recoveryStatus === 'overdue' || (item.dueDate && item.dueDate < todayStr);
+                item.recoveryStatus === 'overdue' || (item.dueDate && isDateBefore(item.dueDate, todayStr));
               const isAdvance = !isOverdue && item.totalAdvanceAmount > 0;
 
               const progressPct =

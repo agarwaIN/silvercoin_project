@@ -19,6 +19,19 @@ async function calculatePenalties() {
 
       const dueDate = new Date(emi.dueDate);
       const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+
+      if (now <= dueDate) {
+        if (!emi.penaltyOnHold && !emi.penaltySettled && Number(emi.paidAmount || 0) === 0 && (Number(emi.penaltyAmount || 0) > 0 || emi.status === 'overdue')) {
+          await db.updateEmiPayment(emi.paymentId, {
+            penaltyAmount: 0,
+            status: 'pending'
+          });
+        }
+        continue;
+      }
+
       const diffTime = Math.abs(now - dueDate);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
