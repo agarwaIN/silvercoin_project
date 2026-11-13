@@ -321,10 +321,8 @@ const openDoc = async (uri) => {
 };
 
 // ─── STEP 1: Owner & Verification ─────────────────────────────────────────────
-function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
+function Step1({ data, setData, loanId, setLoanId, loanIdRef, ownerUploading, houseUploading, uploadVideoAsync }) {
   const [ifscLoading, setIfscLoading] = useState(false);
-  const [ownerUploading, setOwnerUploading] = useState(false);
-  const [houseUploading, setHouseUploading] = useState(false);
   const [aadhaarChecking, setAadhaarChecking] = useState(false);
 
   const checkAadhaarUniquenessLive = async (cleanDigits) => {
@@ -388,6 +386,9 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
             const result = await ImagePicker.launchCameraAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Videos,
               videoMaxDuration: 60,
+              quality: 0.5,
+              videoExportPreset: ImagePicker.VideoExportPreset?.H264_1280x720 ?? 6,
+              videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium ?? 1,
             });
             if (result.canceled || !result.assets?.[0]) return;
             handleVideoCaptured(result.assets[0].uri, videoType);
@@ -403,6 +404,9 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
             }
             const result = await ImagePicker.launchImageLibraryAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+              quality: 0.5,
+              videoExportPreset: ImagePicker.VideoExportPreset?.H264_1280x720 ?? 6,
+              videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium ?? 1,
             });
             if (result.canceled || !result.assets?.[0]) return;
             handleVideoCaptured(result.assets[0].uri, videoType);
@@ -435,24 +439,12 @@ function Step1({ data, setData, loanId, setLoanId, loanIdRef }) {
 
     if (!activeLoanId) return;
 
-    const setUploading = isHouse ? setHouseUploading : setOwnerUploading;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('videoType', videoType);
-      fd.append('name', isHouse ? 'House / Property Video' : 'Owner Verification Video');
-      fd.append('video', makeFormDataFile(uri, isHouse ? 'house_video.mp4' : 'owner_video.mp4', 'video/mp4'));
-      const res = await uploadVideo(activeLoanId, fd, videoType, isHouse ? 'House / Property Video' : 'Owner Verification Video');
-      if (isHouse) {
-        setData(d => ({ ...d, houseVideoUri: res?.key || uri, localHouseVideoUri: uri, houseVideoUploaded: true }));
-      } else {
-        setData(d => ({ ...d, videoUri: res?.key || uri, localVideoUri: uri, videoUploaded: true }));
+    if (uploadVideoAsync) {
+      try {
+        await uploadVideoAsync(videoType, uri, activeLoanId);
+      } catch (err) {
+        console.warn('Video background upload error:', err);
       }
-    } catch (err) {
-      console.warn('Video upload error:', err);
-      Alert.alert('Upload notice', 'Video saved locally. Will retry on next step or submit.');
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -742,8 +734,10 @@ function Step2({ data, setData, loanId, setLoanId, loanIdRef }) {
             if (status !== 'granted') { Alert.alert('Permission Needed', 'Allow camera access to take photo.'); return; }
             const result = await ImagePicker.launchCameraAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.All,
-              quality: 0.8,
-              videoMaxDuration: 120,
+              quality: 0.7,
+              videoMaxDuration: 60,
+              videoExportPreset: ImagePicker.VideoExportPreset?.H264_1280x720 ?? 6,
+              videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium ?? 1,
             });
             if (result.canceled || !result.assets?.[0]) return;
             const isVid = result.assets[0].type === 'video' || (result.assets[0].uri && (result.assets[0].uri.toLowerCase().endsWith('.mp4') || result.assets[0].uri.toLowerCase().endsWith('.mov')));
@@ -1865,6 +1859,73 @@ export default function NewLoanScreen({ route, navigation }) {
   };
   const scrollRef = useRef(null);
 
+  const [ownerUploading, setOwnerUploading] = useState(false);
+  const [houseUploading, setHouseUploading] = useState(false);
+  const activeUploadTasksRef = useRef({
+    owner: null,
+    house: null,
+  });
+
+  const uploadVideoAsync = async (videoType, rawUri, targetLoanId) => {
+    if (!rawUri || !targetLoanId) return null;
+    if (activeUploadTasksRef.current[videoType]) {
+      return activeUploadTasksRef.current[videoType];
+    }
+
+    const setUploading = videoType === 'house' ? setHouseUploading : setOwnerUploading;
+    const isHouse = videoType === 'house';
+    const label = isHouse ? 'House / Property Video' : 'Owner Verification Video';
+
+    const taskPromise = (async () => {
+      // Sequential upload queue: if other video is currently uploading, wait for it so bandwidth is not divided
+      const otherType = isHouse ? 'owner' : 'house';
+      if (activeUploadTasksRef.current[otherType]) {
+        try {
+          await activeUploadTasksRef.current[otherType];
+        } catch {
+          // ignore other video error
+        }
+      }
+
+      setUploading(true);
+      try {
+        const cleanUri = await ensureLocalFileUri(rawUri, '.mp4');
+        const fd = new FormData();
+        fd.append('videoType', videoType);
+        fd.append('name', label);
+        fd.append('video', makeFormDataFile(cleanUri, isHouse ? 'house_video.mp4' : 'owner_video.mp4', 'video/mp4'));
+
+        const res = await uploadVideo(targetLoanId, fd, videoType, label);
+        const serverKey = res?.key || cleanUri;
+
+        setFormData(prev => {
+          if (isHouse) {
+            return {
+              ...prev,
+              houseVideoUri: serverKey,
+              localHouseVideoUri: null,
+              houseVideoUploaded: true,
+            };
+          } else {
+            return {
+              ...prev,
+              videoUri: serverKey,
+              localVideoUri: null,
+              videoUploaded: true,
+            };
+          }
+        });
+        return serverKey;
+      } finally {
+        setUploading(false);
+        activeUploadTasksRef.current[videoType] = null;
+      }
+    })();
+
+    activeUploadTasksRef.current[videoType] = taskPromise;
+    return taskPromise;
+  };
+
   const [formData, setFormData] = useState({
     ...initialFormData,
     ownerName: existingLoan?.ownerName || '', 
@@ -2148,41 +2209,37 @@ export default function NewLoanScreen({ route, navigation }) {
           bankRemark: formData.bankRemark?.trim() || '',
         });
 
-        // Upload Owner Video if pending and local
+        // Ensure Owner Video is uploaded before moving to Step 2
         const ownerFile = formData.localVideoUri || formData.videoUri;
-        if (ownerFile && isLocalMediaUri(ownerFile) && (!formData.videoUploaded || isLocalMediaUri(formData.videoUri))) {
+        if (ownerFile && (!formData.videoUploaded || isLocalMediaUri(formData.videoUri))) {
           try {
             const ownerUri = await ensureLocalFileUri(ownerFile, '.mp4');
-            const fd = new FormData();
-            fd.append('videoType', 'owner');
-            fd.append('name', 'Owner Verification Video');
-            fd.append('video', makeFormDataFile(ownerUri, 'owner_video.mp4', 'video/mp4'));
-            const res = await uploadVideo(currentLoanId, fd, 'owner', 'Owner Verification Video');
-            if (res?.key) {
-              setFormData(d => ({ ...d, videoUri: res.key, localVideoUri: null, videoUploaded: true }));
+            const resKey = await uploadVideoAsync('owner', ownerUri, currentLoanId);
+            if (!resKey) {
+              throw new Error('Owner video upload did not return a server key.');
             }
           } catch (vErr) {
             console.warn('Owner video upload error:', vErr);
-            showAlert('Notice', 'Owner video saved locally. It will upload upon application submit.');
+            showAlert('Upload Failed', 'Could not upload Owner Verification Video. Please check your network connection and try again.');
+            setLoading(false);
+            return;
           }
         }
 
-        // Upload House Video if pending and local
+        // Ensure House Video is uploaded before moving to Step 2
         const houseFile = formData.localHouseVideoUri || formData.houseVideoUri;
-        if (houseFile && isLocalMediaUri(houseFile) && (!formData.houseVideoUploaded || isLocalMediaUri(formData.houseVideoUri))) {
+        if (houseFile && (!formData.houseVideoUploaded || isLocalMediaUri(formData.houseVideoUri))) {
           try {
             const houseUri = await ensureLocalFileUri(houseFile, '.mp4');
-            const fdHouse = new FormData();
-            fdHouse.append('videoType', 'house');
-            fdHouse.append('name', 'House / Property Video');
-            fdHouse.append('video', makeFormDataFile(houseUri, 'house_video.mp4', 'video/mp4'));
-            const res = await uploadVideo(currentLoanId, fdHouse, 'house', 'House / Property Video');
-            if (res?.key) {
-              setFormData(d => ({ ...d, houseVideoUri: res.key, localHouseVideoUri: null, houseVideoUploaded: true }));
+            const resKey = await uploadVideoAsync('house', houseUri, currentLoanId);
+            if (!resKey) {
+              throw new Error('House video upload did not return a server key.');
             }
           } catch (hErr) {
             console.warn('House video upload error:', hErr);
-            showAlert('Notice', 'House video saved locally. It will upload upon application submit.');
+            showAlert('Upload Failed', 'Could not upload House / Property Video. Please check your network connection and try again.');
+            setLoading(false);
+            return;
           }
         }
       }
@@ -2476,7 +2533,18 @@ export default function NewLoanScreen({ route, navigation }) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) + 40 }}
       >
-        {step === 0 && <Step1 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanIdSynced} loanIdRef={loanIdRef} />}
+        {step === 0 && (
+          <Step1
+            data={formData}
+            setData={setFormData}
+            loanId={loanId}
+            setLoanId={setLoanIdSynced}
+            loanIdRef={loanIdRef}
+            ownerUploading={ownerUploading}
+            houseUploading={houseUploading}
+            uploadVideoAsync={uploadVideoAsync}
+          />
+        )}
         {step === 1 && <Step2 data={formData} setData={setFormData} loanId={loanId} setLoanId={setLoanIdSynced} loanIdRef={loanIdRef} />}
         {step === 2 && <Step3 data={formData} setData={setFormData} />}
         {step === 3 && <Step4 data={formData} loanId={loanIdRef.current || loanId} />}
@@ -2496,7 +2564,18 @@ export default function NewLoanScreen({ route, navigation }) {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={[ms.nextBtn, step > 0 && { flex: 1 }]} onPress={handleNext} disabled={loading}>
-              {loading ? <ActivityIndicator color={colors.white} /> : <Text style={ms.nextTxt}>Next</Text>}
+              {loading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <ActivityIndicator color={colors.white} size="small" />
+                  {(step === 0 && (ownerUploading || houseUploading)) ? (
+                    <Text style={ms.nextTxt}>Uploading Videos...</Text>
+                  ) : (
+                    <Text style={ms.nextTxt}>Please wait...</Text>
+                  )}
+                </View>
+              ) : (
+                <Text style={ms.nextTxt}>Next</Text>
+              )}
             </TouchableOpacity>
           )}
         </View>

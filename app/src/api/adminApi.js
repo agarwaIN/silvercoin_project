@@ -74,7 +74,7 @@ export const uploadVideo = (loanId, formData, videoType, name) => {
   if (videoType) params.push(`videoType=${encodeURIComponent(videoType)}`);
   if (name) params.push(`name=${encodeURIComponent(name)}`);
   const qs = params.length > 0 ? `?${params.join('&')}` : '';
-  return api.post(`/admin/loans/${loanId}/upload-video${qs}`, formData).then((r) => r.data);
+  return api.post(`/admin/loans/${loanId}/upload-video${qs}`, formData, { timeout: 300_000 }).then((r) => r.data);
 };
 export const getForeclosureQuote = (loanId, date) =>
   api.get(`/admin/loans/${loanId}/foreclosure-quote${date ? `?date=${encodeURIComponent(date)}` : ''}`).then((r) => r.data);

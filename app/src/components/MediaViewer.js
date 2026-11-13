@@ -312,7 +312,9 @@ export default function MediaViewer({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsEditing: false,
-        quality: 0.8,
+        quality: 0.5,
+        videoExportPreset: ImagePicker.VideoExportPreset?.H264_1280x720 ?? 6,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium ?? 1,
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
@@ -340,8 +342,10 @@ export default function MediaViewer({
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsEditing: false,
-        quality: 0.8,
-        videoMaxDuration: 180,
+        quality: 0.5,
+        videoMaxDuration: 60,
+        videoExportPreset: ImagePicker.VideoExportPreset?.H264_1280x720 ?? 6,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium ?? 1,
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
